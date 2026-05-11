@@ -34,3 +34,12 @@ model SeenPassage {
 
   @@unique([playerName, passageId]) // Each player can only see a passage once
 }
+
+// Lightweight persistent guest identity — no auth, just a profile
+model Guest {
+  id          String   @id @default(uuid())
+  displayName String
+  avatarColor String   @default("#DC2626")  // Default red
+  createdAt   DateTime @default(now())
+  lastSeen    DateTime @updatedAt
+}

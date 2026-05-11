@@ -56,6 +56,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
+import { useGuestStore, NameEntryModal, EditNameModal, PlayerNameBadge } from '@/components/guest-identity'
 
 // ============================================
 // GLOBAL SOCKET MANAGEMENT
@@ -995,6 +996,7 @@ function HomeScreen() {
 // CREATE GAME SCREEN
 // ============================================
 function CreateGameScreen() {
+  const guest = useGuestStore((s) => s.guest)
   const [name, setName] = useState('')
   const [roomType, setRoomType] = useState<RoomType>('عامة')
   const [password, setPassword] = useState('')
@@ -1004,9 +1006,12 @@ function CreateGameScreen() {
   const isLoading = useGameStore((s) => s.isLoading)
   const { createGame } = useGameSocket()
 
+  // Auto-fill name from guest identity
+  const effectiveName = name || guest?.displayName || ''
+
   const handleCreate = () => {
-    if (!name.trim()) return
-    createGame(name.trim(), gameSettings, roomType, roomType === 'خاصة' && password.trim() ? password.trim() : undefined)
+    if (!effectiveName) return
+    createGame(effectiveName, gameSettings, roomType, roomType === 'خاصة' && password.trim() ? password.trim() : undefined)
   }
 
   const gameTypes: { value: GameType; label: string; icon: typeof BookOpen; desc: string }[] = [
@@ -1065,10 +1070,20 @@ function CreateGameScreen() {
           </div>
 
           <div className="p-6 space-y-6">
-            {/* Name */}
+            {/* Name — pre-filled from guest identity */}
             <div className="space-y-2">
               <Label className="text-sm font-semibold text-slate-300">اسمك في المعركة</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="اكتب اسمك هنا..." className="battle-input rounded-xl text-right text-lg h-12" maxLength={20} />
+              <div className="relative">
+                <Input value={name || guest?.displayName || ''} onChange={(e) => setName(e.target.value)} placeholder={guest?.displayName || 'اكتب اسمك هنا...'} className="battle-input rounded-xl text-right text-lg h-12 pr-4 pl-12" maxLength={20} />
+                <button
+                  type="button"
+                  onClick={() => useGuestStore.getState().setShowEditModal(true)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-amber-400 hover:border-amber-500/30 transition-all flex items-center justify-center"
+                  title="غيّر اسمك"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                </button>
+              </div>
             </div>
 
             {/* Room type */}
@@ -1176,7 +1191,7 @@ function CreateGameScreen() {
 
             <div className="border-t border-white/5 pt-4">
               <Button size="lg" className="w-full text-lg py-7 btn-battle rounded-xl"
-                onClick={handleCreate} disabled={!name.trim() || isLoading}>
+                onClick={handleCreate} disabled={!effectiveName || isLoading}>
                 {isLoading ? (<><Loader2 className="w-5 h-5 ml-2 animate-spin" />جاري تجهيز الساحة...</>) : (<><Swords className="w-5 h-5 ml-2" />أنشئ الساحة<ArrowRight className="w-5 h-5 mr-2" /></>)}
               </Button>
             </div>
@@ -1191,6 +1206,7 @@ function CreateGameScreen() {
 // JOIN GAME SCREEN
 // ============================================
 function JoinGameScreen() {
+  const guest = useGuestStore((s) => s.guest)
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
@@ -1248,27 +1264,28 @@ function JoinGameScreen() {
     }
   }, [setupSocketListeners])
 
+  // Auto-fill name from guest identity
+  const effectiveJoinName = name || guest?.displayName || ''
+
   const handleJoinByCode = () => {
-    if (!name.trim() || !code.trim()) return
-    // Try joining without password first. If the room requires a password,
-    // the server will emit a game-error, and we show the password dialog.
-    joinGame(code.trim(), name.trim())
+    if (!effectiveJoinName.trim() || !code.trim()) return
+    joinGame(code.trim(), effectiveJoinName.trim())
   }
 
   const handleJoinFromList = (room: RoomInfo) => {
-    if (!name.trim()) return
+    if (!effectiveJoinName.trim()) return
     if (room.hasPassword) {
       setSelectedRoom(room)
       setDialogPassword('')
       setShowPasswordDialog(true)
     } else {
-      joinGame(room.roomCode, name.trim())
+      joinGame(room.roomCode, effectiveJoinName.trim())
     }
   }
 
   const handleDialogJoin = () => {
     if (selectedRoom) {
-      joinGame(selectedRoom.roomCode, name.trim(), dialogPassword.trim() || undefined)
+      joinGame(selectedRoom.roomCode, effectiveJoinName.trim(), dialogPassword.trim() || undefined)
       setShowPasswordDialog(false)
       setSelectedRoom(null)
       setDialogPassword('')
@@ -1304,7 +1321,17 @@ function JoinGameScreen() {
           <div className="p-6 space-y-6">
             <div className="space-y-2">
               <Label className="text-sm font-semibold text-slate-300">اسمك في المعركة</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="اكتب اسمك هنا..." className="battle-input rounded-xl text-right text-lg h-12" maxLength={20} />
+              <div className="relative">
+                <Input value={name || guest?.displayName || ''} onChange={(e) => setName(e.target.value)} placeholder={guest?.displayName || 'اكتب اسمك هنا...'} className="battle-input rounded-xl text-right text-lg h-12 pr-4 pl-12" maxLength={20} />
+                <button
+                  type="button"
+                  onClick={() => useGuestStore.getState().setShowEditModal(true)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-amber-400 hover:border-amber-500/30 transition-all flex items-center justify-center"
+                  title="غيّر اسمك"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                </button>
+              </div>
             </div>
 
             <Tabs defaultValue="public">
@@ -1344,7 +1371,7 @@ function JoinGameScreen() {
                               {room.hasPassword && <Lock className="w-4 h-4 text-amber-400" />}
                             </div>
                             <Button size="sm" className="btn-battle rounded-lg text-xs px-4"
-                              disabled={!name.trim() || isLoading}>ادخل</Button>
+                              disabled={!effectiveJoinName.trim() || isLoading}>ادخل</Button>
                           </div>
                           <div className="flex flex-wrap gap-2 text-xs text-slate-400">
                             <span className="flex items-center gap-1"><Swords className="w-3 h-3" />{room.hostName}</span>
@@ -1367,7 +1394,7 @@ function JoinGameScreen() {
                 </div>
 
                 <Button size="lg" className="w-full text-lg py-7 btn-battle rounded-xl"
-                  onClick={handleJoinByCode} disabled={!name.trim() || !code.trim() || isLoading}>
+                  onClick={handleJoinByCode} disabled={!effectiveJoinName.trim() || !code.trim() || isLoading}>
                   {isLoading ? (<><Loader2 className="w-5 h-5 ml-2 animate-spin" />جاري الدخول...</>) : (<><Shield className="w-5 h-5 ml-2" />ادخل الساحة<ArrowRight className="w-5 h-5 mr-2" /></>)}
                 </Button>
 
@@ -2460,6 +2487,47 @@ export default function Home() {
   const [splashComplete, setSplashComplete] = useState(false)
   const prevScreenRef = useRef<Screen>('home')
 
+  // Guest identity state
+  const guest = useGuestStore((s) => s.guest)
+  const guestIsLoading = useGuestStore((s) => s.isLoading)
+  const showNameModal = useGuestStore((s) => s.showNameModal)
+  const setGuest = useGuestStore((s) => s.setGuest)
+  const saveGuestId = useGuestStore((s) => s.saveGuestId)
+  const loadGuestId = useGuestStore((s) => s.loadGuestId)
+  const setIsLoading = useGuestStore((s) => s.setIsLoading)
+  const setShowNameModal = useGuestStore((s) => s.setShowNameModal)
+
+  // Restore guest identity on mount
+  useEffect(() => {
+    const guestId = loadGuestId()
+    if (guestId) {
+      // Try to restore from database
+      fetch(`/api/guest?id=${encodeURIComponent(guestId)}`)
+        .then(res => {
+          if (res.ok) return res.json()
+          throw new Error('Guest not found')
+        })
+        .then(data => {
+          setGuest({ id: data.id, displayName: data.displayName, avatarColor: data.avatarColor })
+        })
+        .catch(() => {
+          // Guest ID in cookie is stale, show name entry
+          setShowNameModal(true)
+          setIsLoading(false)
+        })
+    } else {
+      // No guest ID — show name entry modal after splash
+      setIsLoading(false)
+    }
+  }, [loadGuestId, setGuest, saveGuestId, setIsLoading, setShowNameModal])
+
+  // Show name entry modal after splash completes (only if no guest)
+  useEffect(() => {
+    if (splashComplete && !guest && !guestIsLoading) {
+      setShowNameModal(true)
+    }
+  }, [splashComplete, guest, guestIsLoading, setShowNameModal])
+
   // Play transition sound when screen changes
   useEffect(() => {
     if (prevScreenRef.current !== screen && !showSplash) {
@@ -2496,6 +2564,14 @@ export default function Home() {
     }
   }, [splashComplete, restoreState, rejoinRoom])
 
+  // Sync game store playerName with guest identity
+  const setPlayerName = useGameStore((s) => s.setPlayerName)
+  useEffect(() => {
+    if (guest?.displayName && playerName !== guest.displayName) {
+      setPlayerName(guest.displayName)
+    }
+  }, [guest?.displayName, playerName, setPlayerName])
+
   const handleSplashComplete = useCallback(() => {
     setSplashComplete(true)
     // Small delay before hiding splash for smooth transition
@@ -2511,6 +2587,12 @@ export default function Home() {
     <main className="min-h-screen flex flex-col">
       {/* Audio Controls - always visible */}
       <AudioControls />
+
+      {/* Guest Identity Modals */}
+      <AnimatePresence>
+        {showNameModal && <NameEntryModal />}
+      </AnimatePresence>
+      <EditNameModal />
 
       {/* Splash Screen */}
       <AnimatePresence>
