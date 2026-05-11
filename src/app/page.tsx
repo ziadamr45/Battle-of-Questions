@@ -57,7 +57,8 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
-import { useGuestStore, NameEntryModal, EditNameModal, PlayerNameBadge } from '@/components/guest-identity'
+import { NameEntryModal, EditNameModal, PlayerNameBadge } from '@/components/guest-identity'
+import { useGuestStore } from '@/lib/guest-store'
 import { ShareModal } from '@/components/share-modal'
 import { parseJoinUrl, cleanJoinParams } from '@/lib/share-utils'
 

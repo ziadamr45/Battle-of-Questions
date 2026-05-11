@@ -133,7 +133,7 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
 
   // Reset unread count when chat panel is opened
   useEffect(() => {
-    if (showChatPanel) setUnreadCount(0)
+    if (showChatPanel) queueMicrotask(() => setUnreadCount(0))
   }, [showChatPanel])
 
   // Handle speaker mute/unmute for audio elements
@@ -152,8 +152,11 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
 
     // If already connected to the same room, just sync state
     if (room.state === 'connected' && currentRoomCode === roomCode) {
-      setIsConnected(true)
-      setRemoteParticipants(Array.from(room.remoteParticipants.values()))
+      // Use microtask to avoid calling setState directly in effect body
+      queueMicrotask(() => {
+        setIsConnected(true)
+        setRemoteParticipants(Array.from(room.remoteParticipants.values()))
+      })
       roomRef = room
 
       // Re-attach any existing audio tracks
@@ -177,7 +180,7 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
     // Connect
     if (isConnecting) return
     isConnecting = true
-    setConnecting(true)
+    queueMicrotask(() => setConnecting(true))
 
     const connect = async () => {
       try {
