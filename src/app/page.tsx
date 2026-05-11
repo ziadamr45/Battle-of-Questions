@@ -2718,7 +2718,17 @@ function GameScreen() {
   const totalRounds = useGameStore((s) => s.totalRounds)
   const gameSettings = useGameStore((s) => s.gameSettings)
   const [showText, setShowText] = useState(true)
+  const [showScrollHint, setShowScrollHint] = useState(true)
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set())
+
+  // Reset scroll hint when new content arrives
+  useEffect(() => {
+    queueMicrotask(() => {
+      setShowScrollHint(true)
+      setShowText(true)
+    })
+  }, [gameContent])
+
   const [showSurrenderDialog, setShowSurrenderDialog] = useState(false)
   const { submitAnswer, surrender } = useGameSocket()
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -2763,7 +2773,7 @@ function GameScreen() {
   }, [timeLeft])
 
   // Reset answered questions when content changes
-  useEffect(() => { setTimeout(() => setAnsweredQuestions(new Set()), 0) }, [gameContent])
+  useEffect(() => { setTimeout(() => { setAnsweredQuestions(new Set()); setShowScrollHint(true) }, 0) }, [gameContent])
 
   if (!gameContent) return null
 
@@ -2786,6 +2796,15 @@ function GameScreen() {
     surrender()
     setShowSurrenderDialog(false)
   }
+
+  const handleTextScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+    if (atBottom) setShowScrollHint(false)
+  }
+
+  // Split text into paragraphs for better rendering
+  const textParagraphs = gameContent.text.split(/\n\n|\n/).filter(p => p.trim())
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
@@ -2876,15 +2895,22 @@ function GameScreen() {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
-              className="battle-card-glow rounded-2xl p-6 max-h-[60vh] overflow-y-auto"
+              className="battle-card-glow rounded-2xl p-4 sm:p-6 max-h-[65vh] overflow-y-auto reading-scroll relative"
+              onScroll={handleTextScroll}
             >
-              <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-red-400" />
-                {gameContent.title}
+              <h3 className="text-xl sm:text-2xl font-bold mb-4 flex items-center gap-2 bg-gradient-to-l from-red-400 via-amber-300 to-red-400 bg-clip-text text-transparent">
+                <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 shrink-0" />
+                <span className="bg-gradient-to-l from-red-300 via-amber-200 to-red-300 bg-clip-text text-transparent">{gameContent.title}</span>
               </h3>
-              <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">{gameContent.text}</p>
+              <div className="space-y-4">
+                {textParagraphs.map((paragraph, idx) => (
+                  <p key={idx} className="text-slate-200 leading-[1.9] text-[15px] sm:text-[17px] tracking-wide">
+                    {paragraph.trim()}
+                  </p>
+                ))}
+              </div>
               {gameContent.source && (
-                <p className="text-xs text-slate-500 mt-3">المصدر: {gameContent.source}</p>
+                <p className="text-xs text-slate-500 mt-4 pt-2 border-t border-white/5">المصدر: {gameContent.source}</p>
               )}
 
               {/* Prompt to go to questions */}
@@ -2897,6 +2923,18 @@ function GameScreen() {
                   انتقل للأسئلة
                 </Button>
               </div>
+
+              {/* Scroll hint */}
+              {showScrollHint && (
+                <motion.div
+                  className="sticky bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#12121F] to-transparent flex items-end justify-center pb-1 pointer-events-none"
+                  initial={{ opacity: 1 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <span className="text-xs text-amber-400/50">↕ اسحب للقراءة</span>
+                </motion.div>
+              )}
             </motion.div>
           ) : (
             <motion.div
@@ -3306,11 +3344,41 @@ export default function Home() {
   const setGuest = useGuestStore((s) => s.setGuest)
   const saveGuestId = useGuestStore((s) => s.saveGuestId)
   const loadGuestId = useGuestStore((s) => s.loadGuestId)
+  const loadGuestProfile = useGuestStore((s) => s.loadGuestProfile)
+  const hasVisitedBefore = useGuestStore((s) => s.hasVisitedBefore)
   const setIsLoading = useGuestStore((s) => s.setIsLoading)
   const setShowNameModal = useGuestStore((s) => s.setShowNameModal)
 
   // Restore guest identity on mount
+  // Priority: localStorage profile → cookie ID + API → first visit
   useEffect(() => {
+    // Step 1: Check localStorage for cached guest profile (fast, no API needed)
+    const cachedProfile = loadGuestProfile()
+    if (cachedProfile) {
+      // We have a cached profile — use it immediately so the user never sees the name modal again
+      // Use setGuest which also handles isLoading and re-saves to localStorage
+      setGuest(cachedProfile)
+
+      // Try to refresh from API in the background (to get any updated data)
+      const guestId = cachedProfile.id
+      if (!guestId.startsWith('local-')) {
+        fetch(`/api/guest?id=${encodeURIComponent(guestId)}`)
+          .then(res => {
+            if (res.ok) return res.json()
+            throw new Error('Guest not found')
+          })
+          .then(data => {
+            // Update with fresh data from API (this also re-saves to localStorage via setGuest)
+            setGuest({ id: data.id, displayName: data.displayName, avatarColor: data.avatarColor })
+          })
+          .catch(() => {
+            // API refresh failed — that's fine, we already have the cached profile
+          })
+      }
+      return
+    }
+
+    // Step 2: No localStorage cache — check cookie for guest ID (backward compat)
     const guestId = loadGuestId()
     if (guestId) {
       // Try to restore from database
@@ -3323,29 +3391,26 @@ export default function Home() {
           setGuest({ id: data.id, displayName: data.displayName, avatarColor: data.avatarColor })
         })
         .catch(() => {
-          // API failed or guest not found — if it's a local guest ID, restore from cookie
-          if (guestId.startsWith('local-')) {
-            // Local guest — we can't fully restore but mark loading done
-            // The name modal will show again if needed
-            setIsLoading(false)
-          } else {
-            // Database guest not found — show name entry
-            setShowNameModal(true)
-            setIsLoading(false)
-          }
+          // API failed or guest not found — no local cache either
+          // This means we lost the identity, treat as first visit
+          setIsLoading(false)
         })
     } else {
-      // No guest ID — show name entry modal after splash
+      // Step 3: No cookie, no localStorage — truly first visit
       setIsLoading(false)
     }
-  }, [loadGuestId, setGuest, saveGuestId, setIsLoading, setShowNameModal])
+  }, [loadGuestId, loadGuestProfile, setGuest, saveGuestId, setIsLoading, setShowNameModal])
 
-  // Show name entry modal after splash completes (only if no guest)
+  // Show name entry modal after splash completes (ONLY for first-time visitors)
   useEffect(() => {
     if (splashComplete && !guest && !guestIsLoading) {
-      setShowNameModal(true)
+      // Only show the cinematic NameEntryModal if the user has never visited before
+      // If they have a cached profile (even if API restore failed), don't show it
+      if (!hasVisitedBefore()) {
+        setShowNameModal(true)
+      }
     }
-  }, [splashComplete, guest, guestIsLoading, setShowNameModal])
+  }, [splashComplete, guest, guestIsLoading, hasVisitedBefore, setShowNameModal])
 
   // Play transition sound when screen changes
   useEffect(() => {
