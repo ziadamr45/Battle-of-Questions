@@ -61,7 +61,6 @@ import {
   AlertTriangle,
   ScrollText,
 } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
 import { NameEntryModal, EditNameModal, PlayerNameBadge } from '@/components/guest-identity'
@@ -70,6 +69,7 @@ import { ShareModal } from '@/components/share-modal'
 import { parseJoinUrl, cleanJoinParams } from '@/lib/share-utils'
 import { BattleHistoryList, BattleDetail } from '@/components/battle-history'
 import { AboutPage } from '@/components/about-page'
+import { battleToast } from '@/lib/battle-toast-store'
 
 // ============================================
 // GLOBAL SOCKET MANAGEMENT
@@ -139,7 +139,6 @@ function ensureSocketConnection(setupListeners: (socket: Socket) => void): Socke
 // GAME SOCKET HOOK
 // ============================================
 function useGameSocket() {
-  const { toast } = useToast()
   const store = useGameStore
 
   const setupSocketListeners = useCallback((socket: Socket) => {
@@ -168,7 +167,7 @@ function useGameSocket() {
         // If we're loading (create/join) and connection fails, stop loading
         s.setIsLoading(false)
         s.setError('فشل الاتصال بالخادم')
-        toast({ title: 'خطأ في الاتصال', description: 'لم نستطع الاتصال بالخادم. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+        battleToast('connection_error', 'خطأ في الاتصال', 'لم نستطع الاتصال بالخادم. يرجى المحاولة مرة أخرى.')
       }
     })
 
@@ -181,7 +180,7 @@ function useGameSocket() {
         store.getState().setIsLoading(false)
         store.getState().resetGame()
         clearSessionStorage()
-        toast({ title: 'فشل الاتصال', description: 'لم نستطع العودة للساحة. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+        battleToast('connection_error', 'فشل الاتصال', 'لم نستطع العودة للساحة. يرجى المحاولة مرة أخرى.')
       }
     })
 
@@ -206,24 +205,24 @@ function useGameSocket() {
     socket.on('player-joined', (data: { player: Player; players: Player[] }) => {
       store.getState().setPlayers(data.players)
       audioEngine.playerJoined()
-      toast({ title: 'مقاتل جديد!', description: `${data.player.name} دخل الساحة` })
+      battleToast('player_joined', 'مقاتل جديد!', `${data.player.name} دخل الساحة`, data.player.name)
     })
 
     socket.on('player-left', (data: { playerId: string; playerName: string; players: Player[] }) => {
       store.getState().setPlayers(data.players)
       audioEngine.playerLeft()
-      toast({ title: 'مقاتل انسحب', description: `${data.playerName} غادر الساحة` })
+      battleToast('player_left', 'مقاتل انسحب', `${data.playerName} غادر الساحة`, data.playerName)
     })
 
     socket.on('player-disconnected', (data: { playerId: string; playerName: string; players: Player[] }) => {
       store.getState().setPlayers(data.players)
       audioEngine.playerLeft()
-      toast({ title: 'انقطاع الاتصال', description: `${data.playerName} انقطع عن الساحة` })
+      battleToast('player_disconnected', 'انقطاع الاتصال', `${data.playerName} انقطع عن الساحة`, data.playerName)
     })
 
     socket.on('opponent-left-game', (data: { leftPlayerName: string; winnerName: string }) => {
       audioEngine.playerLeft()
-      toast({ title: 'المنافس غادر!', description: `${data.leftPlayerName} غادر المعركة` })
+      battleToast('opponent_left', 'المنافس غادر!', `${data.leftPlayerName} غادر المعركة`, data.leftPlayerName)
     })
 
     socket.on('surrender-confirmed', () => {
@@ -231,12 +230,12 @@ function useGameSocket() {
       store.getState().resetGame()
       clearSessionStorage()
       store.getState().setScreen('home')
-      toast({ title: 'انسحبت من المعركة', description: 'غادرت الساحة بنجاح' })
+      battleToast('surrender', 'انسحبت من المعركة', 'غادرت الساحة بنجاح')
     })
 
     socket.on('player-reconnected', (data: { playerId: string; playerName: string; players: Player[] }) => {
       store.getState().setPlayers(data.players)
-      toast({ title: 'عودة المقاتل!', description: `${data.playerName} رجع للساحة` })
+      battleToast('player_reconnected', 'عودة المقاتل!', `${data.playerName} رجع للساحة`, data.playerName)
     })
 
     socket.on('game-starting', () => {
@@ -296,7 +295,7 @@ function useGameSocket() {
           window.dispatchEvent(new CustomEvent('show-password-dialog', { detail: { roomCode: code } }))
         }
       } else {
-        toast({ title: 'خطأ!', description: data.message, variant: 'destructive' })
+        battleToast('error', 'خطأ!', data.message)
       }
     })
 
@@ -336,7 +335,7 @@ function useGameSocket() {
     socket.on('early-end-rejected', (data: { message: string }) => {
       store.getState().setEarlyEndProcessing(false)
       audioEngine.error()
-      toast({ title: 'لا يمكن إنهاء المعركة', description: data.message, variant: 'destructive' })
+      battleToast('early_end_rejected', 'لا يمكن إنهاء المعركة', data.message)
     })
 
     socket.on('early-end-confirmed', (data: { completedRounds: number; totalPlannedRounds: number; wasEarlyEnd: boolean }) => {
@@ -349,9 +348,9 @@ function useGameSocket() {
       store.getState().setPlayers(data.players)
       if (globalSocket && globalSocket.id === data.newHostId) {
         store.getState().setIsHost(true)
-        toast({ title: 'أنت القائد الجديد!', description: `${data.oldHostName} غادر وأنت الأقدم فبقيت القائد` })
+        battleToast('host_changed_self', 'أنت القائد الجديد!', `${data.oldHostName} غادر وأنت الأقدم فبقيت القائد`)
       } else {
-        toast({ title: 'قائد جديد', description: `${data.oldHostName} غادر و${data.newHostName} بقى القائد` })
+        battleToast('host_changed_other', 'قائد جديد', `${data.oldHostName} غادر و${data.newHostName} بقى القائد`)
       }
     })
 
@@ -388,15 +387,15 @@ function useGameSocket() {
         s.setScreen('results')
       } else { s.setScreen('lobby') }
       s.setIsReconnecting(false); s.setIsLoading(false)
-      toast({ title: 'تمت العودة!', description: 'رجعت للساحة بنجاح' })
+      battleToast('rejoin_success', 'تمت العودة!', 'رجعت للساحة بنجاح')
     })
 
     socket.on('rejoin-failed', (data: { message: string }) => {
       disconnectGlobalSocket()
       store.getState().setIsReconnecting(false); store.getState().resetGame(); clearSessionStorage()
-      toast({ title: 'فشل إعادة الاتصال', description: data.message, variant: 'destructive' })
+      battleToast('rejoin_failed', 'فشل إعادة الاتصال', data.message)
     })
-  }, [toast])
+  }, [])
 
   const connectAndDo = useCallback((action: (socket: Socket) => void) => {
     const socket = getOrCreateSocket(setupSocketListeners)
@@ -425,10 +424,10 @@ function useGameSocket() {
         console.log('[createGame] Timed out after 12s, resetting')
         store.getState().setIsLoading(false)
         disconnectGlobalSocket()
-        toast({ title: 'انتهت المهلة', description: 'لم نستطع إنشاء الساحة. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+        battleToast('timeout', 'انتهت المهلة', 'لم نستطع إنشاء الساحة. يرجى المحاولة مرة أخرى.')
       }
     }, 12000)
-  }, [connectAndDo, toast])
+  }, [connectAndDo])
 
   const joinGame = useCallback((roomCode: string, playerName: string, password?: string) => {
     store.getState().setIsHost(false); store.getState().setPlayerName(playerName); store.getState().setIsLoading(true)
@@ -439,10 +438,10 @@ function useGameSocket() {
         console.log('[joinGame] Timed out after 12s, resetting')
         store.getState().setIsLoading(false)
         disconnectGlobalSocket()
-        toast({ title: 'انتهت المهلة', description: 'لم نستطع الانضمام للساحة. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+        battleToast('timeout', 'انتهت المهلة', 'لم نستطع الانضمام للساحة. يرجى المحاولة مرة أخرى.')
       }
     }, 12000)
-  }, [connectAndDo, toast])
+  }, [connectAndDo])
 
   const rejoinRoom = useCallback((roomCode: string, playerName: string) => {
     store.getState().setIsReconnecting(true); store.getState().setIsLoading(true)
@@ -456,10 +455,10 @@ function useGameSocket() {
         store.getState().setIsLoading(false)
         store.getState().resetGame()
         clearSessionStorage()
-        toast({ title: 'فشل الاتصال', description: 'لم نستطع العودة للساحة. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+        battleToast('connection_error', 'فشل الاتصال', 'لم نستطع العودة للساحة. يرجى المحاولة مرة أخرى.')
       }
     }, 8000)
-  }, [connectAndDo, toast])
+  }, [connectAndDo])
 
   const startGame = useCallback(() => {
     if (globalSocket) {
@@ -2260,7 +2259,6 @@ function LobbyScreen() {
   const [unreadChatCount, setUnreadChatCount] = useState(0)
   const { startGame, leaveAndDisconnect } = useGameSocket()
   const resetGame = useGameStore((s) => s.resetGame)
-  const { toast } = useToast()
 
   const isOpen = playerMode === 'open' || maxPlayers === 0
 
@@ -2277,14 +2275,14 @@ function LobbyScreen() {
   useEffect(() => {
     if (prevCanInviteRef.current && !canInvite) {
       // Room just became full
-      toast({ title: 'الساحة اكتملت', description: 'تم إيقاف الدعوات مؤقتًا' })
+      battleToast('room_full', 'الساحة اكتملت', 'تم إيقاف الدعوات مؤقتًا')
     }
     if (!prevCanInviteRef.current && canInvite) {
       // Room is no longer full (player left/disconnected)
-      toast({ title: 'باب الساحة فتح!', description: 'يمكنك دعوة مقاتلين جدد' })
+      battleToast('room_open', 'باب الساحة فتح!', 'يمكنك دعوة مقاتلين جدد')
     }
     prevCanInviteRef.current = canInvite
-  }, [canInvite, toast])
+  }, [canInvite])
 
   const startDisabled = activePlayers < 2 ||
     (activePlayers === 2 && gameSettings.numberOfRounds === 2) ||
@@ -2329,12 +2327,12 @@ function LobbyScreen() {
           passageType: 'نوع القطعة',
         }
         const labels = data.changes.map(c => changeLabels[c] || c).join('، ')
-        toast({ title: 'تم تحديث الإعدادات', description: `${data.updatedBy} غيّر: ${labels}` })
+        battleToast('settings_updated', 'تم تحديث الإعدادات', `${data.updatedBy} غيّر: ${labels}`)
       }
     }
     globalSocket.on('settings-updated', handler)
     return () => { globalSocket?.off('settings-updated', handler) }
-  }, [setGameSettings, toast])
+  }, [setGameSettings])
 
   // Listen for LiveKit speaking state changes
   useEffect(() => {
@@ -2777,7 +2775,6 @@ function RoundTransitionScreen() {
   const earlyEndProcessing = useGameStore((s) => s.earlyEndProcessing)
   const [showEditSettings, setShowEditSettings] = useState(false)
   const [showEarlyEndModal, setShowEarlyEndModal] = useState(false)
-  const { toast } = useToast()
   const { requestEarlyEnd } = useGameSocket()
   const isOpen = gameSettings.playerMode === 'open' || gameSettings.maxPlayers === 0
 
@@ -2797,12 +2794,12 @@ function RoundTransitionScreen() {
           difficulty: 'الصعوبة', timePerRound: 'وقت الجولة', numberOfRounds: 'عدد الجولات', passageType: 'نوع القطعة',
         }
         const labels = data.changes.map(c => changeLabels[c] || c).join('، ')
-        toast({ title: 'تم تحديث الإعدادات', description: `${data.updatedBy} غيّر: ${labels}` })
+        battleToast('settings_updated', 'تم تحديث الإعدادات', `${data.updatedBy} غيّر: ${labels}`)
       }
     }
     globalSocket.on('settings-updated', handler)
     return () => { globalSocket?.off('settings-updated', handler) }
-  }, [setGameSettings, toast])
+  }, [setGameSettings])
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Cairo } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
+import { BattleToastProvider } from "@/components/battle-toast";
 
 const cairo = Cairo({
   subsets: ["arabic", "latin"],
@@ -28,7 +28,7 @@ export default function RootLayout({
     <html lang="ar" dir="rtl" suppressHydrationWarning className={cairo.variable}>
       <body className="antialiased bg-background text-foreground min-h-screen font-[var(--font-cairo)]">
         {children}
-        <Toaster />
+        <BattleToastProvider />
       </body>
     </html>
   );
