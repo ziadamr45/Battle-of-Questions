@@ -148,3 +148,44 @@ Stage Summary:
 3. `/home/z/my-project/src/app/page.tsx` - UI selectors, badges, room cards, change labels
 4. `/home/z/my-project/src/lib/invite-generator.ts` - ShareRoomInfo, dynamic messages
 5. `/home/z/my-project/src/components/share-modal.tsx` - Share info, room info badges
+
+---
+
+## Date: 2026-05-11
+
+## Summary
+Migrated database from SQLite to PostgreSQL (Neon) - user's real production database.
+
+---
+Task ID: 10
+Agent: Main
+Task: Migrate from SQLite to PostgreSQL (Neon) and verify all systems work
+
+Work Log:
+- Read current project state: prisma schema, .env, db.ts, page.tsx, game-service, game-store, invite-generator
+- Updated prisma/schema.prisma: Changed provider from sqlite to postgresql, URL from hardcoded path to env("DATABASE_URL")
+- Updated .env: Changed DATABASE_URL from file:./../db/custom.db to Neon PostgreSQL connection string
+- Updated src/lib/db.ts: Added PostgreSQL-compatible connection pooling, improved logging, explicit datasources config
+- Ran prisma generate → Generated Prisma Client for PostgreSQL
+- Ran prisma db push → Created all 3 tables (Guest, Passage, SeenPassage) in Neon PostgreSQL
+- Verified full CRUD operations against Neon:
+  - POST /api/guest → Created guest in Neon (201 Created)
+  - GET /api/guest → Fetched guest from Neon (200 OK)
+  - PATCH /api/guest → Updated guest in Neon (200 OK)
+  - Direct Prisma queries confirmed data persisted in Neon
+- Cleaned up test data from Neon database
+- Lint check passes with zero errors
+- Committed and pushed to GitHub
+
+Stage Summary:
+- Successfully migrated from SQLite to Neon PostgreSQL
+- All 3 tables (Guest, Passage, SeenPassage) created and synced in Neon
+- Full CRUD API operations verified against Neon
+- Game service (port 3003) running and healthy
+- Next.js (port 3000) serving pages with Neon backend
+- Commit: "feat: migrate from SQLite to PostgreSQL (Neon) database"
+
+Files Modified:
+1. prisma/schema.prisma - Changed provider to postgresql, url to env variable
+2. .env - Updated DATABASE_URL to Neon PostgreSQL connection string
+3. src/lib/db.ts - Added PostgreSQL connection pooling, improved logging
