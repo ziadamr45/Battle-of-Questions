@@ -5,7 +5,7 @@ export type Difficulty = 'سهل' | 'متوسط' | 'صعب'
 export type RoomType = 'عامة' | 'خاصة'
 export type PlayerMode = 'fixed' | 'open'
 export type PassageType = 'علمي' | 'أدبي' | 'عشوائي'
-export type Screen = 'home' | 'create' | 'join' | 'lobby' | 'loading' | 'game' | 'results' | 'round-transition'
+export type Screen = 'home' | 'create' | 'join' | 'lobby' | 'loading' | 'game' | 'results' | 'round-transition' | 'history'
 
 export interface Player {
   id: string

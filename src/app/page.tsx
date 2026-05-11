@@ -59,6 +59,7 @@ import {
   Shuffle,
   ShieldAlert,
   AlertTriangle,
+  ScrollText,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { BattleLogo } from '@/components/battle-logo'
@@ -67,6 +68,7 @@ import { NameEntryModal, EditNameModal, PlayerNameBadge } from '@/components/gue
 import { useGuestStore } from '@/lib/guest-store'
 import { ShareModal } from '@/components/share-modal'
 import { parseJoinUrl, cleanJoinParams } from '@/lib/share-utils'
+import { BattleHistoryList, BattleDetail } from '@/components/battle-history'
 
 // ============================================
 // GLOBAL SOCKET MANAGEMENT
@@ -297,7 +299,7 @@ function useGameSocket() {
       }
     })
 
-    socket.on('game-ended', (data: { scores: Player[]; roundWinners: Record<number, string>; roundResults: Record<number, RoundScore[]>; totalRounds: number }) => {
+    socket.on('game-ended', (data: { scores: Player[]; roundWinners: Record<number, string>; roundResults: Record<number, RoundScore[]>; totalRounds: number; battleData?: any }) => {
       store.getState().setScores(data.scores.sort((a: Player, b: Player) => b.score - a.score))
       if (data.roundWinners) store.getState().setRoundWinners(data.roundWinners)
       if (data.roundResults) store.getState().setRoundResults(data.roundResults)
@@ -314,6 +316,20 @@ function useGameSocket() {
       }
       // Podium reveal after a delay
       setTimeout(() => audioEngine.podiumReveal(), 1500)
+
+      // ─── Save battle history in the background ───
+      if (data.battleData) {
+        const playerName = store.getState().playerName
+        if (playerName) {
+          fetch('/api/battle-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data.battleData),
+          }).catch(err => {
+            console.error('[Battle History] Failed to save:', err)
+          })
+        }
+      }
     })
 
     socket.on('early-end-rejected', (data: { message: string }) => {
@@ -1143,6 +1159,14 @@ function HomeScreen() {
           >
             <Shield className="w-5 h-5 ml-2" />
             انضم لساحة
+          </Button>
+          <Button
+            size="lg"
+            className="text-lg px-6 py-7 bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white hover:border-white/20 rounded-xl transition-all"
+            onClick={() => setScreen('history')}
+          >
+            <ScrollText className="w-5 h-5 ml-2" />
+            سجل المعارك
           </Button>
         </motion.div>
 
@@ -3538,6 +3562,46 @@ function ReconnectingScreen() {
 }
 
 // ============================================
+// HISTORY SCREEN WRAPPER - Handles list/detail navigation
+// ============================================
+function HistoryScreenWrapper() {
+  const playerName = useGameStore((s) => s.playerName)
+  const setScreen = useGameStore((s) => s.setScreen)
+  const [selectedBattle, setSelectedBattle] = useState<any>(null)
+
+  if (!playerName) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-slate-400 mb-4">يجب إدخال اسمك أولاً لعرض سجل المعارك</p>
+          <Button onClick={() => setScreen('home')} className="btn-battle">
+            العودة للرئيسية
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (selectedBattle) {
+    return (
+      <BattleDetail
+        battle={selectedBattle}
+        playerName={playerName}
+        onBack={() => setSelectedBattle(null)}
+      />
+    )
+  }
+
+  return (
+    <BattleHistoryList
+      playerName={playerName}
+      onBattleSelect={(battle) => setSelectedBattle(battle)}
+      onBack={() => setScreen('home')}
+    />
+  )
+}
+
+// ============================================
 // MAIN HOME COMPONENT
 // ============================================
 export default function Home() {
@@ -3733,6 +3797,7 @@ export default function Home() {
             {screen === 'loading' && <LoadingScreen />}
             {screen === 'game' && <GameScreen key={gameContent?.title || 'game'} />}
             {screen === 'round-transition' && <RoundTransitionScreen />}
+            {screen === 'history' && <HistoryScreenWrapper />}
             {screen === 'results' && <ResultsScreen />}
           </motion.div>
         </AnimatePresence>

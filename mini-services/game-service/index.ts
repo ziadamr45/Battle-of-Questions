@@ -2082,6 +2082,92 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
 
   const completedRounds = room.roundResults.size
 
+  // ─── Build full battle data for history saving ───
+  // Calculate approximate battle start time from first round
+  const battleStartedAt = room.rounds.length > 0 && room.roundStartTime
+    ? Date.now() - (completedRounds * room.roundTimerSeconds * 1000)
+    : Date.now() - (completedRounds * room.settings.timePerRound * 60 * 1000)
+
+  const battleParticipants = finalResults.map((p, index) => {
+    // Build answer review for this player
+    const answerReview: any[] = []
+    const playerAnswers = room.playerAnswers.get(p.id)
+
+    for (let rIdx = 0; rIdx < room.rounds.length; rIdx++) {
+      const roundContent = room.rounds[rIdx]
+      const roundAnswers = playerAnswers?.get(rIdx)
+
+      if (!roundContent) continue
+
+      for (let qIdx = 0; qIdx < roundContent.content.questions.length; qIdx++) {
+        const question = roundContent.content.questions[qIdx]
+        const answer = roundAnswers?.get(qIdx)
+
+        answerReview.push({
+          roundNumber: rIdx + 1,
+          questionIndex: qIdx,
+          question: question.text,
+          options: question.options,
+          correctAnswer: question.correctAnswer,
+          explanation: question.explanation,
+          playerAnswer: answer ? answer.answerIndex : -1,
+          isCorrect: answer ? question.correctAnswer === answer.answerIndex : false,
+          timeTaken: answer ? answer.timeTaken : 0,
+        })
+      }
+    }
+
+    return {
+      playerName: p.name,
+      finalRank: index + 1,
+      totalScore: p.score,
+      roundWins: p.roundWins,
+      isHost: p.isHost,
+      answerReview,
+    }
+  })
+
+  const battleRounds = room.rounds.map((roundContent, rIdx) => {
+    const roundScores = room.roundResults.get(rIdx) || []
+    return {
+      roundNumber: rIdx + 1,
+      title: roundContent.content.title,
+      source: roundContent.content.source,
+      winnerName: room.roundWinners.get(rIdx)
+        ? finalResults.find(p => p.id === room.roundWinners.get(rIdx))?.name || null
+        : null,
+      duration: room.roundTimerSeconds,
+      questions: roundContent.content.questions.map(q => ({
+        text: q.text,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation,
+      })),
+      roundScores: roundScores.map(s => ({
+        playerName: s.playerName,
+        score: s.score,
+        correctAnswers: s.correctAnswers,
+        totalQuestions: s.totalQuestions,
+      })),
+    }
+  })
+
+  const battleData = {
+    roomCode: room.roomCode,
+    gameType: room.settings.gameType,
+    difficulty: room.settings.difficulty,
+    roomType: room.roomType,
+    passageType: room.settings.passageType,
+    totalRounds: room.settings.numberOfRounds,
+    completedRounds,
+    totalDuration: completedRounds * room.roundTimerSeconds,
+    hostName: room.hostName,
+    wasEarlyEnd,
+    startedAt: battleStartedAt,
+    participants: battleParticipants,
+    rounds: battleRounds,
+  }
+
   io.to(roomCode).emit('game-ended', {
     scores: scoresWithWins,
     roundWinners: Object.fromEntries(room.roundWinners),
@@ -2089,6 +2175,7 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
       Array.from(room.roundResults.entries()).map(([k, v]) => [k, v])
     ),
     totalRounds: room.settings.numberOfRounds,
+    battleData, // Full battle data for history saving
   })
 
   // If this was an early end, emit additional info

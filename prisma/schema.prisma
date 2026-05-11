@@ -43,3 +43,58 @@ model Guest {
   createdAt   DateTime @default(now())
   lastSeen    DateTime @updatedAt
 }
+
+// ─── Battle History System ───────────────────────────────────────────────────
+
+// A completed battle/match record
+model Battle {
+  id              String   @id @default(cuid())
+  roomCode        String
+  gameType        String   // "قراءة متحررة" | "نصوص"
+  difficulty      String   // "سهل" | "متوسط" | "صعب"
+  roomType        String   // "عامة" | "خاصة"
+  passageType     String?  // "علمي" | "أدبي" | "عشوائي" — only for قراءة متحررة
+  totalRounds     Int
+  completedRounds Int
+  totalDuration   Int      // seconds — total battle duration
+  hostName        String
+  wasEarlyEnd     Boolean  @default(false)
+  startedAt       DateTime
+  endedAt         DateTime @default(now())
+
+  participants    BattleParticipant[]
+  rounds          BattleRound[]
+}
+
+// Each player's summary in a battle
+model BattleParticipant {
+  id            String   @id @default(cuid())
+  battleId      String
+  playerName    String
+  finalRank     Int      // 1st, 2nd, 3rd...
+  totalScore    Float
+  roundWins     Int
+  isHost        Boolean  @default(false)
+  answerReview  Json?    // Full answer review: [{roundNumber, questionIndex, question, options, playerAnswer, correctAnswer, isCorrect, timeTaken, explanation}]
+
+  battle        Battle   @relation(fields: [battleId], references: [id], onDelete: Cascade)
+
+  @@unique([battleId, playerName])
+}
+
+// Each round's summary in a battle
+model BattleRound {
+  id            String   @id @default(cuid())
+  battleId      String
+  roundNumber   Int
+  title         String   // Passage/text title for this round
+  source        String?  // Source of the passage
+  winnerName    String?  // Player name of round winner
+  duration      Int      // seconds — round duration
+  questions     Json     // [{text, options, correctAnswer, explanation}]
+  roundScores   Json     // [{playerName, score, correctAnswers, totalQuestions}]
+
+  battle        Battle   @relation(fields: [battleId], references: [id], onDelete: Cascade)
+
+  @@unique([battleId, roundNumber])
+}
