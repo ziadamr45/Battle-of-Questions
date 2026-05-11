@@ -3,61 +3,101 @@
 ## Date: 2026-03-05
 
 ## Summary
-Implemented the "Early End Game" system in the game-service backend (`/home/z/my-project/mini-services/game-service/index.ts`).
+Implemented the "Early End Game" system across both backend (game-service) and frontend (page.tsx, game-store, audio-engine).
 
-## Changes Made
+---
 
-### 1. GameRoom Interface Update (line ~205)
-- Added `earlyEnding: boolean` field to the `GameRoom` interface
-- Purpose: Prevents duplicate early-end-game requests from being processed
+### Task ID: 1
+Agent: Main
+Task: Push unpushed commits to GitHub
 
-### 2. Room Creation Update (line ~1161)
-- Initialized `earlyEnding: false` when creating new rooms
-- Ensures the flag starts as false for every new game room
+Work Log:
+- Found 9 unpushed commits on main branch
+- Pushed all commits to origin/main via GitHub PAT
 
-### 3. `early-end-game` Socket Event Handler (lines ~1101-1198)
-- Added inside `io.on('connection')` block
-- **Validations (in order):**
-  1. Room exists → "الغرفة مش موجودة"
-  2. Sender is host → "فقط القائد يقدر ينهي المعركة"
-  3. Game is in progress → "المعركة مش شغالة حالياً"
-  4. Not already processing → "جاري معالجة إنهاء المعركة بالفعل"
-  5. Round-player restriction:
-     - 2 active players + 2 completed rounds → "لاعبين ما يلعبوش جولتين — القاعدة بتمنع إنهاء المعركة دلوقتي"
-     - 3 active players + 3 completed rounds → "ثلاث لاعبين ما يلعبوش ثلاث جولات — القاعدة بتمنع إنهاء المعركة دلوقتي"
-- **Completed rounds** counted using `room.roundResults.size` (actual finalized rounds)
-- **Active players** counted by filtering `!p.isDisconnected`
-- All validation failures emit `early-end-rejected` with Arabic message
-- On success, sets `room.earlyEnding = true`
-- If round in progress (`roundStartTime` set and not `roundEnding`), finalizes current round:
-  - Calls `calculateRoundScores(room, currentRound)`
-  - Stores in `room.roundResults`
-  - Determines winner and updates `roundWins`
-  - Emits `round-end` with `isLastRound: true`
-- Then calls `handleGameEnd(roomCode, true)` after 1.5s delay
+Stage Summary:
+- All previous changes are now on GitHub
 
-### 4. `handleGameEnd` Function Update (line ~1885)
-- Added optional `wasEarlyEnd: boolean = false` parameter
-- Added `completedRounds` calculation using `room.roundResults.size`
-- When `wasEarlyEnd` is true, emits `early-end-confirmed` event with:
-  - `completedRounds`: number of finalized rounds
-  - `totalPlannedRounds`: originally planned number of rounds
-  - `wasEarlyEnd: true`
-- Updated console log to indicate early end
+---
 
-### 5. `rejoin-room` Handler Update (lines ~1067-1071)
-- When room status is 'finished' and `room.earlyEnding` is true:
-  - Includes `wasEarlyEnd: true` in rejoin data
-  - Includes `completedRounds: room.roundResults.size` in rejoin data
+### Task ID: 2
+Agent: Main
+Task: Read and understand current codebase
 
-## Key Design Decisions
-- Used `room.roundResults.size` for completed rounds count (not `currentRound`), as specified in requirements — this counts rounds with calculated scores
-- The `earlyEnding` flag persists on the room object, allowing rejoin detection
-- Round-player restriction uses strict equality (2 players ↔ 2 rounds, 3 players ↔ 3 rounds)
-- 1.5s delay before `handleGameEnd` to allow clients to process the final round-end event
-- Existing `handleGameEnd` calls (from opponent leaving, etc.) still work with default `wasEarlyEnd = false`
+Work Log:
+- Read game-service/index.ts (Socket.IO server, room management, round handling, handleGameEnd)
+- Read page.tsx (LobbyScreen, RoundTransitionScreen, GameScreen, ResultsScreen, EditSettingsModal)
+- Read game-store.ts (Zustand state management)
+- Read audio-engine.ts (Web Audio API sound system)
+- Identified key patterns: Socket event handling, game flow, round-player restrictions
 
-## Verification
-- Lint check passed (no new errors)
-- Game service is running on port 3003 (health check returns OK)
-- All TypeScript errors are pre-existing (module configuration issues, not related to changes)
+Stage Summary:
+- Full understanding of codebase architecture
+- Identified insertion points for early end game feature
+
+---
+
+### Task ID: 3
+Agent: Subagent (full-stack-developer)
+Task: Update game-service with early-end-game socket event, validation, and state finalization
+
+Work Log:
+- Added `earlyEnding: boolean` to GameRoom interface
+- Initialized `earlyEnding: false` in room creation
+- Added `early-end-game` socket event handler with full validation chain
+- Updated `handleGameEnd` with optional `wasEarlyEnd` parameter
+- Updated rejoin handler to include early end info
+
+Stage Summary:
+- Backend fully implements early end game with Arabic validation
+- Round-player restrictions enforced (2p≠2r, 3p≠3r)
+- Duplicate request prevention via earlyEnding flag
+- Auto-finalization of current round when early end during active round
+
+---
+
+### Task ID: 4-8
+Agent: Main
+Task: Frontend implementation (modal, buttons, listeners, sounds, results)
+
+Work Log:
+- Added ShieldAlert and AlertTriangle icon imports
+- Added socket listeners for `early-end-rejected` and `early-end-confirmed`
+- Added `requestEarlyEnd` function to useGameSocket hook
+- Created `EarlyEndConfirmModal` component with cinematic gaming UI
+  - Phased reveal animations (idle → warning → ready)
+  - Background dramatic red glow with pulsing
+  - Floating embers animation
+  - ShieldAlert icon with radial glow
+  - Arabic text with text-shadow effects
+  - Round info badges (completed/remaining)
+  - Warning message with finality notice
+  - Confirm/Cancel buttons with processing state
+- Added "إنهاء المعركة" button in RoundTransitionScreen (host only, between rounds)
+- Updated ResultsScreen:
+  - Dynamic title: "تم إنهاء المعركة" vs "انتهت المعركة!"
+  - Dynamic subtitle: "اعتماد النتائج النهائية" vs "النتائج النهائية للساحة"
+  - Early end badge showing completed/total rounds
+- Added early end sound effects to audio-engine:
+  - `earlyEndHorn`: Dramatic horn blast with rising tension
+  - `earlyEndConfirmed`: Low rumble + descending tones + final gong
+- Updated game-store with:
+  - `wasEarlyEnd` / `setWasEarlyEnd`
+  - `completedRounds` / `setCompletedRounds`
+  - `earlyEndProcessing` / `setEarlyEndProcessing`
+  - All reset in `resetGame()`
+
+Stage Summary:
+- All frontend components implemented and integrated
+- Lint check passes with zero errors
+- Both servers running (Next.js on 3000, game-service on 3003)
+- Changes committed and pushed to GitHub
+
+---
+
+## Files Modified
+1. `/home/z/my-project/mini-services/game-service/index.ts` - Backend early-end-game handler
+2. `/home/z/my-project/src/app/page.tsx` - Frontend UI (modal, buttons, listeners, results)
+3. `/home/z/my-project/src/lib/audio-engine.ts` - New sound effects
+4. `/home/z/my-project/src/lib/game-store.ts` - New state fields
+5. `/home/z/my-project/worklog.md` - This work log
