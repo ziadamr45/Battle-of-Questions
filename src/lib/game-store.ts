@@ -5,7 +5,7 @@ export type Difficulty = 'سهل' | 'متوسط' | 'صعب'
 export type RoomType = 'عامة' | 'خاصة'
 export type PlayerMode = 'fixed' | 'open'
 export type PassageType = 'علمي' | 'أدبي' | 'عشوائي'
-export type Screen = 'home' | 'create' | 'join' | 'lobby' | 'loading' | 'game' | 'results' | 'round-transition' | 'history'
+export type Screen = 'home' | 'create' | 'join' | 'lobby' | 'loading' | 'game' | 'results' | 'round-transition' | 'history' | 'about'
 
 export interface Player {
   id: string
@@ -87,8 +87,8 @@ interface PersistedState {
 
 function saveToSessionStorage(state: PersistedState) {
   try {
-    // Only save if the user is in an active session (not home/join/create)
-    if (state.screen === 'home' || state.screen === 'join' || state.screen === 'create') {
+    // Only save if the user is in an active session (not home/join/create/about)
+    if (state.screen === 'home' || state.screen === 'join' || state.screen === 'create' || state.screen === 'about') {
       if (!state.roomCode) {
         sessionStorage.removeItem(SESSION_KEY)
         return
@@ -108,7 +108,7 @@ export function loadFromSessionStorage(): PersistedState | null {
     // Validate the stored data has the minimum required fields
     if (!parsed.roomCode || !parsed.playerName || !parsed.screen) return null
     // Only restore if they were in an active room/game
-    if (parsed.screen === 'home' || parsed.screen === 'join' || parsed.screen === 'create') {
+    if (parsed.screen === 'home' || parsed.screen === 'join' || parsed.screen === 'create' || parsed.screen === 'about') {
       if (!parsed.roomCode) return null
     }
     return parsed as PersistedState

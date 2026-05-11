@@ -873,13 +873,13 @@ export function BattleDetail({ battle, playerName, onBack }: BattleDetailProps) 
                                   <div className="flex items-center gap-2 text-[10px]">
                                     <span className="text-slate-500">
                                       إجابتك: <span className={answer.isCorrect ? 'text-emerald-400' : 'text-red-400'}>
-                                        {answer.playerAnswer >= 0 ? (answer.options as string[])?.[answer.playerAnswer] || `خيار ${answer.playerAnswer + 1}` : 'لم تجب'}
+                                        {answer.playerAnswer >= 0 ? `${(['أ', 'ب', 'ج', 'د', 'ه', 'و'][answer.playerAnswer] || (answer.playerAnswer + 1))} - ${(answer.options as string[])?.[answer.playerAnswer] || `خيار ${answer.playerAnswer + 1}`}` : 'لم تجب'}
                                       </span>
                                     </span>
                                     {!answer.isCorrect && (
                                       <span className="text-slate-500">
                                         الصحيح: <span className="text-emerald-400">
-                                          {(answer.options as string[])?.[answer.correctAnswer] || `خيار ${answer.correctAnswer + 1}`}
+                                          {`${(['أ', 'ب', 'ج', 'د', 'ه', 'و'][answer.correctAnswer] || (answer.correctAnswer + 1))} - ${(answer.options as string[])?.[answer.correctAnswer] || `خيار ${answer.correctAnswer + 1}`}`}
                                         </span>
                                       </span>
                                     )}

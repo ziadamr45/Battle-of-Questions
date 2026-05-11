@@ -69,6 +69,7 @@ import { useGuestStore } from '@/lib/guest-store'
 import { ShareModal } from '@/components/share-modal'
 import { parseJoinUrl, cleanJoinParams } from '@/lib/share-utils'
 import { BattleHistoryList, BattleDetail } from '@/components/battle-history'
+import { AboutPage } from '@/components/about-page'
 
 // ============================================
 // GLOBAL SOCKET MANAGEMENT
@@ -1167,6 +1168,14 @@ function HomeScreen() {
           >
             <ScrollText className="w-5 h-5 ml-2" />
             سجل المعارك
+          </Button>
+          <Button
+            size="lg"
+            className="text-lg px-6 py-7 bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white hover:border-white/20 rounded-xl transition-all"
+            onClick={() => setScreen('about')}
+          >
+            <Sparkles className="w-5 h-5 ml-2" />
+            عنّا
           </Button>
         </motion.div>
 
@@ -3207,7 +3216,7 @@ function GameScreen() {
                           className={`answer-option w-full p-4 rounded-xl text-right flex items-center gap-3 ${isSelected ? 'selected' : ''} ${isAnswered && !isSelected ? 'opacity-50' : ''}`}
                         >
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-white/5 text-slate-400 border border-white/10'}`}>
-                            {String.fromCharCode(1571 + i)}
+                            {['أ', 'ب', 'ج', 'د', 'ه', 'و'][i] || String(i + 1)}
                           </div>
                           <span className={`text-sm ${isSelected ? 'text-white font-semibold' : 'text-slate-300'}`}>{option}</span>
                           {isSelected && <Check className="w-4 h-4 text-cyan-400 mr-auto" />}
@@ -3798,6 +3807,7 @@ export default function Home() {
             {screen === 'game' && <GameScreen key={gameContent?.title || 'game'} />}
             {screen === 'round-transition' && <RoundTransitionScreen />}
             {screen === 'history' && <HistoryScreenWrapper />}
+            {screen === 'about' && <AboutPage onBack={() => setScreen('home')} />}
             {screen === 'results' && <ResultsScreen />}
           </motion.div>
         </AnimatePresence>
