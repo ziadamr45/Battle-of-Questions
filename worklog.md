@@ -95,9 +95,56 @@ Stage Summary:
 
 ---
 
+## Date: 2026-03-06
+
+## Summary
+Implemented "نوع القطعة" (Passage Type) configuration system for القراءة المتحررة mode.
+
+---
+
+### Task ID: 9
+Agent: Main
+Task: Add passage type configuration system for القراءة المتحررة mode
+
+Work Log:
+- Added `PassageType` type ('علمي' | 'أدبي' | 'عشوائي') to game-store.ts and game-service
+- Added `passageType` field to `GameSettings` interface with default 'عشوائي'
+- Updated game-service with passage-type-aware content generation:
+  - Split `searchQueriesPool` into `searchQueriesPoolScientific` and `searchQueriesPoolLiterary`
+  - Split `topicSeeds` into `topicSeedsScientific` and `topicSeedsLiterary`
+  - Updated `buildPrompt()` to accept passageType and inject specialized instructions
+  - Updated `fetchGameContent()` to select queries/seeds by passageType
+  - Updated `start-game` and `generateRemainingRounds` to pass passageType
+  - Updated `update-settings` handler to process passageType changes
+- Frontend page.tsx updates:
+  - Cinematic passage type selector in CreateGameScreen (only when gameType === 'قراءة متحررة')
+  - Framer Motion AnimatePresence for smooth expand/collapse
+  - Three options with icons: Microscope (علمي), PenTool (أدبي), Shuffle (عشوائي)
+  - Color-coded: cyan for علمي, purple for أدبي, amber for عشوائي
+  - Passage type selector in EditSettingsModal (conditional display)
+  - Lobby badges show passageType with contextual icon
+  - Public room cards show passageType inline with gameType
+  - changeLabels includes 'نوع القطعة' for passageType
+  - Round-transition changeLabels includes passageType
+- Invite system updates:
+  - ShareRoomInfo includes optional passageType field
+  - Dynamic game type lines: "معركة قراءة علمية", "معركة قراءة أدبية"
+  - Passage type detail line in generated messages
+  - Telegram and short invites include passageType
+  - Share modal shows passage type badge with color coding
+- All changes auto-pushed to GitHub
+
+Stage Summary:
+- Complete passage type system integrated across all 6 systems
+- Lint check passes with zero errors
+- Both servers running
+- Commit: "feat: add passage type (نوع القطعة) configuration system for القراءة المتحررة mode"
+
+---
+
 ## Files Modified
-1. `/home/z/my-project/mini-services/game-service/index.ts` - Backend early-end-game handler
-2. `/home/z/my-project/src/app/page.tsx` - Frontend UI (modal, buttons, listeners, results)
-3. `/home/z/my-project/src/lib/audio-engine.ts` - New sound effects
-4. `/home/z/my-project/src/lib/game-store.ts` - New state fields
-5. `/home/z/my-project/worklog.md` - This work log
+1. `/home/z/my-project/src/lib/game-store.ts` - PassageType type, GameSettings.passageType
+2. `/home/z/my-project/mini-services/game-service/index.ts` - Backend types, content gen, settings
+3. `/home/z/my-project/src/app/page.tsx` - UI selectors, badges, room cards, change labels
+4. `/home/z/my-project/src/lib/invite-generator.ts` - ShareRoomInfo, dynamic messages
+5. `/home/z/my-project/src/components/share-modal.tsx` - Share info, room info badges
