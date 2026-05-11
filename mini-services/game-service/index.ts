@@ -27,7 +27,7 @@ try {
 // OpenRouter API - replaces z-ai-web-dev-sdk
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324'
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001'
 
 console.log(`[OpenRouter] API Key: ${OPENROUTER_API_KEY ? OPENROUTER_API_KEY.substring(0, 10) + '...' : 'NOT SET!'}`)
 console.log(`[OpenRouter] Model: ${OPENROUTER_MODEL}`)
@@ -46,7 +46,7 @@ async function callOpenRouterLLM(
     console.error('[OpenRouter] Please set OPENROUTER_API_KEY in your environment variables or .env file')
     return null
   }
-  const timeoutMs = options?.timeoutMs || 120000  // 2 minutes default
+  const timeoutMs = options?.timeoutMs || 45000  // 45 seconds default - Gemini Flash is very fast
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -97,7 +97,7 @@ async function duckDuckGoSearch(
   query: string,
   options?: { timeoutMs?: number }
 ): Promise<Array<{ name: string; snippet: string }>> {
-  const timeoutMs = options?.timeoutMs || 6000
+  const timeoutMs = options?.timeoutMs || 4000
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -320,7 +320,7 @@ function calculateScore(
 // ============================================
 
 const MAX_CONTENT_RETRIES = 3
-const CONTENT_TIMEOUT_MS = 180000 // 3 minutes max
+const CONTENT_TIMEOUT_MS = 120000 // 2 minutes max
 
 // ─── Content Generation Helpers ──────────────────────────────────────────────────
 
@@ -633,7 +633,7 @@ async function fetchGameContent(
           },
           { role: 'user', content: prompt },
         ],
-        { timeoutMs: 120000 }
+        { timeoutMs: 45000 }
       )
 
       if (!responseText) {

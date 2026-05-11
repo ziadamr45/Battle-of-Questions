@@ -40,8 +40,8 @@ export async function callLLM(
   }
 ): Promise<string | null> {
   const apiKey = process.env.OPENROUTER_API_KEY
-  const model = options?.model || process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324'
-  const timeoutMs = options?.timeoutMs || 120000  // 2 minutes default - Arabic content generation takes time
+  const model = options?.model || process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001'
+  const timeoutMs = options?.timeoutMs || 45000  // 45 seconds default - Gemini Flash is very fast
 
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY environment variable is not set')

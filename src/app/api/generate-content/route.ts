@@ -437,7 +437,7 @@ async function generateWithRetry(
             content: prompt,
           },
         ],
-        { timeoutMs: 120000 }
+        { timeoutMs: 45000 }
       )
 
       if (!responseText) {
