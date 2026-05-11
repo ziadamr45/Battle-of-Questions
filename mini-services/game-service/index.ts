@@ -1,9 +1,36 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { Server, Socket } from 'socket.io'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
+
+// ─── Load .env file ─────────────────────────────────────────────────────────
+try {
+  const envPath = resolve(import.meta.dirname || __dirname, '.env')
+  const envContent = readFileSync(envPath, 'utf-8')
+  for (const line of envContent.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const match = trimmed.match(/^([^=]+)=(.*)$/)
+    if (match) {
+      const key = match[1].trim()
+      const value = match[2].trim()
+      if (!process.env[key]) {
+        process.env[key] = value
+      }
+    }
+  }
+  console.log('[env] Loaded .env file')
+} catch (err: any) {
+  console.log('[env] No .env file found, using environment variables')
+}
+
 // OpenRouter API - replaces z-ai-web-dev-sdk
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324'
+
+console.log(`[OpenRouter] API Key: ${OPENROUTER_API_KEY ? OPENROUTER_API_KEY.substring(0, 10) + '...' : 'NOT SET!'}`)
+console.log(`[OpenRouter] Model: ${OPENROUTER_MODEL}`)
 
 interface ChatMessage {
   role: 'system' | 'assistant' | 'user'
@@ -18,7 +45,7 @@ async function callOpenRouterLLM(
     console.error('[OpenRouter] OPENROUTER_API_KEY is not set!')
     return null
   }
-  const timeoutMs = options?.timeoutMs || 45000
+  const timeoutMs = options?.timeoutMs || 120000  // 2 minutes default
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -292,7 +319,7 @@ function calculateScore(
 // ============================================
 
 const MAX_CONTENT_RETRIES = 3
-const CONTENT_TIMEOUT_MS = 90000 // 90 seconds max (1.5 minutes)
+const CONTENT_TIMEOUT_MS = 180000 // 3 minutes max
 
 // ─── Content Generation Helpers ──────────────────────────────────────────────────
 
@@ -605,7 +632,7 @@ async function fetchGameContent(
           },
           { role: 'user', content: prompt },
         ],
-        { timeoutMs: 45000 }
+        { timeoutMs: 120000 }
       )
 
       if (!responseText) {

@@ -41,7 +41,7 @@ export async function callLLM(
 ): Promise<string | null> {
   const apiKey = process.env.OPENROUTER_API_KEY
   const model = options?.model || process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324'
-  const timeoutMs = options?.timeoutMs || 45000
+  const timeoutMs = options?.timeoutMs || 120000  // 2 minutes default - Arabic content generation takes time
 
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY environment variable is not set')

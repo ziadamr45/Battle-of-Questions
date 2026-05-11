@@ -437,7 +437,7 @@ async function generateWithRetry(
             content: prompt,
           },
         ],
-        { timeoutMs: 45000 }
+        { timeoutMs: 120000 }
       )
 
       if (!responseText) {
@@ -547,45 +547,16 @@ function addToCache(content: GameContent, gameType: GameType, difficulty: Diffic
 let warmingInProgress = false
 
 async function warmCache() {
-  if (warmingInProgress) return
-  warmingInProgress = true
-
-  try {
-    const combos: [GameType, Difficulty][] = [
-      ['قراءة متحررة', 'سهل'],
-      ['قراءة متحررة', 'متوسط'],
-      ['قراءة متحررة', 'صعب'],
-      ['نصوص', 'سهل'],
-      ['نصوص', 'متوسط'],
-      ['نصوص', 'صعب'],
-    ]
-
-    // Only warm entries that don't exist in cache
-    for (const [gt, diff] of combos) {
-      cleanCache()
-      const cached = contentCache.filter(e => e.gameType === gt && e.difficulty === diff)
-      if (cached.length >= 2) continue // Already have enough
-
-      console.log(`[Cache] Pre-warming: ${gt} / ${diff}`)
-      const result = await generateWithRetry(gt, diff, undefined, undefined, 2)
-      if (result) {
-        addToCache(result.content, gt, diff)
-        console.log(`[Cache] Pre-warmed: ${gt} / ${diff} - "${result.content.title}"`)
-      }
-    }
-  } catch (err) {
-    console.error('[Cache] Pre-warming failed:', err)
-  } finally {
-    warmingInProgress = false
-  }
+  // Pre-warming disabled - OpenRouter API takes too long for background warming
+  // Content will be generated on-demand instead
 }
 
 // ============================================
 // MAIN HANDLER
 // ============================================
 export async function POST(request: NextRequest) {
-  // Global API route timeout of 55s
-  const globalTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 55000))
+  // Global API route timeout of 2 minutes (Arabic content generation takes time)
+  const globalTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 130000))
   const globalRaceResult = await Promise.race([request.json(), globalTimeout])
   if (!globalRaceResult) {
     return NextResponse.json({ error: 'Request timed out' }, { status: 504 })
