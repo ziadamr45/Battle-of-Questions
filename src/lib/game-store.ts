@@ -206,6 +206,11 @@ interface GameState {
   loadingStep: string
   setLoadingStep: (step: string) => void
 
+  // Dynamic progress steps list (grows as backend events arrive)
+  progressSteps: { step: string; text: string }[]
+  addProgressStep: (step: string, text: string) => void
+  resetProgressSteps: () => void
+
   resetGame: () => void
   restoreState: (state: PersistedState) => void
 }
@@ -389,6 +394,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   loadingStep: 'preparing',
   setLoadingStep: (step) => set({ loadingStep: step }),
 
+  progressSteps: [],
+  addProgressStep: (step, text) => set((state) => {
+    // Avoid duplicates for the same step key
+    if (state.progressSteps.some(s => s.step === step)) {
+      return { progressSteps: state.progressSteps.map(s => s.step === step ? { step, text } : s) }
+    }
+    return { progressSteps: [...state.progressSteps, { step, text }] }
+  }),
+  resetProgressSteps: () => set({ progressSteps: [], loadingStep: 'preparing' }),
+
   resetGame: () => {
     set({
       screen: 'home',
@@ -413,6 +428,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastRoundScores: [],
       lastRoundWinner: null,
       loadingStep: 'preparing',
+      progressSteps: [],
     })
     clearSessionStorage()
   },

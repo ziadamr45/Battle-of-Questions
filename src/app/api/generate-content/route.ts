@@ -239,9 +239,9 @@ function buildPrompt(
   }
 
   const questionCounts: Record<Difficulty, string> = {
-    سهل: '3 أسئلة',
-    متوسط: '5 أسئلة',
-    صعب: '7 أسئلة',
+    سهل: '4 أسئلة',
+    متوسط: '7 أسئلة',
+    صعب: '10 أسئلة',
   }
 
   const difficultyInstructions: Record<Difficulty, string> = {

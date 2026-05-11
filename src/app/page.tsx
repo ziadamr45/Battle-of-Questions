@@ -230,6 +230,8 @@ function useGameSocket() {
     socket.on('content-progress', (data: { step: string; text: string }) => {
       // Store the latest progress step for the loading screen
       store.getState().setLoadingStep(data.step)
+      // Append to the dynamic progress steps list
+      store.getState().addProgressStep(data.step, data.text)
       audioEngine.progressStep()
     })
 
@@ -1664,9 +1666,15 @@ function LobbyScreen() {
 function LoadingScreen() {
   const currentRound = useGameStore((s) => s.currentRound)
   const totalRounds = useGameStore((s) => s.totalRounds)
-  const loadingStep = useGameStore((s) => s.loadingStep)
+  const progressSteps = useGameStore((s) => s.progressSteps)
+  const resetProgressSteps = useGameStore((s) => s.resetProgressSteps)
   const setScreen = useGameStore((s) => s.setScreen)
   const setError = useGameStore((s) => s.setError)
+
+  // Reset progress steps when entering the loading screen
+  useEffect(() => {
+    resetProgressSteps()
+  }, [resetProgressSteps])
 
   // Loading screen timeout: 90 seconds max (1.5 minutes) - matches backend timeout
   useEffect(() => {
@@ -1678,18 +1686,7 @@ function LoadingScreen() {
     return () => clearTimeout(timeout)
   }, [setScreen, setError])
 
-  // Real progress steps matching actual backend events from game service
-  const steps = [
-    { key: 'checking', text: 'جاري فحص المحتوى السابق للاعبين...', icon: Target },
-    { key: 'searching', text: 'جاري البحث عن مصادر إلهام...', icon: Globe },
-    { key: 'generating', text: 'جاري توليد المحتوى بالذكاء الاصطناعي...', icon: Sparkles },
-    { key: 'retrying', text: 'جاري إعادة المحاولة...', icon: RefreshCw },
-    { key: 'validating', text: 'جاري التحقق من جودة المحتوى...', icon: Shield },
-    { key: 'ready', text: 'المحتوى جاهز! استعد للقتال!', icon: Flame },
-  ]
-
-  const currentStepIndex = steps.findIndex(s => s.key === loadingStep)
-  const activeStep = currentStepIndex >= 0 ? currentStepIndex : 0
+  const activeStepIndex = progressSteps.length - 1
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -1727,26 +1724,41 @@ function LoadingScreen() {
           </motion.div>
         )}
 
-        {/* Real progress steps */}
+        {/* Dynamic progress steps - grows as backend events arrive */}
         <div className="space-y-3 min-w-[280px]">
-          {steps.map((s, i) => (
+          {progressSteps.length === 0 ? (
+            // Show a waiting indicator when no steps have arrived yet
             <motion.div
-              key={s.key}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: i <= activeStep ? 1 : 0.3, x: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className={`flex items-center gap-3 px-4 py-2 rounded-xl ${i === activeStep ? 'bg-red-500/10 border border-red-500/20' : i < activeStep ? 'bg-green-500/5 border border-green-500/10' : 'bg-white/5 border border-white/5'}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/5"
             >
-              {i < activeStep ? (
-                <Check className="w-5 h-5 text-green-400" />
-              ) : i === activeStep ? (
-                <Loader2 className="w-5 h-5 text-red-400 animate-spin" />
-              ) : (
-                <div className="w-5 h-5 rounded-full border border-white/20" />
-              )}
-              <span className={`text-sm ${i <= activeStep ? 'text-white' : 'text-slate-500'}`}>{s.text}</span>
+              <Loader2 className="w-5 h-5 text-red-400 animate-spin" />
+              <span className="text-sm text-slate-400">جاري التحضير...</span>
             </motion.div>
-          ))}
+          ) : (
+            progressSteps.map((s, i) => (
+              <motion.div
+                key={`${s.step}-${i}`}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.05 }}
+                className={`flex items-center gap-3 px-4 py-2 rounded-xl ${
+                  i === activeStepIndex ? 'bg-red-500/10 border border-red-500/20' :
+                  'bg-green-500/5 border border-green-500/10'
+                }`}
+              >
+                {i < activeStepIndex ? (
+                  <Check className="w-5 h-5 text-green-400" />
+                ) : i === activeStepIndex ? (
+                  <Loader2 className="w-5 h-5 text-red-400 animate-spin" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full border border-white/20" />
+                )}
+                <span className={`text-sm ${i <= activeStepIndex ? 'text-white' : 'text-slate-500'}`}>{s.text}</span>
+              </motion.div>
+            ))
+          )}
         </div>
       </motion.div>
     </div>
@@ -1928,6 +1940,7 @@ function GameScreen() {
   const seconds = timeLeft % 60
   const isUrgent = timeLeft <= 60
   const isLastQuestion = currentQuestionIndex === questions.length - 1
+  const allAnswered = Object.keys(answers).length >= questions.length
 
   const handleAnswer = (questionIndex: number, answerIndex: number) => {
     if (answeredQuestions.has(questionIndex)) return
@@ -1945,46 +1958,42 @@ function GameScreen() {
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       <BattleBackground />
 
-      {/* HUD Bar */}
+      {/* HUD Bar - Timer centered, compact layout */}
       <div className="relative z-10 border-b border-white/10 bg-black/40 backdrop-blur-xl">
-        <div className="max-w-4xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
-            {/* Round info + Surrender */}
-            <div className="flex items-center gap-2">
-              <Badge className="bg-red-500/10 text-red-400 border border-red-500/30 text-xs">
-                <Swords className="w-3 h-3 ml-1" />
+        <div className="max-w-4xl mx-auto px-3 py-2 sm:px-4 sm:py-3">
+          <div className="flex items-center justify-between gap-2">
+            {/* Left: Round + Question progress */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <Badge className="bg-red-500/10 text-red-400 border border-red-500/30 text-[10px] sm:text-xs px-1.5 sm:px-2.5">
+                <Swords className="w-2.5 h-2.5 sm:w-3 sm:h-3 ml-0.5" />
                 الجولة {currentRound + 1}/{totalRounds}
               </Badge>
-              <Badge className="bg-white/5 text-slate-300 border border-white/10 text-xs">
-                <BookOpen className="w-3 h-3 ml-1" />
-                {gameSettings.gameType}
+              <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] sm:text-xs px-1.5 sm:px-2.5">
+                <Crosshair className="w-2.5 h-2.5 sm:w-3 sm:h-3 ml-0.5" />
+                السؤال {currentQuestionIndex + 1}/{questions.length}
               </Badge>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10 text-xs h-7 px-2"
-                onClick={() => setShowSurrenderDialog(true)}
-              >
-                <LogOut className="w-3 h-3 ml-1" />
-                انسحاب
-              </Button>
             </div>
 
-            {/* Timer */}
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isUrgent ? 'bg-red-500/10 border border-red-500/30' : 'bg-white/5 border border-white/10'}`}>
-              <Timer className={`w-5 h-5 ${isUrgent ? 'text-red-400' : 'text-cyan-400'}`} />
-              <span className={`font-mono text-xl font-black ${isUrgent ? 'text-red-400 timer-urgent' : 'text-white'}`}>
+            {/* Center: Timer - PROMINENT */}
+            <div className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-1.5 sm:py-2.5 rounded-xl ${isUrgent ? 'bg-red-500/15 border border-red-500/30 animate-pulse' : 'bg-white/5 border border-white/10'}`}>
+              <Timer className={`w-4 h-4 sm:w-6 sm:h-6 ${isUrgent ? 'text-red-400' : 'text-cyan-400'}`} />
+              <span className={`font-mono text-xl sm:text-3xl font-black ${isUrgent ? 'text-red-400 timer-urgent' : 'text-white'}`}>
                 {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
               </span>
             </div>
 
-            {/* Question progress - only show when not on text view */}
-            {!showText && (
-              <div className="flex items-center gap-2">
-                <Crosshair className="w-4 h-4 text-amber-400" />
-                <span className="text-sm text-slate-300 font-bold">{currentQuestionIndex + 1}/{questions.length}</span>
-              </div>
-            )}
+            {/* Right: Surrender */}
+            <div className="shrink-0">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10 text-[10px] sm:text-xs h-7 px-1.5 sm:px-2"
+                onClick={() => setShowSurrenderDialog(true)}
+              >
+                <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5 ml-0.5" />
+                <span className="hidden sm:inline">انسحاب</span>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -2116,7 +2125,7 @@ function GameScreen() {
                 ))}
               </div>
 
-              {/* Next question / Back to text buttons */}
+              {/* Next question / Back to text buttons / Completion state */}
               <div className="flex gap-3 justify-center mt-2">
                 <Button
                   variant="ghost"
@@ -2138,6 +2147,19 @@ function GameScreen() {
                   </Button>
                 )}
               </div>
+
+              {/* Completion message when all questions answered */}
+              {allAnswered && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-center"
+                >
+                  <Check className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                  <p className="text-green-400 font-bold text-sm">أجبت على جميع الأسئلة!</p>
+                  <p className="text-slate-400 text-xs mt-1">⏳ في انتظار انتهاء الوقت...</p>
+                </motion.div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
