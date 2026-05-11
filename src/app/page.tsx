@@ -1,0 +1,2519 @@
+'use client'
+
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { io, Socket } from 'socket.io-client'
+import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore } from '@/lib/game-store'
+import { audioEngine } from '@/lib/audio-engine'
+import { useAudioStore } from '@/lib/audio-store'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { Slider } from '@/components/ui/slider'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  BookOpen,
+  Users,
+  Clock,
+  Trophy,
+  Play,
+  Copy,
+  Check,
+  Loader2,
+  ArrowRight,
+  Star,
+  Crown,
+  Zap,
+  BookMarked,
+  ChevronLeft,
+  Sparkles,
+  RefreshCw,
+  Globe,
+  Lock,
+  Hash,
+  LogOut,
+  RotateCcw,
+  Swords,
+  Shield,
+  Target,
+  Flame,
+  Crosshair,
+  Timer,
+  Medal,
+  Award,
+  Skull,
+  SwordsIcon,
+  Volume2,
+  VolumeX,
+  Volume1,
+} from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
+import { BattleLogo } from '@/components/battle-logo'
+import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
+
+// ============================================
+// GLOBAL SOCKET MANAGEMENT
+// ============================================
+let globalSocket: Socket | null = null
+let globalSocketListenersSetup = false
+let pendingAction: ((socket: Socket) => void) | null = null
+
+function getOrCreateSocket(setupListeners: (socket: Socket) => void): Socket {
+  if (globalSocket?.connected) return globalSocket
+  if (globalSocket && !globalSocket.connected) {
+    // Socket exists but disconnected - force create a new one if pending action exists
+    // or if it's been stuck trying
+    globalSocket.disconnect()
+    globalSocket = null
+    globalSocketListenersSetup = false
+    pendingAction = null
+  }
+
+  // Game service URL: if NEXT_PUBLIC_GAME_SERVICE_URL is set, connect to the
+  // external game service (e.g. Railway).  Otherwise fall back to the same
+  // origin (local dev / single-host deployment).
+  let gameServiceUrl = process.env.NEXT_PUBLIC_GAME_SERVICE_URL || ''
+
+  // Ensure URL has https:// protocol (common mistake: setting just the hostname)
+  if (gameServiceUrl && !gameServiceUrl.startsWith('http://') && !gameServiceUrl.startsWith('https://')) {
+    gameServiceUrl = 'https://' + gameServiceUrl
+  }
+
+  // Remove trailing slash to avoid double-slash issues
+  gameServiceUrl = gameServiceUrl.replace(/\/+$/, '')
+
+  console.log('[Socket] Connecting to game service:', gameServiceUrl || 'same origin (localhost)')
+
+  const socket = io(gameServiceUrl || undefined, {
+    path: '/socket.io/',
+    transports: ['polling', 'websocket'],
+    forceNew: true,
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000,
+  })
+
+  globalSocket = socket
+  setupListeners(socket)
+  return socket
+}
+
+function disconnectGlobalSocket() {
+  if (globalSocket) {
+    globalSocket.disconnect()
+    globalSocket = null
+    globalSocketListenersSetup = false
+    pendingAction = null
+  }
+}
+
+// Ensure a socket connection exists for browsing (used by Join screen)
+// Returns the socket so callers can attach temporary listeners
+function ensureSocketConnection(setupListeners: (socket: Socket) => void): Socket {
+  return getOrCreateSocket(setupListeners)
+}
+
+// ============================================
+// GAME SOCKET HOOK
+// ============================================
+function useGameSocket() {
+  const { toast } = useToast()
+  const store = useGameStore
+
+  const setupSocketListeners = useCallback((socket: Socket) => {
+    if (globalSocketListenersSetup) return
+    globalSocketListenersSetup = true
+
+    socket.on('connect', () => {
+      store.getState().setIsConnected(true)
+      if (pendingAction) { pendingAction(socket); pendingAction = null }
+    })
+
+    socket.on('disconnect', () => { store.getState().setIsConnected(false) })
+
+    socket.on('connect_error', (err) => {
+      console.error('[Socket] Connection error:', err.message)
+      const s = store.getState()
+      if (s.isReconnecting) {
+        // Reconnection failed - reset state so user isn't stuck
+        disconnectGlobalSocket()
+        s.setIsReconnecting(false)
+        s.setIsLoading(false)
+        s.setError('فشل الاتصال بالساحة')
+        s.setScreen('home')
+        clearSessionStorage()
+      } else if (s.isLoading) {
+        // If we're loading (create/join) and connection fails, stop loading
+        s.setIsLoading(false)
+        s.setError('فشل الاتصال بالخادم')
+        toast({ title: 'خطأ في الاتصال', description: 'لم نستطع الاتصال بالخادم. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+      }
+    })
+
+    socket.on('reconnect_failed', () => {
+      console.error('[Socket] Reconnection failed after all attempts')
+      const s = store.getState()
+      if (s.isReconnecting) {
+        disconnectGlobalSocket()
+        store.getState().setIsReconnecting(false)
+        store.getState().setIsLoading(false)
+        store.getState().resetGame()
+        clearSessionStorage()
+        toast({ title: 'فشل الاتصال', description: 'لم نستطع العودة للساحة. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+      }
+    })
+
+    socket.on('game-created', (data: { roomCode: string; roomType?: RoomType; hasPassword?: boolean }) => {
+      store.getState().setRoomCode(data.roomCode)
+      if (data.roomType) store.getState().setRoomType(data.roomType)
+      if (data.hasPassword) store.getState().setRoomPassword('•')
+      store.getState().setIsLoading(false)
+      store.getState().setScreen('lobby')
+    })
+
+    socket.on('game-joined', (data: { roomCode: string; players: Player[]; settings: any; roomType?: RoomType; hasPassword?: boolean }) => {
+      store.getState().setRoomCode(data.roomCode)
+      store.getState().setPlayers(data.players)
+      if (data.roomType) store.getState().setRoomType(data.roomType)
+      if (data.hasPassword) store.getState().setRoomPassword('•')
+      store.getState().setIsLoading(false)
+      if (data.settings) store.getState().setGameSettings(data.settings)
+      store.getState().setScreen('lobby')
+    })
+
+    socket.on('player-joined', (data: { player: Player; players: Player[] }) => {
+      store.getState().setPlayers(data.players)
+      audioEngine.playerJoined()
+      toast({ title: 'مقاتل جديد!', description: `${data.player.name} دخل الساحة` })
+    })
+
+    socket.on('player-left', (data: { playerId: string; playerName: string; players: Player[] }) => {
+      store.getState().setPlayers(data.players)
+      audioEngine.playerLeft()
+      toast({ title: 'مقاتل انسحب', description: `${data.playerName} غادر الساحة` })
+    })
+
+    socket.on('player-disconnected', (data: { playerId: string; playerName: string; players: Player[] }) => {
+      store.getState().setPlayers(data.players)
+      audioEngine.playerLeft()
+      toast({ title: 'انقطاع الاتصال', description: `${data.playerName} انقطع عن الساحة` })
+    })
+
+    socket.on('opponent-left-game', (data: { leftPlayerName: string; winnerName: string }) => {
+      audioEngine.playerLeft()
+      toast({ title: 'المنافس غادر!', description: `${data.leftPlayerName} غادر المعركة` })
+    })
+
+    socket.on('surrender-confirmed', () => {
+      audioEngine.surrender()
+      store.getState().resetGame()
+      clearSessionStorage()
+      store.getState().setScreen('home')
+      toast({ title: 'انسحبت من المعركة', description: 'غادرت الساحة بنجاح' })
+    })
+
+    socket.on('player-reconnected', (data: { playerId: string; playerName: string; players: Player[] }) => {
+      store.getState().setPlayers(data.players)
+      toast({ title: 'عودة المقاتل!', description: `${data.playerName} رجع للساحة` })
+    })
+
+    socket.on('game-starting', () => { store.getState().setScreen('loading') })
+
+    socket.on('content-progress', (data: { step: string; text: string }) => {
+      // Store the latest progress step for the loading screen
+      store.getState().setLoadingStep(data.step)
+      audioEngine.progressStep()
+    })
+
+    socket.on('round-start', (data: { roundNumber: number; totalRounds: number; content: GameContent; timePerRound: number }) => {
+      store.getState().setGameContent(data.content)
+      store.getState().setCurrentQuestionIndex(0)
+      store.getState().resetAnswers()
+      store.getState().setCurrentRound(data.roundNumber)
+      store.getState().setTotalRounds(data.totalRounds)
+      store.getState().setTimeLeft(data.timePerRound)
+      store.getState().setScreen('game')
+      audioEngine.battleStart()
+    })
+
+    socket.on('round-loading', (data: { roundNumber: number; totalRounds: number }) => {
+      store.getState().setCurrentRound(data.roundNumber)
+      store.getState().setTotalRounds(data.totalRounds)
+      store.getState().setScreen('loading')
+    })
+
+    socket.on('round-end', (data: { roundNumber: number; totalRounds: number; roundScores: RoundScore[]; roundWinner: RoundScore | null; isLastRound: boolean }) => {
+      store.getState().setLastRoundScores(data.roundScores)
+      store.getState().setLastRoundWinner(data.roundWinner)
+      store.getState().setCurrentRound(data.roundNumber)
+      store.getState().setTotalRounds(data.totalRounds)
+      store.getState().setScreen('round-transition')
+      audioEngine.roundEndReveal()
+    })
+
+    socket.on('answer-confirmed', () => {})
+
+    socket.on('game-error', (data: { message: string }) => {
+      store.getState().setError(data.message)
+      store.getState().setIsLoading(false)
+      const s = store.getState()
+      if (s.screen === 'loading') store.getState().setScreen('lobby')
+      if (s.isReconnecting) { store.getState().setIsReconnecting(false); store.getState().resetGame() }
+      audioEngine.error()
+      // If password error on join screen, auto-show the password dialog
+      if (data.message === 'كلمة السر غلط' && s.screen === 'join') {
+        const code = s.roomCode || ''
+        if (code) {
+          // Trigger password dialog for the room code (using a custom event)
+          window.dispatchEvent(new CustomEvent('show-password-dialog', { detail: { roomCode: code } }))
+        }
+      } else {
+        toast({ title: 'خطأ!', description: data.message, variant: 'destructive' })
+      }
+    })
+
+    socket.on('game-ended', (data: { scores: Player[]; roundWinners: Record<number, string>; roundResults: Record<number, RoundScore[]>; totalRounds: number }) => {
+      store.getState().setScores(data.scores.sort((a: Player, b: Player) => b.score - a.score))
+      if (data.roundWinners) store.getState().setRoundWinners(data.roundWinners)
+      if (data.roundResults) store.getState().setRoundResults(data.roundResults)
+      store.getState().setScreen('results')
+      // Play victory or defeat based on player position
+      const sortedScores = data.scores.sort((a: Player, b: Player) => b.score - a.score)
+      const myId = globalSocket?.id
+      const isWinner = myId && sortedScores[0]?.id === myId
+      if (isWinner) {
+        audioEngine.victory()
+      } else {
+        audioEngine.defeat()
+      }
+      // Podium reveal after a delay
+      setTimeout(() => audioEngine.podiumReveal(), 1500)
+    })
+
+    socket.on('host-changed', (data: { newHostId: string; newHostName: string; oldHostName: string; players: Player[] }) => {
+      store.getState().setPlayers(data.players)
+      if (globalSocket && globalSocket.id === data.newHostId) {
+        store.getState().setIsHost(true)
+        toast({ title: 'أنت القائد الجديد!', description: `${data.oldHostName} غادر وأنت الأقدم فبقيت القائد` })
+      } else {
+        toast({ title: 'قائد جديد', description: `${data.oldHostName} غادر و${data.newHostName} بقى القائد` })
+      }
+    })
+
+    socket.on('public-rooms-update', (data: { rooms: RoomInfo[] }) => { store.getState().setPublicRooms(data.rooms) })
+
+    socket.on('rejoin-success', (data: {
+      roomCode: string; players: Player[]; settings: GameSettings; roomType: RoomType; hasPassword: boolean; isHost: boolean;
+      status: 'waiting' | 'playing' | 'finished'; gameContent?: GameContent | null; currentRound?: number; totalRounds?: number;
+      answers?: Record<number, number>; scores?: Player[]; timeLeft?: number; roundWinners?: Record<number, string>; roundResults?: Record<number, RoundScore[]>
+    }) => {
+      const s = store.getState()
+      s.setRoomCode(data.roomCode); s.setPlayers(data.players); s.setGameSettings(data.settings)
+      if (data.roomType) s.setRoomType(data.roomType)
+      if (data.hasPassword) s.setRoomPassword('•')
+      s.setIsHost(data.isHost)
+      if (data.status === 'waiting') { s.setScreen('lobby') }
+      else if (data.status === 'playing' && data.gameContent) {
+        s.setGameContent(data.gameContent); s.setCurrentRound(data.currentRound || 0); s.setTotalRounds(data.totalRounds || 1)
+        if (data.answers && Object.keys(data.answers).length > 0) {
+          const aq = Object.keys(data.answers).map(Number); const next = aq.length; const total = data.gameContent.questions.length
+          s.setCurrentQuestionIndex(next >= total ? total : next)
+          for (const [q, a] of Object.entries(data.answers)) s.setAnswer(Number(q), Number(a))
+        } else { s.setCurrentQuestionIndex(0); s.resetAnswers() }
+        s.setTimeLeft(data.timeLeft || s.gameSettings.timePerRound * 60); s.setScreen('game')
+      } else if (data.status === 'finished') {
+        if (data.gameContent) s.setGameContent(data.gameContent)
+        if (data.scores) s.setScores(data.scores)
+        if (data.roundWinners) s.setRoundWinners(data.roundWinners)
+        if (data.roundResults) s.setRoundResults(data.roundResults)
+        s.setScreen('results')
+      } else { s.setScreen('lobby') }
+      s.setIsReconnecting(false); s.setIsLoading(false)
+      toast({ title: 'تمت العودة!', description: 'رجعت للساحة بنجاح' })
+    })
+
+    socket.on('rejoin-failed', (data: { message: string }) => {
+      disconnectGlobalSocket()
+      store.getState().setIsReconnecting(false); store.getState().resetGame(); clearSessionStorage()
+      toast({ title: 'فشل إعادة الاتصال', description: data.message, variant: 'destructive' })
+    })
+  }, [toast])
+
+  const connectAndDo = useCallback((action: (socket: Socket) => void) => {
+    const socket = getOrCreateSocket(setupSocketListeners)
+    if (socket.connected) { action(socket); return }
+    pendingAction = action
+  }, [setupSocketListeners])
+
+  const leaveAndDisconnect = useCallback(() => {
+    // Disconnect LiveKit voice chat
+    disconnectLiveKit()
+    if (globalSocket) {
+      globalSocket.emit('leave-room')
+      const sock = globalSocket
+      globalSocket = null; globalSocketListenersSetup = false; pendingAction = null
+      clearSessionStorage()
+      sock.removeAllListeners(); sock.disconnect()
+    }
+  }, [])
+
+  const createGame = useCallback((playerName: string, settings: any, roomType: RoomType, password?: string) => {
+    store.getState().setIsHost(true); store.getState().setPlayerName(playerName); store.getState().setRoomType(roomType); store.getState().setIsLoading(true)
+    connectAndDo((socket) => { socket.emit('create-game', { playerName, settings, roomType, password }) })
+    // Safety timeout: if create-game doesn't complete in 12s, reset loading
+    setTimeout(() => {
+      if (store.getState().isLoading && store.getState().screen === 'create') {
+        console.log('[createGame] Timed out after 12s, resetting')
+        store.getState().setIsLoading(false)
+        disconnectGlobalSocket()
+        toast({ title: 'انتهت المهلة', description: 'لم نستطع إنشاء الساحة. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+      }
+    }, 12000)
+  }, [connectAndDo, toast])
+
+  const joinGame = useCallback((roomCode: string, playerName: string, password?: string) => {
+    store.getState().setIsHost(false); store.getState().setPlayerName(playerName); store.getState().setIsLoading(true)
+    connectAndDo((socket) => { socket.emit('join-game', { roomCode: roomCode.toUpperCase(), playerName, password }) })
+    // Safety timeout: if join-game doesn't complete in 12s, reset loading
+    setTimeout(() => {
+      if (store.getState().isLoading && store.getState().screen === 'join') {
+        console.log('[joinGame] Timed out after 12s, resetting')
+        store.getState().setIsLoading(false)
+        disconnectGlobalSocket()
+        toast({ title: 'انتهت المهلة', description: 'لم نستطع الانضمام للساحة. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+      }
+    }, 12000)
+  }, [connectAndDo, toast])
+
+  const rejoinRoom = useCallback((roomCode: string, playerName: string) => {
+    store.getState().setIsReconnecting(true); store.getState().setIsLoading(true)
+    connectAndDo((socket) => { socket.emit('rejoin-room', { roomCode: roomCode.toUpperCase(), playerName }) })
+    // Safety timeout: if rejoin doesn't complete in 8s, force reset
+    setTimeout(() => {
+      if (store.getState().isReconnecting) {
+        console.log('[rejoinRoom] Rejoin timed out after 8s, resetting')
+        disconnectGlobalSocket()
+        store.getState().setIsReconnecting(false)
+        store.getState().setIsLoading(false)
+        store.getState().resetGame()
+        clearSessionStorage()
+        toast({ title: 'فشل الاتصال', description: 'لم نستطع العودة للساحة. يرجى المحاولة مرة أخرى.', variant: 'destructive' })
+      }
+    }, 8000)
+  }, [connectAndDo, toast])
+
+  const startGame = useCallback(() => {
+    if (globalSocket) {
+      store.getState().setScreen('loading')
+      globalSocket.emit('start-game', { roomCode: store.getState().roomCode })
+    }
+  }, [])
+
+  const submitAnswer = useCallback((questionIndex: number, answerIndex: number) => {
+    if (globalSocket) {
+      store.getState().setAnswer(questionIndex, answerIndex)
+      const s = store.getState()
+      globalSocket.emit('submit-answer', { roomCode: s.roomCode, roundNumber: s.currentRound, questionIndex, answerIndex, timeTaken: s.gameSettings.timePerRound * 60 - s.timeLeft })
+    }
+  }, [])
+
+  const surrender = useCallback(() => {
+    if (globalSocket) {
+      globalSocket.emit('surrender')
+    }
+  }, [])
+
+  return { leaveAndDisconnect, createGame, joinGame, rejoinRoom, startGame, submitAnswer, surrender, setupSocketListeners }
+}
+
+// ============================================
+// ANIMATION VARIANTS
+// ============================================
+const pageVariants = {
+  initial: { opacity: 0, scale: 0.98, filter: 'blur(4px)' },
+  animate: { opacity: 1, scale: 1, filter: 'blur(0px)' },
+  exit: { opacity: 0, scale: 1.02, filter: 'blur(4px)' },
+}
+
+const slideVariants = {
+  initial: { opacity: 0, x: -30 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: 30 },
+}
+
+const battleTransition = {
+  initial: { opacity: 0, clipPath: 'inset(0 100% 0 0)' },
+  animate: { opacity: 1, clipPath: 'inset(0 0% 0 0)' },
+  exit: { opacity: 0, clipPath: 'inset(0 0 0 100%)' },
+}
+
+// ============================================
+// AUDIO CONTROLS (Fixed position)
+// ============================================
+function AudioControls() {
+  const settings = useAudioStore((s) => s.settings)
+  const initAudio = useAudioStore((s) => s.initAudio)
+  const toggleMute = useAudioStore((s) => s.toggleMute)
+  const setMasterVolume = useAudioStore((s) => s.setMasterVolume)
+  const [showSlider, setShowSlider] = useState(false)
+
+  const handleInteract = () => {
+    initAudio()
+    setShowSlider(!showSlider)
+  }
+
+  const VolumeIcon = settings.isMuted || settings.masterVolume === 0 ? VolumeX : settings.masterVolume < 0.5 ? Volume1 : Volume2
+
+  return (
+    <div className="fixed bottom-4 left-4 z-50 flex items-end gap-2">
+      <AnimatePresence>
+        {showSlider && (
+          <motion.div
+            initial={{ opacity: 0, width: 0, x: -10 }}
+            animate={{ opacity: 1, width: 120, x: 0 }}
+            exit={{ opacity: 0, width: 0, x: -10 }}
+            className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex flex-col items-center gap-2"
+          >
+            <Slider
+              value={[settings.masterVolume * 100]}
+              min={0}
+              max={100}
+              step={5}
+              onValueChange={(v) => setMasterVolume(v[0] / 100)}
+              className="w-full"
+              orientation="horizontal"
+            />
+            <span className="text-xs text-slate-400">{Math.round(settings.masterVolume * 100)}%</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={handleInteract}
+        className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all"
+      >
+        <VolumeIcon className="w-4 h-4" />
+      </Button>
+      {showSlider && (
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => { initAudio(); toggleMute(); }}
+          className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 text-slate-500 hover:text-white hover:bg-white/10 transition-all"
+        >
+          {settings.isMuted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// SPLASH SCREEN - EPIC CINEMATIC ANIMATION
+// ============================================
+function SplashScreen({ onComplete }: { onComplete: () => void }) {
+  const [phase, setPhase] = useState<'idle' | 'leftSword' | 'rightSword' | 'clash' | 'emerge' | 'title' | 'subtitle' | 'done'>('idle')
+  const [waitingForTap, setWaitingForTap] = useState(true)
+  const initAudio = useAudioStore((s) => s.initAudio)
+  const audioPlayedRef = useRef(false)
+  const [shaking, setShaking] = useState(false)
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  const startAnimation = useCallback(() => {
+    // Initialize audio FIRST — this unlocks AudioContext via user gesture
+    initAudio()
+    setWaitingForTap(false)
+
+    // Small delay to let AudioContext resume properly
+    timersRef.current.push(setTimeout(() => {
+      // Phase 1: Left sword flies in (0-800ms)
+      timersRef.current.push(setTimeout(() => setPhase('leftSword'), 100))
+      // Phase 2: Right sword flies in (500-1300ms)
+      timersRef.current.push(setTimeout(() => setPhase('rightSword'), 500))
+      // Phase 3: Swords CLASH (1200-1800ms) — play splash sound here
+      timersRef.current.push(setTimeout(() => {
+        setPhase('clash')
+        setShaking(true)
+        if (!audioPlayedRef.current) {
+          audioPlayedRef.current = true
+          // Re-init to ensure context is running
+          initAudio()
+          // Small delay to ensure AudioContext is fully resumed
+          setTimeout(() => audioEngine.splash(), 50)
+        }
+        timersRef.current.push(setTimeout(() => setShaking(false), 400))
+      }, 1200))
+      // Phase 4: Shield/Logo EMERGES from clash (1700-2400ms)
+      timersRef.current.push(setTimeout(() => setPhase('emerge'), 1700))
+      // Phase 5: Title text reveals (2200-3000ms)
+      timersRef.current.push(setTimeout(() => setPhase('title'), 2200))
+      // Phase 6: Subtitle fades in (2800-3500ms)
+      timersRef.current.push(setTimeout(() => setPhase('subtitle'), 2800))
+      // Done
+      timersRef.current.push(setTimeout(() => { setPhase('done'); onComplete() }, 4000))
+    }, 100))
+  }, [onComplete, initAudio])
+
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach(t => clearTimeout(t))
+      timersRef.current = []
+    }
+  }, [])
+
+  return (
+    <motion.div
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-[#0A0A12] overflow-hidden ${shaking ? 'animate-shake' : ''}`}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      {/* Background particles */}
+      <div className="absolute inset-0 particles-bg" />
+
+      {/* ====== TAP TO START OVERLAY ====== */}
+      <AnimatePresence>
+        {waitingForTap && (
+          <motion.div
+            className="absolute inset-0 z-40 flex flex-col items-center justify-center cursor-pointer"
+            onClick={startAnimation}
+            onTouchStart={startAnimation}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 1.2 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* Static logo preview */}
+            <motion.div
+              animate={{
+                filter: [
+                  'drop-shadow(0 0 15px rgba(220,38,38,0.3)) drop-shadow(0 0 30px rgba(245,158,11,0.15))',
+                  'drop-shadow(0 0 25px rgba(220,38,38,0.5)) drop-shadow(0 0 50px rgba(245,158,11,0.3))',
+                  'drop-shadow(0 0 15px rgba(220,38,38,0.3)) drop-shadow(0 0 30px rgba(245,158,11,0.15))',
+                ],
+              }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              className="mb-8"
+            >
+              <BattleLogo size="2xl" />
+            </motion.div>
+
+            {/* Tap prompt */}
+            <motion.div
+              animate={{
+                opacity: [0.5, 1, 0.5],
+                scale: [0.98, 1.02, 0.98],
+              }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              className="flex flex-col items-center gap-3"
+            >
+              <motion.div
+                className="w-16 h-16 rounded-full border-2 border-amber-500/50 flex items-center justify-center"
+                style={{ boxShadow: '0 0 20px rgba(245,158,11,0.3), inset 0 0 15px rgba(220,38,38,0.2)' }}
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Play className="w-7 h-7 text-amber-400 mr-[-2px]" />
+              </motion.div>
+              <span className="text-amber-400/80 text-lg font-bold tracking-wider">اضغط للبدء</span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Ambient red/amber glow behind everything */}
+      <motion.div
+        className="absolute w-[600px] h-[600px] rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(220,38,38,0.08) 0%, rgba(245,158,11,0.05) 40%, transparent 70%)' }}
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: phase === 'clash' || phase === 'emerge' ? 1.5 : phase === 'title' || phase === 'subtitle' ? 1.2 : 0.5, opacity: phase === 'clash' ? 0.8 : phase === 'emerge' ? 0.5 : 0.3 }}
+        transition={{ duration: 0.8, ease: 'easeOut' }}
+      />
+
+      {/* ====== LEFT SWORD - RED ENERGY ====== */}
+      <AnimatePresence>
+        {(phase === 'leftSword' || phase === 'rightSword' || phase === 'clash') && (
+          <motion.div
+            initial={{ x: '-120vw', rotate: -30, opacity: 0 }}
+            animate={{
+              x: phase === 'clash' ? '0%' : '-15%',
+              rotate: phase === 'clash' ? 0 : -15,
+              opacity: 1,
+            }}
+            exit={{ x: '-10%', opacity: 0, scale: 0.5 }}
+            transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="absolute"
+            style={{ left: '25%', top: '30%' }}
+          >
+            {/* Red energy trail */}
+            <motion.div
+              className="absolute -top-4 -left-20 w-40 h-40 rounded-full"
+              style={{ background: 'radial-gradient(circle, rgba(220,38,38,0.4) 0%, transparent 70%)', filter: 'blur(20px)' }}
+              animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.8, 0.5] }}
+              transition={{ duration: 0.5, repeat: Infinity }}
+            />
+            <Swords
+              className="w-28 h-28 sm:w-32 sm:h-32 text-red-500"
+              style={{ filter: 'drop-shadow(0 0 25px rgba(220,38,38,0.8)) drop-shadow(0 0 50px rgba(220,38,38,0.4))' }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ====== RIGHT SWORD - AMBER ENERGY ====== */}
+      <AnimatePresence>
+        {(phase === 'rightSword' || phase === 'clash') && (
+          <motion.div
+            initial={{ x: '120vw', rotate: 30, opacity: 0, scaleX: -1 }}
+            animate={{
+              x: phase === 'clash' ? '0%' : '15%',
+              rotate: phase === 'clash' ? 0 : 15,
+              opacity: 1,
+            }}
+            exit={{ x: '10%', opacity: 0, scale: 0.5 }}
+            transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="absolute"
+            style={{ right: '25%', top: '30%' }}
+          >
+            {/* Amber energy trail */}
+            <motion.div
+              className="absolute -top-4 -right-20 w-40 h-40 rounded-full"
+              style={{ background: 'radial-gradient(circle, rgba(245,158,11,0.4) 0%, transparent 70%)', filter: 'blur(20px)' }}
+              animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.8, 0.5] }}
+              transition={{ duration: 0.5, repeat: Infinity }}
+            />
+            <Swords
+              className="w-28 h-28 sm:w-32 sm:h-32 text-amber-500"
+              style={{ filter: 'drop-shadow(0 0 25px rgba(245,158,11,0.8)) drop-shadow(0 0 50px rgba(245,158,11,0.4))' }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ====== CLASH BURST EFFECT ====== */}
+      <AnimatePresence>
+        {phase === 'clash' && (
+          <>
+            {/* Main burst */}
+            <motion.div
+              initial={{ scale: 0, opacity: 1 }}
+              animate={{ scale: 6, opacity: 0 }}
+              transition={{ duration: 1, ease: 'easeOut' }}
+              className="absolute w-12 h-12 rounded-full"
+              style={{ background: 'radial-gradient(circle, #FFFFFF 0%, #FBBF24 20%, #DC2626 40%, transparent 70%)', filter: 'blur(2px)' }}
+            />
+            {/* Secondary ring */}
+            <motion.div
+              initial={{ scale: 0, opacity: 0.8 }}
+              animate={{ scale: 8, opacity: 0 }}
+              transition={{ duration: 1.2, ease: 'easeOut' }}
+              className="absolute w-8 h-8 rounded-full border-2 border-amber-400/60"
+            />
+            {/* Sparks - Red */}
+            {[...Array(12)].map((_, i) => (
+              <motion.div
+                key={`red-spark-${i}`}
+                initial={{ scale: 1, opacity: 1, x: 0, y: 0 }}
+                animate={{
+                  scale: [1, 0],
+                  opacity: [1, 0],
+                  x: (Math.cos((i / 12) * Math.PI * 2) * (80 + Math.random() * 60)),
+                  y: (Math.sin((i / 12) * Math.PI * 2) * (80 + Math.random() * 60)),
+                }}
+                transition={{ duration: 0.9, ease: 'easeOut' }}
+                className="absolute w-1.5 h-1.5 rounded-full bg-red-500"
+                style={{ boxShadow: '0 0 8px rgba(220,38,38,0.9), 0 0 16px rgba(220,38,38,0.5)' }}
+              />
+            ))}
+            {/* Sparks - Amber */}
+            {[...Array(12)].map((_, i) => (
+              <motion.div
+                key={`amber-spark-${i}`}
+                initial={{ scale: 1, opacity: 1, x: 0, y: 0 }}
+                animate={{
+                  scale: [1, 0],
+                  opacity: [1, 0],
+                  x: (Math.cos((i / 12) * Math.PI * 2 + 0.3) * (70 + Math.random() * 70)),
+                  y: (Math.sin((i / 12) * Math.PI * 2 + 0.3) * (70 + Math.random() * 70)),
+                }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+                className="absolute w-1.5 h-1.5 rounded-full bg-amber-400"
+                style={{ boxShadow: '0 0 8px rgba(245,158,11,0.9), 0 0 16px rgba(245,158,11,0.5)' }}
+              />
+            ))}
+            {/* Flash overlay */}
+            <motion.div
+              initial={{ opacity: 0.8 }}
+              animate={{ opacity: 0 }}
+              transition={{ duration: 0.5 }}
+              className="absolute inset-0 bg-white/20"
+            />
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ====== SHOCKWAVE RING (from clash) ====== */}
+      <AnimatePresence>
+        {(phase === 'clash' || phase === 'emerge') && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0.6 }}
+            animate={{ scale: 3, opacity: 0 }}
+            transition={{ duration: 1.5, ease: 'easeOut' }}
+            className="absolute w-32 h-32 rounded-full border-2"
+            style={{ borderColor: 'rgba(251,191,36,0.5)', boxShadow: '0 0 30px rgba(251,191,36,0.3), inset 0 0 20px rgba(220,38,38,0.2)' }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ====== LOGO + TITLE + SUBTITLE - CENTERED AS A GROUP ====== */}
+      <AnimatePresence>
+        {(phase === 'emerge' || phase === 'title' || phase === 'subtitle') && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0, filter: 'blur(20px)' }}
+            animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
+            transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }}
+            className="relative z-10 flex flex-col items-center justify-center"
+          >
+            {/* Logo with pulsing glow */}
+            <motion.div
+              animate={{
+                filter: [
+                  'drop-shadow(0 0 20px rgba(220,38,38,0.4)) drop-shadow(0 0 40px rgba(245,158,11,0.2))',
+                  'drop-shadow(0 0 30px rgba(220,38,38,0.6)) drop-shadow(0 0 60px rgba(245,158,11,0.4))',
+                  'drop-shadow(0 0 20px rgba(220,38,38,0.4)) drop-shadow(0 0 40px rgba(245,158,11,0.2))',
+                ],
+              }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              className="mx-auto mb-4"
+            >
+              <BattleLogo size="2xl" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ====== TITLE TEXT (below the logo) ====== */}
+      <AnimatePresence>
+        {(phase === 'title' || phase === 'subtitle') && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5, y: -20, filter: 'blur(15px)' }}
+            animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1] }}
+            className="absolute top-[55%] left-0 right-0 text-center z-20"
+          >
+            <motion.h1
+              className="text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-red-500 whitespace-nowrap py-2 px-4"
+              animate={{
+                backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
+              }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+              style={{ backgroundSize: '200% auto' }}
+            >
+              معركة الأسئلة
+            </motion.h1>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ====== SUBTITLE (below the title) ====== */}
+      <AnimatePresence>
+        {phase === 'subtitle' && (
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+            className="absolute top-[63%] left-0 right-0 text-center text-slate-400 text-lg sm:text-xl tracking-wide z-20"
+          >
+            ادخل الساحة ... واتحدى
+          </motion.p>
+        )}
+      </AnimatePresence>
+
+      {/* ====== FLOATING EMBERS (throughout) ====== */}
+      {phase !== 'idle' && phase !== 'done' && [...Array(8)].map((_, i) => (
+        <motion.div
+          key={`ember-${i}`}
+          initial={{
+            opacity: 0,
+            x: (Math.random() - 0.5) * 400,
+            y: 300,
+            scale: 0,
+          }}
+          animate={{
+            opacity: [0, 0.8, 0.6, 0],
+            y: -300,
+            x: (Math.random() - 0.5) * 500,
+            scale: [0, 1, 0.5],
+          }}
+          transition={{
+            duration: 3 + Math.random() * 2,
+            delay: i * 0.4 + Math.random() * 0.5,
+            repeat: Infinity,
+            ease: 'easeOut',
+          }}
+          className="absolute bottom-0 w-1.5 h-1.5 rounded-full"
+          style={{
+            background: i % 2 === 0 ? '#DC2626' : '#F59E0B',
+            boxShadow: i % 2 === 0
+              ? '0 0 6px rgba(220,38,38,0.8), 0 0 12px rgba(220,38,38,0.4)'
+              : '0 0 6px rgba(245,158,11,0.8), 0 0 12px rgba(245,158,11,0.4)',
+          }}
+        />
+      ))}
+    </motion.div>
+  )
+}
+
+// ============================================
+// BACKGROUND COMPONENT
+// ============================================
+function BattleBackground() {
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div className="absolute inset-0 battle-grid" />
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-red-900/10 rounded-full blur-[120px]" />
+      <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-amber-900/8 rounded-full blur-[150px]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-cyan-900/5 rounded-full blur-[100px]" />
+      {/* Floating particles */}
+      <div className="absolute inset-0 particles-bg opacity-50" />
+    </div>
+  )
+}
+
+// ============================================
+// HOME SCREEN
+// ============================================
+function HomeScreen() {
+  const setScreen = useGameStore((s) => s.setScreen)
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <BattleBackground />
+
+      <motion.div
+        initial="initial"
+        animate="animate"
+        variants={pageVariants}
+        transition={{ duration: 0.6 }}
+        className="relative z-10 text-center max-w-2xl w-full"
+      >
+        {/* Logo */}
+        <motion.div
+          initial={{ scale: 0, rotate: -10 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
+          className="mb-10"
+        >
+          <motion.div
+            className="mx-auto mb-4 relative"
+            whileHover={{ scale: 1.05 }}
+          >
+            <BattleLogo size="2xl" />
+          </motion.div>
+
+          <motion.h1
+            className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-red-500 mb-3 whitespace-nowrap py-3 px-2"
+            animate={{
+              backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
+            }}
+            transition={{ duration: 5, repeat: Infinity, ease: 'linear' }}
+            style={{ backgroundSize: '200% auto' }}
+          >
+            معركة الأسئلة
+          </motion.h1>
+          <p className="text-xl text-slate-400">
+            ادخل الساحة وتنافس مع أصدقائك في أقوى التحديات
+          </p>
+        </motion.div>
+
+        {/* Feature cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+          {[
+            { icon: Target, title: 'أسئلة ذكية', desc: 'محتوى مولّد بالذكاء الاصطناعي', color: 'from-red-500/20 to-red-900/10', border: 'border-red-500/20', iconColor: 'text-red-400' },
+            { icon: Swords, title: 'مباريات حية', desc: 'حتى 20 مقاتل في نفس الساحة', color: 'from-amber-500/20 to-amber-900/10', border: 'border-amber-500/20', iconColor: 'text-amber-400' },
+            { icon: Zap, title: 'سرعة ودقة', desc: 'نظام نقاط يعتمد على السرعة', color: 'from-cyan-500/20 to-cyan-900/10', border: 'border-cyan-500/20', iconColor: 'text-cyan-400' },
+          ].map((feature, i) => (
+            <motion.div
+              key={feature.title}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 + i * 0.1 }}
+            >
+              <div className={`p-5 rounded-2xl bg-gradient-to-br ${feature.color} border ${feature.border} backdrop-blur-sm hover:scale-[1.02] transition-transform cursor-default`}>
+                <feature.icon className={`w-8 h-8 mx-auto mb-3 ${feature.iconColor}`} />
+                <h3 className="font-bold text-sm mb-1 text-white">{feature.title}</h3>
+                <p className="text-xs text-slate-400">{feature.desc}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Action buttons */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="flex flex-col sm:flex-row gap-4 justify-center"
+        >
+          <Button
+            size="lg"
+            className="text-lg px-8 py-7 btn-battle rounded-xl"
+            onClick={() => setScreen('create')}
+          >
+            <Swords className="w-5 h-5 ml-2" />
+            أنشئ ساحة قتال
+          </Button>
+          <Button
+            size="lg"
+            className="text-lg px-8 py-7 btn-secondary-battle rounded-xl"
+            onClick={() => setScreen('join')}
+          >
+            <Shield className="w-5 h-5 ml-2" />
+            انضم لساحة
+          </Button>
+        </motion.div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ============================================
+// CREATE GAME SCREEN
+// ============================================
+function CreateGameScreen() {
+  const [name, setName] = useState('')
+  const [roomType, setRoomType] = useState<RoomType>('عامة')
+  const [password, setPassword] = useState('')
+  const gameSettings = useGameStore((s) => s.gameSettings)
+  const setGameSettings = useGameStore((s) => s.setGameSettings)
+  const setScreen = useGameStore((s) => s.setScreen)
+  const isLoading = useGameStore((s) => s.isLoading)
+  const { createGame } = useGameSocket()
+
+  const handleCreate = () => {
+    if (!name.trim()) return
+    createGame(name.trim(), gameSettings, roomType, roomType === 'خاصة' && password.trim() ? password.trim() : undefined)
+  }
+
+  const gameTypes: { value: GameType; label: string; icon: typeof BookOpen; desc: string }[] = [
+    { value: 'قراءة متحررة', label: 'قراءة متحررة', icon: BookOpen, desc: 'نصوص أدبية مع أسئلة فهم واستنتاج' },
+    { value: 'نصوص', label: 'نصوص', icon: BookMarked, desc: 'نصوص أدبية مع أسئلة بلاغة وتذوق' },
+  ]
+
+  const difficulties: { value: Difficulty; label: string; color: string; glow: string }[] = [
+    { value: 'سهل', label: 'سهل', color: 'border-green-500/40 bg-green-500/10 text-green-400', glow: 'shadow-green-500/10' },
+    { value: 'متوسط', label: 'متوسط', color: 'border-amber-500/40 bg-amber-500/10 text-amber-400', glow: 'shadow-amber-500/10' },
+    { value: 'صعب', label: 'صعب', color: 'border-red-500/40 bg-red-500/10 text-red-400', glow: 'shadow-red-500/10' },
+  ]
+
+  const timeOptions = [
+    { value: 5, label: '5' }, { value: 7, label: '7' }, { value: 10, label: '10' },
+    { value: 15, label: '15' }, { value: 20, label: '20' }, { value: 25, label: '25' },
+  ]
+
+  const maxPlayers = gameSettings.maxPlayers
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <BattleBackground />
+
+      <motion.div initial="initial" animate="animate" exit="exit" variants={pageVariants} transition={{ duration: 0.5 }} className="w-full max-w-lg relative z-10">
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="ghost" className="mb-4 -mr-2 text-slate-400 hover:text-white hover:bg-white/5">
+              <ChevronLeft className="w-4 h-4 ml-1" /> رجوع
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent className="battle-card-glow">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-white">متأكد؟</AlertDialogTitle>
+              <AlertDialogDescription className="text-slate-400">هتخرج من صفحة الإنشاء وكل البيانات هتتمسح</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+              <AlertDialogAction onClick={() => setScreen('home')} className="btn-battle">خروج</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <div className="battle-card-glow rounded-2xl overflow-hidden">
+          <div className="p-6 text-center border-b border-white/5">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+              className="mx-auto mb-3 relative"
+            >
+              <BattleLogo size="lg" />
+            </motion.div>
+            <h2 className="text-2xl font-black text-white">أنشئ ساحة قتال</h2>
+            <p className="text-sm text-slate-400 mt-1">جهّز الساحة وادعو المقاتلين</p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* Name */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-300">اسمك في المعركة</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="اكتب اسمك هنا..." className="battle-input rounded-xl text-right text-lg h-12" maxLength={20} />
+            </div>
+
+            {/* Room type */}
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold text-slate-300">نوع الساحة</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { value: 'عامة' as RoomType, label: 'ساحة عامة', icon: Globe, desc: 'أي مقاتل يقدر يلاقيها' },
+                  { value: 'خاصة' as RoomType, label: 'ساحة خاصة', icon: Lock, desc: 'محتاجة كود وباسوورد' },
+                ]).map((type) => (
+                  <motion.button key={type.value} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setRoomType(type.value)}
+                    className={`p-4 rounded-xl border text-right transition-all ${roomType === type.value ? 'border-red-500/50 bg-red-500/10 shadow-lg shadow-red-500/5' : 'border-white/10 bg-white/5 hover:border-white/20'}`}>
+                    <type.icon className={`w-6 h-6 mb-2 ${roomType === type.value ? 'text-red-400' : 'text-slate-500'}`} />
+                    <div className="font-bold text-sm text-white">{type.label}</div>
+                    <div className="text-xs text-slate-400 mt-1">{type.desc}</div>
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+
+            {/* Password */}
+            {roomType === 'خاصة' && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-2">
+                <Label className="text-sm font-semibold text-slate-300"><Lock className="w-4 h-4 inline ml-1" /> كلمة السر (اختياري)</Label>
+                <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة السر" className="battle-input rounded-xl text-right" maxLength={30} type="text" />
+              </motion.div>
+            )}
+
+            {/* Game type */}
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold text-slate-300">نوع التحدي</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {gameTypes.map((type) => (
+                  <motion.button key={type.value} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setGameSettings({ gameType: type.value })}
+                    className={`p-4 rounded-xl border text-right transition-all ${gameSettings.gameType === type.value ? 'border-red-500/50 bg-red-500/10 shadow-lg shadow-red-500/5' : 'border-white/10 bg-white/5 hover:border-white/20'}`}>
+                    <type.icon className={`w-6 h-6 mb-2 ${gameSettings.gameType === type.value ? 'text-red-400' : 'text-slate-500'}`} />
+                    <div className="font-bold text-sm text-white">{type.label}</div>
+                    <div className="text-xs text-slate-400 mt-1">{type.desc}</div>
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+
+            {/* Difficulty */}
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold text-slate-300">مستوى الصعوبة</Label>
+              <div className="flex gap-3">
+                {difficulties.map((diff) => (
+                  <motion.button key={diff.value} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setGameSettings({ difficulty: diff.value })}
+                    className={`flex-1 py-3 px-2 rounded-xl border text-center font-bold text-sm transition-all ${gameSettings.difficulty === diff.value ? diff.color + ' shadow-lg ' + diff.glow : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'}`}>
+                    {diff.label}
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time */}
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold text-slate-300"><Timer className="w-4 h-4 inline ml-1 text-cyan-400" /> وقت الجولة: <span className="text-cyan-400">{gameSettings.timePerRound}</span> دقيقة</Label>
+              <div className="flex flex-wrap gap-2">
+                {timeOptions.map((opt) => (
+                  <Button key={opt.value} size="sm"
+                    className={gameSettings.timePerRound === opt.value ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 rounded-lg' : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white rounded-lg'}
+                    onClick={() => setGameSettings({ timePerRound: opt.value })}>
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Rounds */}
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold text-slate-300"><RotateCcw className="w-4 h-4 inline ml-1 text-amber-400" /> عدد الجولات: <span className="text-amber-400">{gameSettings.numberOfRounds}</span></Label>
+              <Slider value={[gameSettings.numberOfRounds]} min={1} max={20} step={1}
+                onValueChange={(v) => {
+                  const val = v[0]
+                  if ((maxPlayers === 2 && val === 2) || (maxPlayers === 3 && val === 3)) {
+                    const next = val < 20 ? val + 1 : val - 1
+                    setGameSettings({ numberOfRounds: next })
+                  } else { setGameSettings({ numberOfRounds: val }) }
+                }} className="w-full" />
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>1</span>
+                <span className="text-amber-400/80">
+                  {maxPlayers === 2 ? 'لاعبين ما يلعبوش جولتين' : maxPlayers === 3 ? 'ثلاث لاعبين ما يلعبوش ثلاث جولات' : 'كل الأعداد متاحة'}
+                </span>
+                <span>20</span>
+              </div>
+            </div>
+
+            {/* Max players */}
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold text-slate-300"><Users className="w-4 h-4 inline ml-1 text-red-400" /> عدد المقاتلين: <span className="text-red-400">{gameSettings.maxPlayers}</span></Label>
+              <Slider value={[gameSettings.maxPlayers]} min={2} max={20} step={1}
+                onValueChange={(v) => {
+                  const newMax = v[0]
+                  const roundsConflict = (newMax === 2 && gameSettings.numberOfRounds === 2) || (newMax === 3 && gameSettings.numberOfRounds === 3)
+                  if (roundsConflict) {
+                    const newRounds = gameSettings.numberOfRounds < 20 ? gameSettings.numberOfRounds + 1 : gameSettings.numberOfRounds - 1
+                    setGameSettings({ maxPlayers: newMax, numberOfRounds: newRounds })
+                  } else { setGameSettings({ maxPlayers: newMax }) }
+                }} className="w-full" />
+              <div className="flex justify-between text-xs text-slate-500"><span>2</span><span>20</span></div>
+            </div>
+
+            <div className="border-t border-white/5 pt-4">
+              <Button size="lg" className="w-full text-lg py-7 btn-battle rounded-xl"
+                onClick={handleCreate} disabled={!name.trim() || isLoading}>
+                {isLoading ? (<><Loader2 className="w-5 h-5 ml-2 animate-spin" />جاري تجهيز الساحة...</>) : (<><Swords className="w-5 h-5 ml-2" />أنشئ الساحة<ArrowRight className="w-5 h-5 mr-2" /></>)}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ============================================
+// JOIN GAME SCREEN
+// ============================================
+function JoinGameScreen() {
+  const [name, setName] = useState('')
+  const [code, setCode] = useState('')
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
+  const [selectedRoom, setSelectedRoom] = useState<RoomInfo | null>(null)
+  const [dialogPassword, setDialogPassword] = useState('')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const setScreen = useGameStore((s) => s.setScreen)
+  const isLoading = useGameStore((s) => s.isLoading)
+  const publicRooms = useGameStore((s) => s.publicRooms)
+  const { joinGame, setupSocketListeners } = useGameSocket()
+
+  // Connect to socket and request public rooms when this screen opens
+  useEffect(() => {
+    // Always ensure we have a connected socket for browsing
+    ensureSocketConnection(setupSocketListeners)
+
+    // Request rooms immediately if connected
+    const requestRooms = () => {
+      if (globalSocket?.connected) {
+        globalSocket.emit('get-public-rooms')
+      }
+    }
+
+    // Small delay to let socket connect if needed
+    const initialTimeout = setTimeout(requestRooms, 500)
+    requestRooms()
+
+    // Poll every 3 seconds while on this screen for fresh data
+    const interval = setInterval(requestRooms, 3000)
+
+    // Request rooms once socket connects (if it wasn't connected yet)
+    const onConnect = () => { requestRooms() }
+    if (globalSocket) {
+      globalSocket.on('connect', onConnect)
+    }
+
+    // Listen for password error auto-show dialog event
+    const onShowPasswordDialog = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.roomCode) {
+        setSelectedRoom({ roomCode: detail.roomCode, roomType: 'خاصة', hasPassword: true, hostName: '', playerCount: 0, maxPlayers: 0, settings: { gameType: 'قراءة متحررة', difficulty: 'متوسط', timePerRound: 15, numberOfRounds: 3, maxPlayers: 10 }, status: 'waiting' })
+        setDialogPassword('')
+        setShowPasswordDialog(true)
+      }
+    }
+    window.addEventListener('show-password-dialog', onShowPasswordDialog)
+
+    return () => {
+      clearTimeout(initialTimeout)
+      clearInterval(interval)
+      if (globalSocket) {
+        globalSocket.off('connect', onConnect)
+      }
+      window.removeEventListener('show-password-dialog', onShowPasswordDialog)
+    }
+  }, [setupSocketListeners])
+
+  const handleJoinByCode = () => {
+    if (!name.trim() || !code.trim()) return
+    // Try joining without password first. If the room requires a password,
+    // the server will emit a game-error, and we show the password dialog.
+    joinGame(code.trim(), name.trim())
+  }
+
+  const handleJoinFromList = (room: RoomInfo) => {
+    if (!name.trim()) return
+    if (room.hasPassword) {
+      setSelectedRoom(room)
+      setDialogPassword('')
+      setShowPasswordDialog(true)
+    } else {
+      joinGame(room.roomCode, name.trim())
+    }
+  }
+
+  const handleDialogJoin = () => {
+    if (selectedRoom) {
+      joinGame(selectedRoom.roomCode, name.trim(), dialogPassword.trim() || undefined)
+      setShowPasswordDialog(false)
+      setSelectedRoom(null)
+      setDialogPassword('')
+    }
+  }
+
+  const handleRefresh = () => {
+    setIsRefreshing(true)
+    if (globalSocket?.connected) {
+      globalSocket.emit('get-public-rooms')
+    }
+    setTimeout(() => setIsRefreshing(false), 1000)
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <BattleBackground />
+
+      <motion.div initial="initial" animate="animate" exit="exit" variants={pageVariants} transition={{ duration: 0.5 }} className="w-full max-w-lg relative z-10">
+        <Button variant="ghost" className="mb-4 -mr-2 text-slate-400 hover:text-white hover:bg-white/5" onClick={() => setScreen('home')}>
+          <ChevronLeft className="w-4 h-4 ml-1" /> رجوع
+        </Button>
+
+        <div className="battle-card-glow rounded-2xl overflow-hidden">
+          <div className="p-6 text-center border-b border-white/5">
+            <div className="w-16 h-16 mx-auto mb-3 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center glow-gold">
+              <Shield className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="text-2xl font-black text-white">انضم لساحة</h2>
+            <p className="text-sm text-slate-400 mt-1">اختار ساحة عامة أو انضم بكود</p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-300">اسمك في المعركة</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="اكتب اسمك هنا..." className="battle-input rounded-xl text-right text-lg h-12" maxLength={20} />
+            </div>
+
+            <Tabs defaultValue="public">
+              <TabsList className="w-full bg-white/5 border border-white/10 rounded-xl h-12">
+                <TabsTrigger value="public" className="flex-1 rounded-lg data-[state=active]:bg-red-600/20 data-[state=active]:text-red-400 text-slate-400 h-10">
+                  <Globe className="w-4 h-4 ml-1" /> الساحات العامة
+                </TabsTrigger>
+                <TabsTrigger value="code" className="flex-1 rounded-lg data-[state=active]:bg-red-600/20 data-[state=active]:text-red-400 text-slate-400 h-10">
+                  <Hash className="w-4 h-4 ml-1" /> انضم بكود
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="public" className="mt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs text-slate-500">{publicRooms.length} ساحة متاحة</span>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-400 hover:text-white" onClick={handleRefresh}>
+                    <RefreshCw className={`w-3.5 h-3.5 ml-1 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    تحديث
+                  </Button>
+                </div>
+                {publicRooms.length === 0 ? (
+                  <div className="text-center py-10">
+                    <Globe className="w-12 h-12 mx-auto mb-3 text-slate-600" />
+                    <p className="text-slate-400">مفيش ساحات عامة متاحة حالياً</p>
+                    <p className="text-xs text-slate-500 mt-1">أنشئ ساحة جديدة أو انضم بكود</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="max-h-80">
+                    <div className="space-y-3">
+                      {publicRooms.map((room, i) => (
+                        <motion.div key={room.roomCode} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
+                          className="p-4 rounded-xl border border-white/10 bg-white/5 hover:border-red-500/30 hover:bg-red-500/5 transition-all cursor-pointer"
+                          onClick={() => handleJoinFromList(room)}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-black text-red-400 text-lg">{room.roomCode}</span>
+                              {room.hasPassword && <Lock className="w-4 h-4 text-amber-400" />}
+                            </div>
+                            <Button size="sm" className="btn-battle rounded-lg text-xs px-4"
+                              disabled={!name.trim() || isLoading}>ادخل</Button>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-xs text-slate-400">
+                            <span className="flex items-center gap-1"><Swords className="w-3 h-3" />{room.hostName}</span>
+                            <span className="flex items-center gap-1"><Users className="w-3 h-3" />{room.playerCount}/{room.maxPlayers}</span>
+                            <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{room.settings?.gameType}</span>
+                            <span className="flex items-center gap-1"><Star className="w-3 h-3" />{room.settings?.difficulty}</span>
+                            <span className="flex items-center gap-1"><RotateCcw className="w-3 h-3" />{room.settings?.numberOfRounds} جولات</span>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </TabsContent>
+
+              <TabsContent value="code" className="mt-4 space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold text-slate-300">كود الساحة</Label>
+                  <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="مثال: ABC123" className="battle-input rounded-xl text-center text-2xl font-mono tracking-widest h-14" maxLength={6} />
+                </div>
+
+                <Button size="lg" className="w-full text-lg py-7 btn-battle rounded-xl"
+                  onClick={handleJoinByCode} disabled={!name.trim() || !code.trim() || isLoading}>
+                  {isLoading ? (<><Loader2 className="w-5 h-5 ml-2 animate-spin" />جاري الدخول...</>) : (<><Shield className="w-5 h-5 ml-2" />ادخل الساحة<ArrowRight className="w-5 h-5 mr-2" /></>)}
+                </Button>
+
+                <p className="text-xs text-slate-500 text-center">
+                  لو الساحة عليها كلمة سر، هتظهرلك نافذة تدخلها
+                </p>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+
+        {/* Password dialog - single unified entry point for passwords */}
+        <AlertDialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+          <AlertDialogContent className="battle-card-glow">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-white flex items-center gap-2">
+                <Lock className="w-5 h-5 text-amber-400" />
+                الساحة محمية بكلمة سر
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-slate-400">
+                الساحة دي محمية. ادخل كلمة السر عشان تنضم.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <Input
+              value={dialogPassword}
+              onChange={(e) => setDialogPassword(e.target.value)}
+              placeholder="كلمة السر"
+              className="battle-input rounded-xl text-right"
+              type="text"
+              maxLength={30}
+              autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') handleDialogJoin() }}
+            />
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10" onClick={() => { setSelectedRoom(null); setDialogPassword('') }}>إلغاء</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDialogJoin} className="btn-battle" disabled={!dialogPassword.trim()}>ادخل</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </motion.div>
+    </div>
+  )
+}
+
+// ============================================
+// LOBBY SCREEN (ARENA)
+// ============================================
+function LobbyScreen() {
+  const players = useGameStore((s) => s.players)
+  const roomCode = useGameStore((s) => s.roomCode)
+  const roomType = useGameStore((s) => s.roomType)
+  const roomPassword = useGameStore((s) => s.roomPassword)
+  const isHost = useGameStore((s) => s.isHost)
+  const gameSettings = useGameStore((s) => s.gameSettings)
+  const maxPlayers = useGameStore((s) => s.gameSettings.maxPlayers)
+  const playerName = useGameStore((s) => s.playerName)
+  const [copied, setCopied] = useState(false)
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [speakingParticipants, setSpeakingParticipants] = useState<string[]>([])
+  const [unreadChatCount, setUnreadChatCount] = useState(0)
+  const { startGame, leaveAndDisconnect } = useGameSocket()
+  const resetGame = useGameStore((s) => s.resetGame)
+
+  const copyCode = async () => {
+    try { await navigator.clipboard.writeText(roomCode); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* */ }
+  }
+
+  const handleLeave = () => { leaveAndDisconnect(); resetGame() }
+
+  const handleStartWithCountdown = () => {
+    setCountdown(3)
+  }
+
+  // Listen for LiveKit speaking state changes
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.identities) {
+        setSpeakingParticipants(detail.identities)
+      }
+    }
+    window.addEventListener('livekit-speaking-change', handler)
+    return () => window.removeEventListener('livekit-speaking-change', handler)
+  }, [])
+
+  // Listen for LiveKit unread chat count
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.count !== undefined) {
+        setUnreadChatCount(detail.count)
+      }
+    }
+    window.addEventListener('livekit-unread-chat', handler)
+    return () => window.removeEventListener('livekit-unread-chat', handler)
+  }, [])
+
+  useEffect(() => {
+    if (countdown === null) return
+    if (countdown === 0) {
+      audioEngine.battleStart()
+      startGame()
+      setTimeout(() => setCountdown(null), 0)
+      return
+    }
+    audioEngine.countdownBeep(countdown)
+    const t = setTimeout(() => setCountdown(countdown - 1), 1000)
+    return () => clearTimeout(t)
+  }, [countdown, startGame])
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <BattleBackground />
+
+      {/* Countdown overlay */}
+      <AnimatePresence>
+        {countdown !== null && countdown > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              key={countdown}
+              initial={{ scale: 0.3, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 2, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+              className="text-9xl font-black text-red-500 count-bounce"
+              style={{ textShadow: '0 0 40px rgba(220,38,38,0.6), 0 0 80px rgba(220,38,38,0.3)' }}
+            >
+              {countdown}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <motion.div initial="initial" animate="animate" exit="exit" variants={pageVariants} transition={{ duration: 0.5 }} className="w-full max-w-lg relative z-10">
+        <div className="battle-card-glow rounded-2xl overflow-hidden">
+          {/* Arena header */}
+          <div className="p-6 text-center border-b border-white/5 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-b from-red-900/10 to-transparent" />
+            <div className="relative">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                className="mx-auto mb-3 relative"
+              >
+                <BattleLogo size="md" />
+              </motion.div>
+              <h2 className="text-2xl font-black text-white mb-2">ساحة الانتظار</h2>
+
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <Badge className={`${roomType === 'عامة' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'} border`}>
+                  {roomType === 'عامة' ? <Globe className="w-3 h-3 ml-1" /> : <Lock className="w-3 h-3 ml-1" />}{roomType}
+                </Badge>
+                {roomPassword && <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 border"><Lock className="w-3 h-3 ml-1" />محمية</Badge>}
+              </div>
+
+              {/* Room code */}
+              <div className="flex items-center justify-center gap-3">
+                <div className="px-8 py-3 rounded-xl bg-black/40 border border-red-500/20">
+                  <span className="font-mono text-3xl tracking-[0.3em] font-black text-red-400 text-glow-red">{roomCode}</span>
+                </div>
+                <Button size="icon" variant="outline" onClick={copyCode} className="rounded-xl border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 h-12 w-12">
+                  {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
+                </Button>
+              </div>
+              <p className="text-sm text-slate-500 mt-2">شارك الكود مع المقاتلين</p>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* Settings badges */}
+            <div className="flex flex-wrap gap-2 justify-center">
+              {[
+                { icon: BookOpen, text: gameSettings.gameType },
+                { icon: Star, text: gameSettings.difficulty },
+                { icon: Clock, text: `${gameSettings.timePerRound} دقيقة` },
+                { icon: RotateCcw, text: `${gameSettings.numberOfRounds} جولات` },
+                { icon: Users, text: `${players.length}/${maxPlayers}` },
+              ].map((badge, i) => (
+                <Badge key={i} className="bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10">
+                  <badge.icon className="w-3 h-3 ml-1" />{badge.text}
+                </Badge>
+              ))}
+            </div>
+
+            {/* Players list - Arena style */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                <Flame className="w-4 h-4 text-red-400" />
+                المقاتلون ({players.length})
+              </Label>
+              <ScrollArea className="max-h-64">
+                <div className="space-y-2">
+                  {players.map((player, i) => {
+                    const playerIdentity = player.name.replace(/\s+/g, '_')
+                    const isSpeaking = speakingParticipants.includes(playerIdentity) || speakingParticipants.includes(player.name)
+                    return (
+                    <motion.div
+                      key={player.id}
+                      initial={{ opacity: 0, x: 30, scale: 0.9 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      transition={{ delay: i * 0.08, type: 'spring', stiffness: 200 }}
+                      className={`arena-player flex items-center gap-3 p-3 rounded-xl ${isSpeaking ? 'ring-1 ring-green-400/30 bg-green-500/5' : ''}`}
+                    >
+                      {/* Speaking indicator */}
+                      {isSpeaking && (
+                        <motion.div
+                          className="flex items-center gap-0.5"
+                          animate={{ opacity: [0.5, 1, 0.5] }}
+                          transition={{ duration: 0.8, repeat: Infinity }}
+                        >
+                          <div className="w-1 h-3 bg-green-400 rounded-full" />
+                          <div className="w-1 h-5 bg-green-400 rounded-full" />
+                          <div className="w-1 h-4 bg-green-400 rounded-full" />
+                          <div className="w-1 h-3 bg-green-400 rounded-full" />
+                        </motion.div>
+                      )}
+                      <span className="font-bold flex-1 text-white">{player.name}</span>
+                      {player.isHost && (
+                        <Badge className="host-badge text-white border-0 text-xs">
+                          <Crown className="w-3 h-3 ml-1 crown-float" />قائد
+                        </Badge>
+                      )}
+                    </motion.div>
+                    )
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
+
+            {/* Waiting for players */}
+            {players.length < 2 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-center py-4"
+              >
+                <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-red-500" />
+                <p className="text-sm text-slate-400">بانتظار مقاتلين آخرين...</p>
+              </motion.div>
+            )}
+
+            {/* Progress bar showing player fill */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>المقاتلون</span>
+                <span>{players.length}/{maxPlayers}</span>
+              </div>
+              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${(players.length / maxPlayers) * 100}%` }}
+                  className="h-full rounded-full battle-progress"
+                  transition={{ duration: 0.5 }}
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-white/5 pt-4 flex gap-3">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" className="flex-1 border-white/10 bg-white/5 text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 rounded-xl h-12">
+                    <LogOut className="w-4 h-4 ml-2" />انسحب
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="battle-card-glow">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-white">متأكد إنك عايز تنسحب؟</AlertDialogTitle>
+                    <AlertDialogDescription className="text-slate-400">لو خرجت مش هتقدر ترجع للساحة دي تاني</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleLeave} className="btn-battle">انسحب</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              {isHost && (
+                <Button className="flex-1 btn-battle rounded-xl h-12"
+                  onClick={handleStartWithCountdown} disabled={players.length < 2}>
+                  <Flame className="w-4 h-4 ml-2" />ابدأ المعركة!
+                </Button>
+              )}
+            </div>
+            {!isHost && <p className="text-center text-sm text-slate-500">في انتظار القائد يبدأ المعركة...</p>}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ============================================
+// LOADING SCREEN
+// ============================================
+function LoadingScreen() {
+  const currentRound = useGameStore((s) => s.currentRound)
+  const totalRounds = useGameStore((s) => s.totalRounds)
+  const loadingStep = useGameStore((s) => s.loadingStep)
+  const setScreen = useGameStore((s) => s.setScreen)
+  const setError = useGameStore((s) => s.setError)
+
+  // Loading screen timeout: 90 seconds max (1.5 minutes) - matches backend timeout
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      console.log('[LoadingScreen] Loading timed out after 90s, returning to lobby')
+      setError('انتهت مهلة تحميل المحتوى. يرجى المحاولة مرة أخرى.')
+      setScreen('lobby')
+    }, 90000)
+    return () => clearTimeout(timeout)
+  }, [setScreen, setError])
+
+  // Real progress steps matching actual backend events from game service
+  const steps = [
+    { key: 'checking', text: 'جاري فحص المحتوى السابق للاعبين...', icon: Target },
+    { key: 'searching', text: 'جاري البحث عن مصادر إلهام...', icon: Globe },
+    { key: 'generating', text: 'جاري توليد المحتوى بالذكاء الاصطناعي...', icon: Sparkles },
+    { key: 'retrying', text: 'جاري إعادة المحاولة...', icon: RefreshCw },
+    { key: 'validating', text: 'جاري التحقق من جودة المحتوى...', icon: Shield },
+    { key: 'ready', text: 'المحتوى جاهز! استعد للقتال!', icon: Flame },
+  ]
+
+  const currentStepIndex = steps.findIndex(s => s.key === loadingStep)
+  const activeStep = currentStepIndex >= 0 ? currentStepIndex : 0
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <BattleBackground />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative z-10 text-center"
+      >
+        {/* Animated icon */}
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+          className="w-24 h-24 mx-auto mb-8 relative"
+        >
+          <div className="absolute inset-0 rounded-full border-2 border-red-500/30" />
+          <div className="absolute inset-2 rounded-full border-2 border-amber-500/20 border-dashed" />
+          <div className="absolute inset-4 rounded-full border-2 border-cyan-500/10" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Swords className="w-10 h-10 text-red-500" />
+          </div>
+        </motion.div>
+
+        {/* Round info */}
+        {totalRounds > 1 && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Badge className="bg-red-500/10 text-red-400 border border-red-500/30 text-sm px-4 py-1">
+              الجولة {currentRound + 1} من {totalRounds}
+            </Badge>
+          </motion.div>
+        )}
+
+        {/* Real progress steps */}
+        <div className="space-y-3 min-w-[280px]">
+          {steps.map((s, i) => (
+            <motion.div
+              key={s.key}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: i <= activeStep ? 1 : 0.3, x: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className={`flex items-center gap-3 px-4 py-2 rounded-xl ${i === activeStep ? 'bg-red-500/10 border border-red-500/20' : i < activeStep ? 'bg-green-500/5 border border-green-500/10' : 'bg-white/5 border border-white/5'}`}
+            >
+              {i < activeStep ? (
+                <Check className="w-5 h-5 text-green-400" />
+              ) : i === activeStep ? (
+                <Loader2 className="w-5 h-5 text-red-400 animate-spin" />
+              ) : (
+                <div className="w-5 h-5 rounded-full border border-white/20" />
+              )}
+              <span className={`text-sm ${i <= activeStep ? 'text-white' : 'text-slate-500'}`}>{s.text}</span>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ============================================
+// ROUND TRANSITION SCREEN
+// ============================================
+function RoundTransitionScreen() {
+  const lastRoundScores = useGameStore((s) => s.lastRoundScores)
+  const lastRoundWinner = useGameStore((s) => s.lastRoundWinner)
+  const currentRound = useGameStore((s) => s.currentRound)
+  const totalRounds = useGameStore((s) => s.totalRounds)
+  const isLastRound = currentRound + 1 >= totalRounds
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <BattleBackground />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+        className="relative z-10 w-full max-w-lg text-center"
+      >
+        {/* Round announcement */}
+        <motion.div
+          initial={{ y: -30, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Badge className="bg-red-500/10 text-red-400 border border-red-500/30 text-sm px-4 py-1 mb-4">
+            الجولة {currentRound + 1} من {totalRounds}
+          </Badge>
+        </motion.div>
+
+        {/* Winner announcement */}
+        {lastRoundWinner && (
+          <motion.div
+            initial={{ scale: 0, rotate: -10 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.3 }}
+            className="mb-8"
+          >
+            <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center glow-gold">
+              <Crown className="w-12 h-12 text-white crown-float" />
+            </div>
+            <motion.h2
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.6 }}
+              className="text-3xl font-black text-white mb-1"
+            >
+              {lastRoundWinner.playerName}
+            </motion.h2>
+            <p className="text-amber-400 text-glow-gold text-lg font-bold">فاز بالجولة!</p>
+            <p className="text-slate-400 text-sm mt-1">
+              {lastRoundWinner.correctAnswers} إجابة صحيحة من {lastRoundWinner.totalQuestions} — {lastRoundWinner.score} نقطة
+            </p>
+          </motion.div>
+        )}
+
+        {/* Scores list */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8 }}
+          className="battle-card-glow rounded-2xl p-4"
+        >
+          <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2 justify-center">
+            <Medal className="w-4 h-4 text-amber-400" />ترتيب الجولة
+          </h3>
+          <div className="space-y-2">
+            {lastRoundScores.sort((a, b) => b.score - a.score).map((score, i) => (
+              <motion.div
+                key={score.playerId}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 1 + i * 0.1 }}
+                className={`flex items-center gap-3 p-3 rounded-xl ${i === 0 ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-white/5 border border-white/5'}`}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${i === 0 ? 'bg-amber-500/20 text-amber-400' : i === 1 ? 'bg-slate-400/20 text-slate-300' : i === 2 ? 'bg-amber-700/20 text-amber-600' : 'bg-white/5 text-slate-500'}`}>
+                  {i + 1}
+                </div>
+                <span className="flex-1 text-right font-semibold text-white text-sm">{score.playerName}</span>
+                <div className="text-left">
+                  <span className={`font-bold text-sm ${i === 0 ? 'text-amber-400' : 'text-slate-300'}`}>{score.score}</span>
+                  <span className="text-xs text-slate-500 mr-1">نقطة</span>
+                </div>
+                <span className="text-xs text-slate-500">{score.correctAnswers}/{score.totalQuestions}</span>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Next round indicator */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5 }}
+          className="mt-6"
+        >
+          <div className="flex items-center justify-center gap-2 text-slate-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">{isLastRound ? 'جاري إعلان النتائج النهائية...' : 'جاري تحضير الجولة التالية...'}</span>
+          </div>
+        </motion.div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ============================================
+// GAME SCREEN
+// ============================================
+function GameScreen() {
+  const gameContent = useGameStore((s) => s.gameContent)
+  const currentQuestionIndex = useGameStore((s) => s.currentQuestionIndex)
+  const answers = useGameStore((s) => s.answers)
+  const timeLeft = useGameStore((s) => s.timeLeft)
+  const decrementTime = useGameStore((s) => s.decrementTime)
+  const currentRound = useGameStore((s) => s.currentRound)
+  const totalRounds = useGameStore((s) => s.totalRounds)
+  const gameSettings = useGameStore((s) => s.gameSettings)
+  const [showText, setShowText] = useState(true)
+  const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set())
+  const [showSurrenderDialog, setShowSurrenderDialog] = useState(false)
+  const { submitAnswer, surrender } = useGameSocket()
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Timer
+  useEffect(() => {
+    timerRef.current = setInterval(() => { decrementTime() }, 1000)
+    // Start ambient tension on game screen
+    audioEngine.startAmbient()
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      audioEngine.stopAmbient()
+      audioEngine.stopHeartbeat()
+    }
+  }, [decrementTime])
+
+  // Auto time-up
+  useEffect(() => {
+    if (timeLeft <= 0 && timerRef.current) {
+      clearInterval(timerRef.current)
+      audioEngine.timeUp()
+    }
+  }, [timeLeft])
+
+  // Heartbeat when time is running low
+  useEffect(() => {
+    if (timeLeft <= 30 && timeLeft > 0) {
+      // Faster heartbeat as time decreases
+      const bpm = timeLeft <= 10 ? 140 : timeLeft <= 20 ? 110 : 80
+      audioEngine.startHeartbeat(bpm)
+    } else {
+      audioEngine.stopHeartbeat()
+    }
+    // Time warning at 60 seconds
+    if (timeLeft === 60) {
+      audioEngine.timeWarning()
+    }
+    // Time warnings at 30, 20, 10, 5, 4, 3, 2, 1
+    if ([30, 20, 10, 5, 4, 3, 2, 1].includes(timeLeft)) {
+      audioEngine.timeWarning()
+    }
+  }, [timeLeft])
+
+  // Reset answered questions when content changes
+  useEffect(() => { setTimeout(() => setAnsweredQuestions(new Set()), 0) }, [gameContent])
+
+  if (!gameContent) return null
+
+  const questions = gameContent.questions
+  const currentQuestion = questions[currentQuestionIndex]
+  const minutes = Math.floor(timeLeft / 60)
+  const seconds = timeLeft % 60
+  const isUrgent = timeLeft <= 60
+  const isLastQuestion = currentQuestionIndex === questions.length - 1
+
+  const handleAnswer = (questionIndex: number, answerIndex: number) => {
+    if (answeredQuestions.has(questionIndex)) return
+    setAnsweredQuestions(prev => new Set(prev).add(questionIndex))
+    audioEngine.answerSelect() // Subtle click - NOT revealing correctness
+    submitAnswer(questionIndex, answerIndex)
+  }
+
+  const handleSurrender = () => {
+    surrender()
+    setShowSurrenderDialog(false)
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col relative overflow-hidden">
+      <BattleBackground />
+
+      {/* HUD Bar */}
+      <div className="relative z-10 border-b border-white/10 bg-black/40 backdrop-blur-xl">
+        <div className="max-w-4xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
+            {/* Round info + Surrender */}
+            <div className="flex items-center gap-2">
+              <Badge className="bg-red-500/10 text-red-400 border border-red-500/30 text-xs">
+                <Swords className="w-3 h-3 ml-1" />
+                الجولة {currentRound + 1}/{totalRounds}
+              </Badge>
+              <Badge className="bg-white/5 text-slate-300 border border-white/10 text-xs">
+                <BookOpen className="w-3 h-3 ml-1" />
+                {gameSettings.gameType}
+              </Badge>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10 text-xs h-7 px-2"
+                onClick={() => setShowSurrenderDialog(true)}
+              >
+                <LogOut className="w-3 h-3 ml-1" />
+                انسحاب
+              </Button>
+            </div>
+
+            {/* Timer */}
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isUrgent ? 'bg-red-500/10 border border-red-500/30' : 'bg-white/5 border border-white/10'}`}>
+              <Timer className={`w-5 h-5 ${isUrgent ? 'text-red-400' : 'text-cyan-400'}`} />
+              <span className={`font-mono text-xl font-black ${isUrgent ? 'text-red-400 timer-urgent' : 'text-white'}`}>
+                {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+              </span>
+            </div>
+
+            {/* Question progress - only show when not on text view */}
+            {!showText && (
+              <div className="flex items-center gap-2">
+                <Crosshair className="w-4 h-4 text-amber-400" />
+                <span className="text-sm text-slate-300 font-bold">{currentQuestionIndex + 1}/{questions.length}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Surrender Confirmation Dialog */}
+      <AlertDialog open={showSurrenderDialog} onOpenChange={setShowSurrenderDialog}>
+        <AlertDialogContent className="battle-card-glow">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white flex items-center gap-2">
+              <Skull className="w-5 h-5 text-red-400" />
+              الانسحاب من المعركة
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              متأكد إنك عايز تنسحب؟ الانسحاب مش هيترجع، وهتخسر المعركة دي.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSurrender} className="bg-red-600 hover:bg-red-700 text-white">
+              <Skull className="w-4 h-4 ml-1" />
+              أنسحب
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Main content */}
+      <div className="flex-1 relative z-10 max-w-4xl mx-auto w-full p-4">
+        {/* Text/Question toggle */}
+        <div className="flex gap-2 mb-4 justify-center">
+          <Button size="sm" onClick={() => setShowText(true)}
+            className={`rounded-lg ${showText ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}>
+            <BookOpen className="w-4 h-4 ml-1" />النص
+          </Button>
+          <Button size="sm" onClick={() => setShowText(false)}
+            className={`rounded-lg ${!showText ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-500/20' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}>
+            <Crosshair className="w-4 h-4 ml-1" />الأسئلة
+          </Button>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {showText ? (
+            <motion.div
+              key="text"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="battle-card-glow rounded-2xl p-6 max-h-[60vh] overflow-y-auto"
+            >
+              <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-red-400" />
+                {gameContent.title}
+              </h3>
+              <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">{gameContent.text}</p>
+              {gameContent.source && (
+                <p className="text-xs text-slate-500 mt-3">المصدر: {gameContent.source}</p>
+              )}
+
+              {/* Prompt to go to questions */}
+              <div className="mt-4 pt-4 border-t border-white/5 text-center">
+                <Button
+                  onClick={() => setShowText(false)}
+                  className="bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-600/30 rounded-xl"
+                >
+                  <Crosshair className="w-4 h-4 ml-2" />
+                  انتقل للأسئلة
+                </Button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="question"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-4"
+            >
+              {/* Current question */}
+              {currentQuestion && (
+                <div className="battle-card-glow rounded-2xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                      <span className="text-red-400 font-bold text-sm">{currentQuestionIndex + 1}</span>
+                    </div>
+                    <h3 className="text-white font-bold">{currentQuestion.text}</h3>
+                  </div>
+
+                  <div className="space-y-2">
+                    {currentQuestion.options.map((option, i) => {
+                      const isSelected = answers[currentQuestionIndex] === i
+                      const isAnswered = answeredQuestions.has(currentQuestionIndex)
+                      return (
+                        <motion.button
+                          key={i}
+                          whileHover={!isAnswered ? { scale: 1.01, x: -4 } : {}}
+                          whileTap={!isAnswered ? { scale: 0.99 } : {}}
+                          onClick={() => handleAnswer(currentQuestionIndex, i)}
+                          disabled={isAnswered}
+                          className={`answer-option w-full p-4 rounded-xl text-right flex items-center gap-3 ${isSelected ? 'selected' : ''} ${isAnswered && !isSelected ? 'opacity-50' : ''}`}
+                        >
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-white/5 text-slate-400 border border-white/10'}`}>
+                            {String.fromCharCode(1571 + i)}
+                          </div>
+                          <span className={`text-sm ${isSelected ? 'text-white font-semibold' : 'text-slate-300'}`}>{option}</span>
+                          {isSelected && <Check className="w-4 h-4 text-cyan-400 mr-auto" />}
+                        </motion.button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Questions navigation */}
+              <div className="flex flex-wrap gap-2 justify-center">
+                {questions.map((_, i) => (
+                  <motion.button
+                    key={i}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => useGameStore.getState().setCurrentQuestionIndex(i)}
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-all ${
+                      i === currentQuestionIndex ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' :
+                      answers[i] !== undefined ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                      'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    {i + 1}
+                  </motion.button>
+                ))}
+              </div>
+
+              {/* Next question / Back to text buttons */}
+              <div className="flex gap-3 justify-center mt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowText(true)}
+                  className="text-slate-400 hover:text-white hover:bg-white/5"
+                >
+                  <BookOpen className="w-4 h-4 ml-1" />
+                  ارجع للنص
+                </Button>
+                {!isLastQuestion && (
+                  <Button
+                    size="sm"
+                    onClick={() => useGameStore.getState().setCurrentQuestionIndex(currentQuestionIndex + 1)}
+                    className="bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10"
+                  >
+                    السؤال التالي
+                    <ArrowRight className="w-4 h-4 mr-1" />
+                  </Button>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// RESULTS SCREEN
+// ============================================
+function ResultsScreen() {
+  const scores = useGameStore((s) => s.scores)
+  const roundWinners = useGameStore((s) => s.roundWinners)
+  const roundResults = useGameStore((s) => s.roundResults)
+  const totalRounds = useGameStore((s) => s.totalRounds)
+  const resetGame = useGameStore((s) => s.resetGame)
+  const { leaveAndDisconnect } = useGameSocket()
+
+  const handlePlayAgain = () => { leaveAndDisconnect(); resetGame() }
+
+  const getMedalColor = (i: number) => {
+    if (i === 0) return 'from-amber-400 to-amber-600'
+    if (i === 1) return 'from-slate-300 to-slate-500'
+    if (i === 2) return 'from-amber-700 to-amber-900'
+    return 'from-slate-600 to-slate-700'
+  }
+
+  const getMedalClass = (i: number) => {
+    if (i === 0) return 'podium-first'
+    if (i === 1) return 'podium-second'
+    if (i === 2) return 'podium-third'
+    return 'bg-white/5 border border-white/10'
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center p-4 relative overflow-hidden">
+      <BattleBackground />
+
+      <div className="relative z-10 w-full max-w-2xl py-8">
+        {/* Victory Header */}
+        <motion.div
+          initial={{ scale: 0, rotate: -10 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+          className="text-center mb-8"
+        >
+          <motion.div
+            animate={{
+              textShadow: [
+                '0 0 20px rgba(245,158,11,0.6), 0 0 40px rgba(245,158,11,0.2)',
+                '0 0 40px rgba(245,158,11,0.8), 0 0 80px rgba(245,158,11,0.4)',
+                '0 0 20px rgba(245,158,11,0.6), 0 0 40px rgba(245,158,11,0.2)',
+              ],
+            }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 mb-2"
+          >
+            انتهت المعركة!
+          </motion.div>
+          <p className="text-slate-400">النتائج النهائية للساحة</p>
+        </motion.div>
+
+        {/* Podium - Top 3 */}
+        {scores.length >= 3 && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="flex items-end justify-center gap-3 mb-8 px-4"
+          >
+            {/* 2nd place */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className={`text-center p-4 rounded-2xl ${getMedalClass(1)} w-1/3`}
+            >
+              <div className={`w-14 h-14 mx-auto rounded-full bg-gradient-to-br ${getMedalColor(1)} flex items-center justify-center text-white font-bold text-lg mb-2`}>
+                {scores[1].name.charAt(0)}
+              </div>
+              <p className="font-bold text-white text-sm truncate">{scores[1].name}</p>
+              <p className="text-xs text-slate-400">{scores[1].roundWins || 0} جولات</p>
+              <p className="text-lg font-black text-slate-300">{scores[1].score}</p>
+              <div className="mt-1 text-xs text-slate-500">المركز الثاني</div>
+            </motion.div>
+
+            {/* 1st place */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className={`text-center p-5 rounded-2xl ${getMedalClass(0)} w-1/3 -mt-4`}
+            >
+              <motion.div
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <Crown className="w-8 h-8 mx-auto mb-2 text-amber-400" />
+              </motion.div>
+              <div className={`w-16 h-16 mx-auto rounded-full bg-gradient-to-br ${getMedalColor(0)} flex items-center justify-center text-white font-bold text-xl mb-2 glow-gold`}>
+                {scores[0].name.charAt(0)}
+              </div>
+              <p className="font-bold text-white truncate">{scores[0].name}</p>
+              <p className="text-xs text-amber-400">{scores[0].roundWins || 0} جولات</p>
+              <p className="text-2xl font-black text-amber-400 text-glow-gold">{scores[0].score}</p>
+              <div className="mt-1 text-xs text-amber-400/80">بطل المعركة!</div>
+            </motion.div>
+
+            {/* 3rd place */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className={`text-center p-4 rounded-2xl ${getMedalClass(2)} w-1/3`}
+            >
+              <div className={`w-14 h-14 mx-auto rounded-full bg-gradient-to-br ${getMedalColor(2)} flex items-center justify-center text-white font-bold text-lg mb-2`}>
+                {scores[2].name.charAt(0)}
+              </div>
+              <p className="font-bold text-white text-sm truncate">{scores[2].name}</p>
+              <p className="text-xs text-slate-400">{scores[2].roundWins || 0} جولات</p>
+              <p className="text-lg font-black text-slate-300">{scores[2].score}</p>
+              <div className="mt-1 text-xs text-slate-500">المركز الثالث</div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Full leaderboard */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8 }}
+          className="battle-card-glow rounded-2xl p-4 mb-6"
+        >
+          <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-amber-400" />لوحة المتصدرين
+          </h3>
+          <div className="space-y-2">
+            {scores.map((player, i) => (
+              <motion.div
+                key={player.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 1 + i * 0.08 }}
+                className={`flex items-center gap-3 p-3 rounded-xl ${i < 3 ? getMedalClass(i) : 'bg-white/5 border border-white/5'}`}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-gradient-to-br ${getMedalColor(i)} text-white`}>
+                  {i + 1}
+                </div>
+                <span className="flex-1 text-right font-semibold text-white text-sm">{player.name}</span>
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs">
+                    <Trophy className="w-3 h-3 ml-1" />{player.roundWins || 0}
+                  </Badge>
+                  <span className="font-bold text-sm text-white">{player.score}</span>
+                  <span className="text-xs text-slate-500">نقطة</span>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Round details */}
+        {Object.keys(roundResults).length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.2 }}
+            className="battle-card rounded-2xl p-4 mb-6"
+          >
+            <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-cyan-400" />تفاصيل الجولات
+            </h3>
+            <ScrollArea className="max-h-64">
+              <div className="space-y-3">
+                {Object.entries(roundResults).map(([roundNum, roundScores]) => {
+                  const winner = roundWinners[Number(roundNum)]
+                  const sortedScores = [...(roundScores as RoundScore[])].sort((a, b) => b.score - a.score)
+                  return (
+                    <div key={roundNum} className="p-3 rounded-xl bg-white/5 border border-white/5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-white">الجولة {Number(roundNum) + 1}</span>
+                        {winner && (
+                          <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs">
+                            <Crown className="w-3 h-3 ml-1" />{winner}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {sortedScores.map((s) => (
+                          <div key={s.playerId} className="flex items-center justify-between text-xs">
+                            <span className="text-slate-300">{s.playerName}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-400">{s.correctAnswers}/{s.totalQuestions}</span>
+                              <span className="text-white font-bold">{s.score}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </ScrollArea>
+          </motion.div>
+        )}
+
+        {/* Action buttons */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.5 }}
+          className="flex gap-3"
+        >
+          <Button className="flex-1 btn-battle rounded-xl py-6 text-lg" onClick={handlePlayAgain}>
+            <Swords className="w-5 h-5 ml-2" />معركة جديدة
+          </Button>
+        </motion.div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// RECONNECTING SCREEN
+// ============================================
+function ReconnectingScreen() {
+  const resetGame = useGameStore((s) => s.resetGame)
+
+  useEffect(() => {
+    // If reconnection doesn't succeed within 10 seconds, reset to home
+    const timeout = setTimeout(() => {
+      console.log('[ReconnectingScreen] Reconnection timed out after 10s, resetting to home')
+      disconnectGlobalSocket()
+      clearSessionStorage()
+      resetGame()
+    }, 10000)
+    return () => clearTimeout(timeout)
+  }, [resetGame])
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <BattleBackground />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative z-10 text-center"
+      >
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+          className="w-16 h-16 mx-auto mb-6 border-4 border-red-500/30 border-t-red-500 rounded-full"
+        />
+        <h2 className="text-2xl font-black text-white mb-2">إعادة الاتصال</h2>
+        <p className="text-slate-400 mb-6">جاري محاولة العودة للساحة...</p>
+        <Button
+          variant="ghost"
+          className="text-slate-400 hover:text-white hover:bg-white/10"
+          onClick={() => {
+            disconnectGlobalSocket()
+            clearSessionStorage()
+            resetGame()
+          }}
+        >
+          <LogOut className="w-4 h-4 ml-2" />
+          العودة للرئيسية
+        </Button>
+      </motion.div>
+    </div>
+  )
+}
+
+// ============================================
+// MAIN HOME COMPONENT
+// ============================================
+export default function Home() {
+  const screen = useGameStore((s) => s.screen)
+  const isReconnecting = useGameStore((s) => s.isReconnecting)
+  const roomCode = useGameStore((s) => s.roomCode)
+  const playerName = useGameStore((s) => s.playerName)
+  const gameContent = useGameStore((s) => s.gameContent)
+  const restoreState = useGameStore((s) => s.restoreState)
+  const { rejoinRoom } = useGameSocket()
+  const [showSplash, setShowSplash] = useState(true)
+  const [splashComplete, setSplashComplete] = useState(false)
+  const prevScreenRef = useRef<Screen>('home')
+
+  // Play transition sound when screen changes
+  useEffect(() => {
+    if (prevScreenRef.current !== screen && !showSplash) {
+      const from = prevScreenRef.current
+      const to = screen
+      // Play appropriate transition sound based on screen change
+      if (to === 'loading') {
+        audioEngine.transition('metallic')
+      } else if (to === 'game') {
+        // battleStart is already played in the socket handler
+      } else if (to === 'results' || to === 'round-transition') {
+        // roundEndReveal/victory/defeat handled in socket handlers
+      } else if (from === 'home' && (to === 'create' || to === 'join')) {
+        audioEngine.transition('whoosh')
+      } else if (to === 'home') {
+        audioEngine.transition('impact')
+      } else if (to === 'lobby') {
+        audioEngine.transition('metallic')
+      } else {
+        audioEngine.transition('slash')
+      }
+    }
+    prevScreenRef.current = screen
+  }, [screen, showSplash])
+
+  // Rejoin on mount if session exists
+  useEffect(() => {
+    if (splashComplete) {
+      const saved = loadFromSessionStorage()
+      if (saved && saved.roomCode && saved.playerName) {
+        restoreState(saved)
+        rejoinRoom(saved.roomCode, saved.playerName)
+      }
+    }
+  }, [splashComplete, restoreState, rejoinRoom])
+
+  const handleSplashComplete = useCallback(() => {
+    setSplashComplete(true)
+    // Small delay before hiding splash for smooth transition
+    setTimeout(() => setShowSplash(false), 300)
+  }, [])
+
+  // Show reconnecting screen
+  if (isReconnecting && splashComplete) {
+    return <ReconnectingScreen />
+  }
+
+  return (
+    <main className="min-h-screen flex flex-col">
+      {/* Audio Controls - always visible */}
+      <AudioControls />
+
+      {/* Splash Screen */}
+      <AnimatePresence>
+        {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
+      </AnimatePresence>
+
+      {/* Main content */}
+      {!showSplash && (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={screen}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            variants={battleTransition}
+            transition={{ duration: 0.4 }}
+            className="flex-1 flex flex-col"
+          >
+            {screen === 'home' && <HomeScreen />}
+            {screen === 'create' && <CreateGameScreen />}
+            {screen === 'join' && <JoinGameScreen />}
+            {screen === 'lobby' && <LobbyScreen />}
+            {screen === 'loading' && <LoadingScreen />}
+            {screen === 'game' && <GameScreen key={gameContent?.title || 'game'} />}
+            {screen === 'round-transition' && <RoundTransitionScreen />}
+            {screen === 'results' && <ResultsScreen />}
+          </motion.div>
+        </AnimatePresence>
+      )}
+
+      {/* Voice Chat - persists across screens, chat only in lobby */}
+      {!showSplash && (screen === 'lobby' || screen === 'game' || screen === 'loading' || screen === 'round-transition') && roomCode && playerName && (
+        <VoiceChat
+          roomCode={roomCode}
+          playerName={playerName}
+          showChat={screen === 'lobby'}
+        />
+      )}
+    </main>
+  )
+}

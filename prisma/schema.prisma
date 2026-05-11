@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./../db/custom.db"
+}
+
+// Tracks each reading passage/text that has been generated
+model Passage {
+  id         String   @id @default(cuid())
+  title      String
+  text       String
+  gameType   String   // "قراءة متحررة" or "نصوص"
+  difficulty String   // "سهل" or "متوسط" or "صعب"
+  topic      String?  // Main topic/category for variety tracking
+  source     String?
+  createdAt  DateTime @default(now())
+
+  // Relations
+  seenBy     SeenPassage[]
+}
+
+// Tracks which users have seen which passages
+model SeenPassage {
+  id         String   @id @default(cuid())
+  playerName String   // User identifier (since we don't have auth)
+  passageId  String
+  roomCode   String?  // Optional: which room they saw it in
+  seenAt     DateTime @default(now())
+
+  passage    Passage  @relation(fields: [passageId], references: [id], onDelete: Cascade)
+
+  @@unique([playerName, passageId]) // Each player can only see a passage once
+}

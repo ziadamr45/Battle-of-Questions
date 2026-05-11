@@ -1,0 +1,17 @@
+{
+  "name": "game-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx tsx --watch index.ts",
+    "start": "npx tsx index-wrapper.ts"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1",
+    "z-ai-web-dev-sdk": "latest"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}

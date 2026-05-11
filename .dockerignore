@@ -1,0 +1,6 @@
+# Ignore everything except the game service directory
+*
+!mini-services/game-service/
+!mini-services/game-service/package.json
+!mini-services/game-service/index.ts
+!mini-services/game-service/index-wrapper.ts
