@@ -240,7 +240,7 @@ function buildPrompt(
 
   const questionCounts: Record<Difficulty, string> = {
     سهل: '4 أسئلة',
-    متوسط: '7 أسئلة',
+    متوسط: '10 أسئلة',
     صعب: '10 أسئلة',
   }
 

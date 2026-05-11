@@ -225,7 +225,10 @@ function useGameSocket() {
       toast({ title: 'عودة المقاتل!', description: `${data.playerName} رجع للساحة` })
     })
 
-    socket.on('game-starting', () => { store.getState().setScreen('loading') })
+    socket.on('game-starting', () => {
+      store.getState().resetProgressSteps()  // Clear stale progress steps when game starts
+      store.getState().setScreen('loading')
+    })
 
     socket.on('content-progress', (data: { step: string; text: string }) => {
       // Store the latest progress step for the loading screen
@@ -247,6 +250,7 @@ function useGameSocket() {
     })
 
     socket.on('round-loading', (data: { roundNumber: number; totalRounds: number }) => {
+      store.getState().resetProgressSteps()  // Clear stale progress steps for new round loading
       store.getState().setCurrentRound(data.roundNumber)
       store.getState().setTotalRounds(data.totalRounds)
       store.getState().setScreen('loading')
@@ -1676,16 +1680,17 @@ function LoadingScreen() {
     resetProgressSteps()
   }, [resetProgressSteps])
 
-  // Loading screen timeout: 90 seconds max (1.5 minutes) - matches backend timeout
+  // Loading screen timeout: 120 seconds max - matches backend timeout
   useEffect(() => {
     const timeout = setTimeout(() => {
-      console.log('[LoadingScreen] Loading timed out after 90s, returning to lobby')
+      console.log('[LoadingScreen] Loading timed out after 120s, returning to lobby')
       setError('انتهت مهلة تحميل المحتوى. يرجى المحاولة مرة أخرى.')
       setScreen('lobby')
-    }, 90000)
+    }, 120000)
     return () => clearTimeout(timeout)
   }, [setScreen, setError])
 
+  // The last step is always "active" (in progress), previous steps are "completed"
   const activeStepIndex = progressSteps.length - 1
 
   return (
@@ -1737,27 +1742,33 @@ function LoadingScreen() {
               <span className="text-sm text-slate-400">جاري التحضير...</span>
             </motion.div>
           ) : (
-            progressSteps.map((s, i) => (
-              <motion.div
-                key={`${s.step}-${i}`}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.05 }}
-                className={`flex items-center gap-3 px-4 py-2 rounded-xl ${
-                  i === activeStepIndex ? 'bg-red-500/10 border border-red-500/20' :
-                  'bg-green-500/5 border border-green-500/10'
-                }`}
-              >
-                {i < activeStepIndex ? (
-                  <Check className="w-5 h-5 text-green-400" />
-                ) : i === activeStepIndex ? (
-                  <Loader2 className="w-5 h-5 text-red-400 animate-spin" />
-                ) : (
-                  <div className="w-5 h-5 rounded-full border border-white/20" />
-                )}
-                <span className={`text-sm ${i <= activeStepIndex ? 'text-white' : 'text-slate-500'}`}>{s.text}</span>
-              </motion.div>
-            ))
+            progressSteps.map((s, i) => {
+              const isReady = s.step === 'ready' || s.step === 'validating'
+              const isCompleted = i < activeStepIndex || isReady
+              const isActive = i === activeStepIndex && !isReady
+              return (
+                <motion.div
+                  key={`${s.step}-${i}`}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.05 }}
+                  className={`flex items-center gap-3 px-4 py-2 rounded-xl ${
+                    isActive ? 'bg-red-500/10 border border-red-500/20' :
+                    isCompleted ? 'bg-green-500/5 border border-green-500/10' :
+                    'bg-white/5 border border-white/5'
+                  }`}
+                >
+                  {isCompleted ? (
+                    <Check className="w-5 h-5 text-green-400" />
+                  ) : isActive ? (
+                    <Loader2 className="w-5 h-5 text-red-400 animate-spin" />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full border border-white/20" />
+                  )}
+                  <span className={`text-sm ${isCompleted || isActive ? 'text-white' : 'text-slate-500'}`}>{s.text}</span>
+                </motion.div>
+              )
+            })
           )}
         </div>
       </motion.div>
@@ -1958,9 +1969,19 @@ function GameScreen() {
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       <BattleBackground />
 
-      {/* HUD Bar - Timer centered, compact layout */}
+      {/* HUD Bar - Timer at TOP, prominent for mobile */}
       <div className="relative z-10 border-b border-white/10 bg-black/40 backdrop-blur-xl">
         <div className="max-w-4xl mx-auto px-3 py-2 sm:px-4 sm:py-3">
+          {/* Timer - Full width, always prominent */}
+          <div className="flex items-center justify-center mb-1.5">
+            <div className={`flex items-center justify-center gap-2 px-6 py-2 sm:px-8 sm:py-3 rounded-xl ${isUrgent ? 'bg-red-500/15 border border-red-500/30 animate-pulse' : 'bg-white/5 border border-white/10'}`}>
+              <Timer className={`w-5 h-5 sm:w-7 sm:h-7 ${isUrgent ? 'text-red-400' : 'text-cyan-400'}`} />
+              <span className={`font-mono text-2xl sm:text-4xl font-black ${isUrgent ? 'text-red-400 timer-urgent' : 'text-white'}`}>
+                {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+              </span>
+            </div>
+          </div>
+          {/* Secondary info bar */}
           <div className="flex items-center justify-between gap-2">
             {/* Left: Round + Question progress */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -1972,14 +1993,6 @@ function GameScreen() {
                 <Crosshair className="w-2.5 h-2.5 sm:w-3 sm:h-3 ml-0.5" />
                 السؤال {currentQuestionIndex + 1}/{questions.length}
               </Badge>
-            </div>
-
-            {/* Center: Timer - PROMINENT */}
-            <div className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-1.5 sm:py-2.5 rounded-xl ${isUrgent ? 'bg-red-500/15 border border-red-500/30 animate-pulse' : 'bg-white/5 border border-white/10'}`}>
-              <Timer className={`w-4 h-4 sm:w-6 sm:h-6 ${isUrgent ? 'text-red-400' : 'text-cyan-400'}`} />
-              <span className={`font-mono text-xl sm:text-3xl font-black ${isUrgent ? 'text-red-400 timer-urgent' : 'text-white'}`}>
-                {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
-              </span>
             </div>
 
             {/* Right: Surrender */}
@@ -2157,7 +2170,7 @@ function GameScreen() {
                 >
                   <Check className="w-6 h-6 text-green-400 mx-auto mb-2" />
                   <p className="text-green-400 font-bold text-sm">أجبت على جميع الأسئلة!</p>
-                  <p className="text-slate-400 text-xs mt-1">⏳ في انتظار انتهاء الوقت...</p>
+                  <p className="text-slate-400 text-xs mt-1">⏳ في انتظار اللاعب الآخر أو انتهاء الوقت...</p>
                 </motion.div>
               )}
             </motion.div>

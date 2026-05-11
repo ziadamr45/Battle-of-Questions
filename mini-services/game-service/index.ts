@@ -63,7 +63,7 @@ async function callOpenRouterLLM(
         model: OPENROUTER_MODEL,
         messages,
         temperature: options?.temperature ?? 0.8,
-        max_tokens: options?.maxTokens ?? 4096,
+        max_tokens: options?.maxTokens ?? 8192,
         response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
@@ -151,6 +151,9 @@ interface Player {
   isReady: boolean
   joinOrder: number
   roundWins: number          // number of rounds this player has won
+  isDisconnected: boolean   // true if player disconnected but can still rejoin
+  disconnectedAt: number | null  // timestamp when player disconnected
+  oldSocketIds: string[]    // previous socket IDs for reconnection matching
 }
 
 interface Question {
@@ -197,6 +200,7 @@ interface GameRoom {
   roundTimerSeconds: number       // seconds for the round timer
   roundResults: Map<number, RoundScore[]>  // roundIndex -> scores for that round
   roundWinners: Map<number, string>  // roundIndex -> playerId of winner
+  roundEnding: boolean            // true if round-end processing has started (prevents double calls)
 }
 
 // Info sent to clients about public rooms
@@ -220,6 +224,9 @@ const socketRoomMap = new Map<string, string>()
 
 // Global counter for join order tracking
 let globalJoinCounter = 0
+
+// Grace period for disconnected players (milliseconds) - they can rejoin within this time
+const DISCONNECT_GRACE_PERIOD = 60000 // 60 seconds
 
 // ─── HTTP Server + Health Check ───────────────────────────────────────────────
 // Railway (and other cloud providers) need a working HTTP endpoint to confirm
@@ -267,13 +274,79 @@ function generateRoomCode(): string {
 
 function playersToArray(players: Map<string, Player>): Player[] {
   return Array.from(players.values())
+    .filter(p => !p.isDisconnected)  // Don't show disconnected players in the visible list
     .sort((a, b) => a.joinOrder - b.joinOrder)
 }
+
+// Get ALL players including disconnected ones (for internal use)
+function playersToArrayAll(players: Map<string, Player>): Player[] {
+  return Array.from(players.values())
+    .sort((a, b) => a.joinOrder - b.joinOrder)
+}
+
+// Clean up expired disconnected players (called periodically)
+function cleanupExpiredDisconnects() {
+  const now = Date.now()
+  for (const room of rooms.values()) {
+    const toRemove: string[] = []
+    for (const [playerId, player] of room.players.entries()) {
+      if (player.isDisconnected && player.disconnectedAt && (now - player.disconnectedAt > DISCONNECT_GRACE_PERIOD)) {
+        toRemove.push(playerId)
+      }
+    }
+    for (const playerId of toRemove) {
+      const player = room.players.get(playerId)!
+      room.players.delete(playerId)
+      room.playerAnswers.delete(playerId)
+      // Clean up socketRoomMap for old IDs
+      for (const oldId of player.oldSocketIds) {
+        socketRoomMap.delete(oldId)
+      }
+      socketRoomMap.delete(playerId)
+
+      // If the removed player was the host, transfer host
+      if (room.hostId === playerId) {
+        const newHost = findNextHost(room.players)
+        if (newHost) {
+          room.hostId = newHost.id
+          room.hostName = newHost.name
+          newHost.isHost = true
+          io.to(room.roomCode).emit('host-changed', {
+            newHostId: newHost.id,
+            newHostName: newHost.name,
+            oldHostName: player.name,
+            players: playersToArray(room.players),
+          })
+        }
+      }
+
+      console.log(`[cleanup] Grace period expired for ${player.name} in room ${room.roomCode}. Removed permanently.`)
+
+      // If room is now empty (no active players), delete it
+      const activePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected)
+      if (activePlayers.length === 0) {
+        deleteRoom(room.roomCode)
+      } else if (room.status === 'playing' && activePlayers.length === 1) {
+        // Only one active player left during game - they win
+        const remainingPlayer = activePlayers[0]
+        io.to(room.roomCode).emit('opponent-left-game', {
+          leftPlayerName: player.name,
+          winnerName: remainingPlayer.name,
+        })
+        handleGameEnd(room.roomCode)
+      }
+    }
+  }
+}
+
+// Run cleanup every 15 seconds
+setInterval(cleanupExpiredDisconnects, 15000)
 
 function findNextHost(players: Map<string, Player>, excludeId?: string): Player | undefined {
   let earliest: Player | undefined
   for (const player of players.values()) {
     if (excludeId && player.id === excludeId) continue
+    if (player.isDisconnected) continue  // Skip disconnected players
     if (!earliest || player.joinOrder < earliest.joinOrder) {
       earliest = player
     }
@@ -284,14 +357,15 @@ function findNextHost(players: Map<string, Player>, excludeId?: string): Player 
 function getPublicRoomsList(): RoomInfo[] {
   const list: RoomInfo[] = []
   for (const room of rooms.values()) {
-    // Only show public rooms that are waiting AND have at least 1 player
-    if (room.roomType === 'عامة' && room.status === 'waiting' && room.players.size > 0) {
+    // Only show public rooms that are waiting AND have at least 1 active player
+    const activePlayerCount = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
+    if (room.roomType === 'عامة' && room.status === 'waiting' && activePlayerCount > 0) {
       list.push({
         roomCode: room.roomCode,
         roomType: room.roomType,
         hasPassword: !!room.password,
         hostName: room.hostName,
-        playerCount: room.players.size,
+        playerCount: activePlayerCount,
         maxPlayers: room.settings.maxPlayers,
         settings: room.settings,
         status: room.status,
@@ -476,7 +550,7 @@ function buildPrompt(
 
   const questionCounts: Record<Difficulty, string> = {
     سهل: '4 أسئلة',
-    متوسط: '7 أسئلة',
+    متوسط: '10 أسئلة',
     صعب: '10 أسئلة',
   }
 
@@ -732,6 +806,7 @@ function calculateRoundScores(room: GameRoom, roundIndex: number): RoundScore[] 
   const scores: RoundScore[] = []
 
   for (const [playerId, player] of room.players.entries()) {
+    if (player.isDisconnected) continue  // Skip disconnected players in scoring
     const playerRoundsAnswers = room.playerAnswers.get(playerId)
     const roundAnswers = playerRoundsAnswers?.get(roundIndex)
     const roundContent = room.rounds[roundIndex]
@@ -764,7 +839,7 @@ function calculateRoundScores(room: GameRoom, roundIndex: number): RoundScore[] 
   return scores.sort((a, b) => b.score - a.score)
 }
 
-// Remove a player from a room, handle host migration, and delete room if empty
+// Remove a player from a room (voluntary leave) or mark as disconnected (for reconnection)
 function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') {
   const roomCode = socketRoomMap.get(socketId)
   if (!roomCode) return
@@ -778,50 +853,81 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
   const player = room.players.get(socketId)
   const playerName = player?.name || socketId
 
-  // Remove player entirely
-  room.players.delete(socketId)
-  room.playerAnswers.delete(socketId)
-  socketRoomMap.delete(socketId)
-
-  // If room is now empty, delete it immediately
-  if (room.players.size === 0) {
-    deleteRoom(roomCode)
-    console.log(`[removePlayer] ${playerName} left room ${roomCode}. Room deleted (empty).`)
-    return
-  }
-
-  // If the removed player was the host, transfer host to the earliest remaining player
-  if (room.hostId === socketId) {
-    const newHost = findNextHost(room.players)
-    if (newHost) {
-      room.hostId = newHost.id
-      room.hostName = newHost.name
-      newHost.isHost = true
-      io.to(roomCode).emit('host-changed', {
-        newHostId: newHost.id,
-        newHostName: newHost.name,
-        oldHostName: playerName,
-        players: playersToArray(room.players),
-      })
-    }
-  }
-
-  // Notify remaining players
   if (reason === 'leave') {
+    // Voluntary leave - remove entirely
+    room.players.delete(socketId)
+    room.playerAnswers.delete(socketId)
+    socketRoomMap.delete(socketId)
+
+    // If room has no active players, delete it
+    const activePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected)
+    if (activePlayers.length === 0 && room.players.size === 0) {
+      deleteRoom(roomCode)
+      console.log(`[removePlayer] ${playerName} left room ${roomCode}. Room deleted (empty).`)
+      return
+    }
+
+    // If the removed player was the host, transfer host
+    if (room.hostId === socketId) {
+      const newHost = findNextHost(room.players)
+      if (newHost) {
+        room.hostId = newHost.id
+        room.hostName = newHost.name
+        newHost.isHost = true
+        io.to(roomCode).emit('host-changed', {
+          newHostId: newHost.id,
+          newHostName: newHost.name,
+          oldHostName: playerName,
+          players: playersToArray(room.players),
+        })
+      }
+    }
+
     io.to(roomCode).emit('player-left', {
       playerId: socketId,
       playerName,
       players: playersToArray(room.players),
     })
+
+    // If game is playing and only 1 active player left, auto-end
+    if (room.status === 'playing' && activePlayers.length === 1) {
+      const remainingPlayer = activePlayers[0]
+      io.to(roomCode).emit('opponent-left-game', {
+        leftPlayerName: playerName,
+        winnerName: remainingPlayer?.name,
+      })
+      handleGameEnd(roomCode)
+    } else if (activePlayers.length === 0) {
+      deleteRoom(roomCode)
+    }
+
+    console.log(`[removePlayer] ${playerName} left room ${roomCode}. Remaining active: ${activePlayers.length}`)
   } else {
+    // Disconnect - mark as disconnected for grace period reconnection
+    if (player) {
+      player.isDisconnected = true
+      player.disconnectedAt = Date.now()
+      player.oldSocketIds.push(socketId)
+    }
+    socketRoomMap.delete(socketId)
+
+    // Notify others that this player is temporarily disconnected
     io.to(roomCode).emit('player-disconnected', {
       playerId: socketId,
       playerName,
       players: playersToArray(room.players),
     })
-  }
 
-  console.log(`[removePlayer] ${playerName} ${reason === 'leave' ? 'left' : 'disconnected from'} room ${roomCode}. Remaining: ${room.players.size}`)
+    // If game is playing and only 1 active player left, start a timer
+    // If the disconnected player doesn't rejoin within grace period, end the game
+    const activePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected)
+    if (room.status === 'playing' && activePlayers.length === 1) {
+      console.log(`[disconnect] Only 1 active player left in room ${roomCode}. Waiting ${DISCONNECT_GRACE_PERIOD / 1000}s for reconnection...`)
+      // The cleanup interval will handle ending the game if the player doesn't rejoin
+    }
+
+    console.log(`[disconnect] ${playerName} disconnected from room ${roomCode}. Marked for reconnection (grace: ${DISCONNECT_GRACE_PERIOD / 1000}s). Active: ${activePlayers.length}`)
+  }
 
   broadcastPublicRooms()
 }
@@ -857,7 +963,7 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
-      // Find the player by name in the room
+      // Find the player by name in the room (including disconnected players)
       let existingPlayer: Player | undefined
       let existingPlayerId: string | undefined
       for (const [id, player] of room.players.entries()) {
@@ -873,9 +979,20 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
-      // Update the player's ID to the new socket ID
+      // Check if the player's grace period has expired
+      if (existingPlayer.isDisconnected && existingPlayer.disconnectedAt) {
+        if (Date.now() - existingPlayer.disconnectedAt > DISCONNECT_GRACE_PERIOD) {
+          // Grace period expired - can't rejoin
+          socket.emit('rejoin-failed', { message: 'انتهت مهلة إعادة الاتصال' })
+          return
+        }
+      }
+
+      // Update the player's ID to the new socket ID and mark as reconnected
       const oldId = existingPlayerId
       existingPlayer.id = socket.id
+      existingPlayer.isDisconnected = false
+      existingPlayer.disconnectedAt = null
 
       // Move from old key to new key in players map
       room.players.delete(oldId)
@@ -936,7 +1053,7 @@ io.on('connection', (socket: Socket) => {
 
       // If game is finished, send final results
       if (room.status === 'finished') {
-        const finalScores = playersToArray(room.players).sort((a, b) => b.score - a.score)
+        const finalScores = playersToArrayAll(room.players).sort((a, b) => b.score - a.score)
         rejoinData.scores = finalScores
         rejoinData.totalRounds = room.settings.numberOfRounds
         rejoinData.roundWinners = Object.fromEntries(room.roundWinners)
@@ -1009,6 +1126,9 @@ io.on('connection', (socket: Socket) => {
         isReady: true,
         joinOrder: globalJoinCounter++,
         roundWins: 0,
+        isDisconnected: false,
+        disconnectedAt: null,
+        oldSocketIds: [],
       }
 
       const playersMap = new Map<string, Player>()
@@ -1030,6 +1150,7 @@ io.on('connection', (socket: Socket) => {
         roundTimerSeconds: settings.timePerRound * 60,
         roundResults: new Map(),
         roundWinners: new Map(),
+        roundEnding: false,
       }
 
       rooms.set(roomCode, room)
@@ -1108,6 +1229,9 @@ io.on('connection', (socket: Socket) => {
         isReady: false,
         joinOrder: globalJoinCounter++,
         roundWins: 0,
+        isDisconnected: false,
+        disconnectedAt: null,
+        oldSocketIds: [],
       }
 
       room.players.set(socket.id, player)
@@ -1161,6 +1285,13 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
+      // Count only active (non-disconnected) players
+      const activePlayerCount = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
+      if (activePlayerCount < 2) {
+        socket.emit('game-error', { message: 'يجب أن يكون هناك لاعبان نشطان على الأقل' })
+        return
+      }
+
       if (room.status !== 'waiting') {
         socket.emit('game-error', { message: 'اللعبة قد بدأت بالفعل' })
         return
@@ -1169,12 +1300,25 @@ io.on('connection', (socket: Socket) => {
       // Update room status
       room.status = 'playing'
       room.currentRound = 0
+      room.roundEnding = false
 
       // Reset all player scores and round wins for the new game
-      for (const player of room.players.values()) {
-        player.score = 0
-        player.roundWins = 0
+      // Also remove any lingering disconnected players
+      const disconnectedIds: string[] = []
+      for (const [id, player] of room.players.entries()) {
+        if (player.isDisconnected) {
+          disconnectedIds.push(id)
+        } else {
+          player.score = 0
+          player.roundWins = 0
+        }
       }
+      // Remove disconnected players before starting
+      for (const id of disconnectedIds) {
+        room.players.delete(id)
+        room.playerAnswers.delete(id)
+      }
+
       room.roundResults.clear()
       room.roundWinners.clear()
 
@@ -1323,14 +1467,16 @@ io.on('connection', (socket: Socket) => {
         playerAnsweredAll,
       })
 
-      // Check if ALL players have answered all questions in this round
-      const allPlayersAnsweredAll = Array.from(room.players.keys()).every((playerId) => {
-        const pAnswers = room.playerAnswers.get(playerId)
-        if (!pAnswers) return false
-        const rAnswers = pAnswers.get(roundNumber)
-        if (!rAnswers) return false
-        return rAnswers.size >= totalQuestions
-      })
+      // Check if ALL ACTIVE players have answered all questions in this round
+      const allPlayersAnsweredAll = Array.from(room.players.entries())
+        .filter(([_, p]) => !p.isDisconnected)  // Only check active players
+        .every(([playerId, _]) => {
+          const pAnswers = room.playerAnswers.get(playerId)
+          if (!pAnswers) return false
+          const rAnswers = pAnswers.get(roundNumber)
+          if (!rAnswers) return false
+          return rAnswers.size >= totalQuestions
+        })
 
       if (allPlayersAnsweredAll) {
         // All players finished this round
@@ -1399,33 +1545,13 @@ io.on('connection', (socket: Socket) => {
       return
     }
 
-    // Get player name BEFORE removing them
-    const room = rooms.get(roomCode)
-    const player = room?.players.get(socket.id)
-    const disconnectedPlayerName = player?.name || socket.id
-
     console.log(`[disconnect] ${socket.id} disconnected from room ${roomCode}`)
 
     // Leave the socket.io room
     socket.leave(roomCode)
 
-    // Remove player immediately - no grace period
+    // Mark player as disconnected (grace period applies - can rejoin)
     removePlayerFromRoom(socket.id, 'disconnect')
-
-    // If game is playing and only 1 player left, notify them and auto-end the game
-    const updatedRoom = rooms.get(roomCode)
-    if (updatedRoom && updatedRoom.status === 'playing' && updatedRoom.players.size === 1) {
-      const remainingPlayer = Array.from(updatedRoom.players.values())[0]
-      io.to(roomCode).emit('opponent-left-game', {
-        leftPlayerName: disconnectedPlayerName,
-        winnerName: remainingPlayer?.name,
-      })
-      // End the game immediately - only one player left
-      handleGameEnd(roomCode)
-    } else if (updatedRoom && updatedRoom.status === 'playing' && updatedRoom.players.size === 0) {
-      // No players left - delete room
-      deleteRoom(roomCode)
-    }
   })
 
   socket.on('error', (error) => {
@@ -1463,6 +1589,13 @@ async function generateRemainingRounds(roomCode: string, totalRounds: number, ga
 function handleRoundEnd(roomCode: string) {
   const room = rooms.get(roomCode)
   if (!room || room.status !== 'playing') return
+
+  // Prevent double calls - if round is already ending, skip
+  if (room.roundEnding) {
+    console.log(`[handleRoundEnd] Round already ending in room ${roomCode}, skipping duplicate call`)
+    return
+  }
+  room.roundEnding = true
 
   const currentRound = room.currentRound
   const totalRounds = room.settings.numberOfRounds
@@ -1545,6 +1678,7 @@ function handleRoundEnd(roomCode: string) {
           clearInterval(checkInterval)
           rr.roundStartTime = Date.now()
           rr.roundTimerSeconds = rr.settings.timePerRound * 60
+          rr.roundEnding = false  // Reset for the new round
           io.to(roomCode).emit('round-start', {
             roundNumber: rr.currentRound,
             totalRounds: rr.settings.numberOfRounds,
@@ -1561,6 +1695,7 @@ function handleRoundEnd(roomCode: string) {
     // Start next round
     r.roundStartTime = Date.now()
     r.roundTimerSeconds = r.settings.timePerRound * 60
+    r.roundEnding = false  // Reset for the new round
 
     io.to(roomCode).emit('round-start', {
       roundNumber: r.currentRound,
@@ -1580,11 +1715,11 @@ function handleGameEnd(roomCode: string) {
   room.status = 'finished'
 
   // Determine overall winner by round wins (not cumulative score)
+  // Include only non-disconnected players in final results
   const finalResults = playersToArray(room.players)
     .sort((a, b) => b.roundWins - a.roundWins)
 
   // The "score" field now represents roundWins for the final results
-  // We'll send roundWins as a separate field
   const scoresWithWins = finalResults.map(p => ({
     ...p,
     score: p.roundWins, // Override score with roundWins for the leaderboard
