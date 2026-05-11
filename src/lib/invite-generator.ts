@@ -27,6 +27,7 @@ export interface ShareRoomInfo {
   hasPassword: boolean
   gameType: string        // e.g., 'قراءة متحررة' or 'نصوص'
   difficulty: string      // 'سهل' | 'متوسط' | 'صعب'
+  passageType?: string   // 'علمي' | 'أدبي' | 'عشوائي' (only for قراءة متحررة)
   numberOfRounds: number
   maxPlayers: number
   currentPlayers: number
@@ -151,20 +152,35 @@ function getDifficultyLine(difficulty: string): string {
   }
 }
 
-function getGameTypeLine(gameType: string): string {
-  switch (gameType) {
-    case 'قراءة متحررة': return pickRandom([
-      '📚 معركة قراءة متحررة',
-      '📖 تحدي الفهم والاستنتاج',
-      '📚 معركة القراءة الذكية',
-    ])
-    case 'نصوص': return pickRandom([
+function getGameTypeLine(gameType: string, passageType?: string): string {
+  if (gameType === 'قراءة متحررة') {
+    if (passageType === 'علمي') {
+      return pickRandom([
+        '🔬 معركة قراءة علمية',
+        '🧪 تحدي علمي مباشر',
+        '🔬 معركة علمية وتحليلية',
+      ])
+    } else if (passageType === 'أدبي') {
+      return pickRandom([
+        '✒️ معركة قراءة أدبية',
+        '📖 تحدي أدبي تعبيري',
+        '✒️ معركة أدبية بلاغية',
+      ])
+    } else {
+      return pickRandom([
+        '📚 معركة قراءة متحررة',
+        '📖 تحدي الفهم والاستنتاج',
+        '📚 معركة القراءة الذكية',
+      ])
+    }
+  } else if (gameType === 'نصوص') {
+    return pickRandom([
       '📜 معركة النصوص الأدبية',
       '✍️ تحدي البلاغة والتذوق',
       '📜 معركة النصوص والتحليل',
     ])
-    default: return `🎮 ${gameType}`
   }
+  return `🎮 ${gameType}`
 }
 
 function getPlayerLine(currentPlayers: number, maxPlayers: number): string {
@@ -196,7 +212,16 @@ export function generateInviteMessage(info: ShareRoomInfo): string {
   }
 
   // 2. Game type line
-  const gameTypeLine = getGameTypeLine(info.gameType)
+  const gameTypeLine = getGameTypeLine(info.gameType, info.passageType)
+
+  // 2b. Passage type detail line (for قراءة متحررة)
+  const passageTypeLine = info.gameType === 'قراءة متحررة' && info.passageType
+    ? info.passageType === 'علمي'
+      ? '🔬 قطع علمية وتحليلية'
+      : info.passageType === 'أدبي'
+        ? '✒️ قطع أدبية وتعبيرية'
+        : '🎲 قطع متنوعة وعشوائية'
+    : ''
 
   // 3. Player line
   const playerLine = getPlayerLine(info.currentPlayers, info.maxPlayers)
@@ -219,7 +244,7 @@ export function generateInviteMessage(info: ShareRoomInfo): string {
     gameTypeLine,
     `${roomTypeEmoji} ${roomTypeLabel}${passwordNote}`,
     playerLine,
-    `⚡ ${info.difficulty} • ${info.numberOfRounds} جولات • ${info.timePerRound} دقيقة`,
+    `⚡ ${info.difficulty}${info.gameType === 'قراءة متحررة' && info.passageType ? ' • ' + (info.passageType === 'علمي' ? 'علمي' : info.passageType === 'أدبي' ? 'أدبي' : 'عشوائي') : ''} • ${info.numberOfRounds} جولات • ${info.timePerRound} دقيقة`,
     urgencyLine,
     '',
     `🔗 ${info.joinUrl}`,
@@ -229,6 +254,9 @@ export function generateInviteMessage(info: ShareRoomInfo): string {
 
   if (difficultyLine) {
     lines.splice(6, 0, difficultyLine)
+  }
+  if (passageTypeLine) {
+    lines.splice(3, 0, passageTypeLine)
   }
 
   return lines.join('\n')
@@ -247,7 +275,7 @@ export function generateShortInvite(info: ShareRoomInfo): string {
       ? 'اللعبة بدأت!'
       : 'الساحة فاتحة'
 
-  return `${intro}\n⚔️ ${info.gameType} • ${info.difficulty}\n${statusPart}\n🔗 ${info.joinUrl}`
+  return `${intro}\n⚔️ ${info.gameType}${info.gameType === 'قراءة متحررة' && info.passageType ? ' • ' + info.passageType : ''} • ${info.difficulty}\n${statusPart}\n🔗 ${info.joinUrl}`
 }
 
 // ─── WhatsApp-specific format ───────────────────────────────────────────
@@ -270,7 +298,7 @@ export function generateTelegramInvite(info: ShareRoomInfo): string {
   return [
     intro,
     '',
-    `*${info.gameType}* • ${info.difficulty} • ${info.numberOfRounds} جولات`,
+    `*${info.gameType}${info.gameType === 'قراءة متحررة' && info.passageType ? ' • ' + info.passageType : ''}* • ${info.difficulty} • ${info.numberOfRounds} جولات`,
     `${info.roomType === 'عامة' ? '🌍' : '🔒'} ${info.roomType === 'عامة' ? 'ساحة عامة' : 'ساحة خاصة'}${info.hasPassword ? ' 🔑' : ''}`,
     playerLine,
     urgencyLine,

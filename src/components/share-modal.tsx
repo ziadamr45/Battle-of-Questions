@@ -91,6 +91,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
     hasPassword: !!roomPassword,
     gameType: gameSettings.gameType,
     difficulty: gameSettings.difficulty,
+    passageType: gameSettings.gameType === 'قراءة متحررة' ? gameSettings.passageType : undefined,
     numberOfRounds: gameSettings.numberOfRounds,
     maxPlayers: gameSettings.maxPlayers,
     currentPlayers: players.length,
@@ -105,7 +106,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
     if (open) {
       setMessagePreview(generateInviteMessage(shareInfo))
     }
-  }, [open, roomCode, players.length, gameSettings.gameType, gameSettings.difficulty])
+  }, [open, roomCode, players.length, gameSettings.gameType, gameSettings.difficulty, gameSettings.passageType])
 
   const handleShare = useCallback(async (channel: ShareChannel) => {
     setSharing(channel)
@@ -325,6 +326,17 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
               <span className="px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-300">
                 {gameSettings.gameType === 'قراءة متحررة' ? '📚' : '📜'} {gameSettings.gameType}
               </span>
+              {gameSettings.gameType === 'قراءة متحررة' && gameSettings.passageType && (
+                <span className={`px-2.5 py-1 rounded-full border ${
+                  gameSettings.passageType === 'علمي'
+                    ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300'
+                    : gameSettings.passageType === 'أدبي'
+                      ? 'bg-purple-500/10 border-purple-500/20 text-purple-300'
+                      : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                }`}>
+                  {gameSettings.passageType === 'علمي' ? '🔬' : gameSettings.passageType === 'أدبي' ? '✒️' : '🎲'} {gameSettings.passageType}
+                </span>
+              )}
               <span className="px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300">
                 ⚡ {gameSettings.difficulty}
               </span>

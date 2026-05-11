@@ -134,6 +134,7 @@ async function duckDuckGoSearch(
 type GameType = 'قراءة متحررة' | 'نصوص'
 type Difficulty = 'سهل' | 'متوسط' | 'صعب'
 type RoomType = 'عامة' | 'خاصة'
+type PassageType = 'علمي' | 'أدبي' | 'عشوائي'
 
 interface GameSettings {
   gameType: GameType
@@ -142,6 +143,7 @@ interface GameSettings {
   numberOfRounds: number     // total rounds to play (max 20)
   maxPlayers: number         // max players (max 20, 0 = open/unlimited)
   playerMode: 'fixed' | 'open'
+  passageType: PassageType   // Only relevant when gameType === 'قراءة متحررة'
 }
 
 interface Player {
@@ -403,40 +405,57 @@ const CONTENT_TIMEOUT_MS = 120000 // 2 minutes max
 // ─── Content Generation Helpers ──────────────────────────────────────────────────
 
 // Search queries pool for diverse topic selection
+// For قراءة متحررة, we split by passageType
+const searchQueriesPoolScientific: string[] = [
+  'الذكاء الاصطناعي وتأثيره على مستقبل التعليم',
+  'استكشاف الفضاء والبعثات إلى المريخ',
+  'الطاقة المتجددة الشمسية والرياح ومستقبل الكوكب',
+  'التطور الطبي ثورة اللقاحات والعلاج الجيني',
+  'تكنولوجيا النانو وثورة المواد الذكية',
+  'البلوك تشين والعملات الرقمية مستقبل المال',
+  'الحضارة الإسلامية الأندلسية إنجازات علمية وفكرية',
+  'طريق الحرير التجارة بين الشرق والغرب',
+  'التغير المناخي أسبابه وآثاره على الوطن العربي',
+  'أزمة المياه في الشرق الأوسط وحلول مبتكرة',
+  'التنوع البيولوجي والانقراض السادس',
+  'التصحر في العالم العربي ومشاريع التشجير',
+  'علم الوراثة ثورة CRISR وتعديل الجينات',
+  'فيزياء الكم ومستقبل الحوسبة الكمية',
+  'الطب الشخصي والجينوم البشري',
+  'روبوتات المستقبل والذكاء الاصطناعي التوليدي',
+  'استكشاف أعماق المحيطات وتكنولوجيا الغوص',
+  'الطباعة ثلاثية الأبعاد ثورة التصنيع',
+  'السيارات ذاتية القيادة وتحديات السلامة',
+  'الأقمار الصناعية وثورة الاتصالات الفضائية',
+]
+
+const searchQueriesPoolLiterary: string[] = [
+  'فلسفة التفكير النقدي وأهميته في العصر الرقمي',
+  'نظرية الذكاءات المتعددة لهوارد غاردنر',
+  'علم النفس الإيجابي والسعادة البشرية',
+  'قوة العادات وكيف تتشكل في الدماغ',
+  'ظاهرة الهجرة الدماغية من الدول العربية',
+  'التعليم عن بعد ثورة كوفيد وتحولات المستقبل',
+  'هوية الشباب العربي بين الأصالة والعولمة',
+  'المرأة العربية إنجازات وتحديات معاصرة',
+  'الاقتصاد الأخضر فرص الاستدامة في الوطن العربي',
+  'ريادة الأعمال الشبابية في المنطقة العربية',
+  'رؤية 2030 التنمية المستدامة في السعودية',
+  'الأدب العربي الحديث رواد التجديد والتحول',
+  'الفن التشكيلي العربي معاصرة وهوية',
+  'الصحة النفسية للمراهقين في عصر السوشيال ميديا',
+  'إدمان الهواتف الذكية تأثيره على الدماغ والسلوك',
+  'رحلة ابن بطوطة عبر العالم الإسلامي',
+  'اكتشافات أثرية حديثة في العالم العربي',
+  'تاريخ الحروب الصليبية وتأثيرها على العالم العربي',
+  'الحضارة المصرية القديمة أهرامات وفراعنة',
+  'تاريخ الدولة العثمانية وعلاقتها بالعالم العربي',
+]
+
 const searchQueriesPool: Record<GameType, string[]> = {
   'قراءة متحررة': [
-    'الحضارة الإسلامية الأندلسية إنجازات علمية وفكرية',
-    'تاريخ الحروب الصليبية وتأثيرها على العالم العربي',
-    'الحضارة المصرية القديمة أهرامات وفراعنة',
-    'تاريخ الدولة العثمانية وعلاقتها بالعالم العربي',
-    'طريق الحرير التجارة بين الشرق والغرب',
-    'الذكاء الاصطناعي وتأثيره على مستقبل التعليم',
-    'استكشاف الفضاء والبعثات إلى المريخ',
-    'الطاقة المتجددة الشمسية والرياح ومستقبل الكوكب',
-    'التطور الطبي ثورة اللقاحات والعلاج الجيني',
-    'تكنولوجيا النانو وثورة المواد الذكية',
-    'البلوك تشين والعملات الرقمية مستقبل المال',
-    'فلسفة التفكير النقدي وأهميته في العصر الرقمي',
-    'نظرية الذكاءات المتعددة لهوارد غاردنر',
-    'علم النفس الإيجابي والسعادة البشرية',
-    'قوة العادات وكيف تتشكل في الدماغ',
-    'التغير المناخي أسبابه وآثاره على الوطن العربي',
-    'أزمة المياه في الشرق الأوسط وحلول مبتكرة',
-    'التنوع البيولوجي والانقراض السادس',
-    'التصحر في العالم العربي ومشاريع التشجير',
-    'ظاهرة الهجرة الدماغية من الدول العربية',
-    'التعليم عن بعد ثورة كوفيد وتحولات المستقبل',
-    'هوية الشباب العربي بين الأصالة والعولمة',
-    'المرأة العربية إنجازات وتحديات معاصرة',
-    'الاقتصاد الأخضر فرص الاستدامة في الوطن العربي',
-    'ريادة الأعمال الشبابية في المنطقة العربية',
-    'رؤية 2030 التنمية المستدامة في السعودية',
-    'الأدب العربي الحديث رواد التجديد والتحول',
-    'الفن التشكيلي العربي معاصرة وهوية',
-    'الصحة النفسية للمراهقين في عصر السوشيال ميديا',
-    'إدمان الهواتف الذكية تأثيره على الدماغ والسلوك',
-    'رحلة ابن بطوطة عبر العالم الإسلامي',
-    'اكتشافات أثرية حديثة في العالم العربي',
+    ...searchQueriesPoolScientific,
+    ...searchQueriesPoolLiterary,
   ],
   'نصوص': [
     'شعر المتنبي حكمة وفخر وصور بيانية',
@@ -470,23 +489,37 @@ const searchQueriesPool: Record<GameType, string[]> = {
   ],
 }
 
+// Topic seeds for قراءة متحررة split by passageType
+const topicSeedsScientific: string[] = [
+  'اكتب عن اكتشاف علمي حديث غيّر فهمنا للكون',
+  'اكتب عن تقنية مستقبلية وكيف ستغير حياتنا',
+  'اكتب عن تحدّ بيئي يواجه منطقة عربية محددة وحلولاً مبتكرة',
+  'اكتب عن اختراع إسلامي غير معروف غيّر مجرى التاريخ',
+  'اكتب عن ظاهرة طبيعية فريدة في العالم العربي',
+  'اكتب عن تقاطع العلم والإيمان في حضارة إسلامية',
+  'اكتب عن ثورة في الطب وكيف ستنقذ حياة الملايين',
+  'اكتب عن رحلة استكشاف فضائي وما اكتُشف فيه',
+  'اكتب عن طاقة متجددة وحلول مبتكرة للمناخ',
+  'اكتب عن الذكاء الاصطناعي وتأثيره على المستقبل',
+]
+
+const topicSeedsLiterary: string[] = [
+  'اكتب عن شخصية عربية نسائية رائدة لم تحظ بشهرة كافية',
+  'اكتب عن مدينة عربية منسية كانت مركز حضارة',
+  'اكتب عن عادات اجتماعية عربية تتغير مع العولمة',
+  'اكتب عن مشروع تنموي عربي ملهم يصلح نموذجاً',
+  'اكتب عن تأثير لغة الضاد على طريقة تفكير أهلها',
+  'اكتب عن رحالة عربي استكشف عوالم مجهولة',
+  'اكتب عن اكتشاف أثري حديث في وطن عربي',
+  'اكتب عن أزمة تعليمية وحلاً إبداعياً مقترحاً',
+  'اكتب عن فن عربي تقليدي يواجه الانقراض',
+  'اكتب عن تجربة تعايش بين ثقافات في مدينة عربية',
+]
+
 const topicSeeds: Record<GameType, string[]> = {
   'قراءة متحررة': [
-    'اكتب عن شخصية عربية نسائية رائدة لم تحظ بشهرة كافية',
-    'اكتب عن اختراع إسلامي غير معروف غيّر مجرى التاريخ',
-    'اكتب عن مدينة عربية منسية كانت مركز حضارة',
-    'اكتب عن ظاهرة طبيعية فريدة في العالم العربي',
-    'اكتب عن تقنية مستقبلية وكيف ستغير حياتنا',
-    'اكتب عن تحدّ بيئي يواجه منطقة عربية محددة وحلولاً مبتكرة',
-    'اكتب عن تقاطع العلم والإيمان في حضارة إسلامية',
-    'اكتب عن عادات اجتماعية عربية تتغير مع العولمة',
-    'اكتب عن مشروع تنموي عربي ملهم يصلح نموذجاً',
-    'اكتب عن تأثير لغة الضاد على طريقة تفكير أهلها',
-    'اكتب عن رحالة عربي استكشف عوالم مجهولة',
-    'اكتب عن اكتشاف أثري حديث في وطن عربي',
-    'اكتب عن أزمة تعليمية وحلاً إبداعياً مقترحاً',
-    'اكتب عن فن عربي تقليدي يواجه الانقراض',
-    'اكتب عن تجربة تعايش بين ثقافات في مدينة عربية',
+    ...topicSeedsScientific,
+    ...topicSeedsLiterary,
   ],
   'نصوص': [
     'اكتب نصاً أدبياً عن ذاكرة المكان وأثره في النفس',
@@ -541,6 +574,7 @@ function isValidGameContent(obj: unknown): obj is GameContent {
 function buildPrompt(
   gameType: GameType,
   difficulty: Difficulty,
+  passageType?: PassageType,
   searchTitle?: string,
   searchSnippet?: string,
   previousTopics?: string[],
@@ -568,6 +602,16 @@ function buildPrompt(
     gameType === 'قراءة متحررة'
       ? 'ركّز على أسئلة الفهم والاستنتاج واستيعاب المقروء والتحليل الفكري'
       : 'ركّز على أسئلة البلاغة والتحليل الأدبي والتذوق والصور البيانية والمحسنات البديعية والأساليب الإنشائية'
+
+  // Passage type instructions for قراءة متحررة
+  const passageTypeInstruction =
+    gameType === 'قراءة متحررة' && passageType
+      ? passageType === 'علمي'
+        ? '\n\n⚠️ نوع القطعة: علمي - يجب أن يكون النص ذا طابع علمي وتحليلي. اكتب عن مواضيع علمية كالاكتشافات والتكنولوجيا والطب والفيزياء والفلك والطبيعة والبحوث العلمية. استخدم لغة علمية دقيقة وأسلوباً تحليلياً موضوعياً.'
+        : passageType === 'أدبي'
+          ? '\n\n⚠️ نوع القطعة: أدبي - يجب أن يكون النص ذا طابع أدبي وتعبيري. اكتب نصاً بلغة أدبية غنية بالصور البيانية والمشاعر والتأملات. استخدم أسلوباً سردياً تعبوياً يمزج بين الخيال والواقع بلغة عربية فصحى جزلة.'
+          : '\n\n⚠️ نوع القطعة: عشوائي - يمكنك الكتابة بأي أسلوب سواء علمي أو أدبي أو مزيج بينهما. فاجئنا بموضوع وأسلوب غير متوقعين.'
+      : ''
 
   const searchInspiration =
     searchTitle || searchSnippet
@@ -604,6 +648,7 @@ ${searchInspiration}${seedInstruction}${varietyConstraint}
 
 نوع اللعبة: ${gameType}
 مستوى الصعوبة: ${difficulty}
+${passageTypeInstruction}
 
 القواعد:
 1. اكتب نصاً عربياً أصلياً طويلاً وغنياً بالمعلومات والتفاصيل. يجب أن يكون النص: ${wordCounts[difficulty]}
@@ -645,7 +690,8 @@ async function fetchGameContent(
   difficulty: Difficulty,
   roomCode: string,
   playerNames?: string[],
-  previousTopics?: string[]
+  previousTopics?: string[],
+  passageType?: PassageType
 ): Promise<GameContent> {
   // Step 1: Emit "checking"
   io.to(roomCode).emit('content-progress', { step: 'checking', text: 'جاري فحص المحتوى السابق للاعبين...' })
@@ -671,7 +717,11 @@ async function fetchGameContent(
       let topicSeed: string | undefined
 
       try {
-        const queryPool = searchQueriesPool[gameType]
+        // Select search query pool based on passageType when gameType is قراءة متحررة
+        let queryPool = searchQueriesPool[gameType]
+        if (gameType === 'قراءة متحررة' && passageType && passageType !== 'عشوائي') {
+          queryPool = passageType === 'علمي' ? searchQueriesPoolScientific : searchQueriesPoolLiterary
+        }
         let availableQueries = queryPool.filter(q => !usedQueries.has(q))
         if (availableQueries.length === 0) {
           usedQueries.clear()
@@ -680,7 +730,11 @@ async function fetchGameContent(
         const randomQuery = availableQueries[Math.floor(Math.random() * availableQueries.length)]
         usedQueries.add(randomQuery)
 
-        const seeds = topicSeeds[gameType]
+        // Select topic seed based on passageType when gameType is قراءة متحررة
+        let seeds = topicSeeds[gameType]
+        if (gameType === 'قراءة متحررة' && passageType && passageType !== 'عشوائي') {
+          seeds = passageType === 'علمي' ? topicSeedsScientific : topicSeedsLiterary
+        }
         topicSeed = seeds[Math.floor(Math.random() * seeds.length)]
 
         // Use DuckDuckGo search instead of z-ai-web-dev-sdk
@@ -696,12 +750,15 @@ async function fetchGameContent(
       }
 
       if (!topicSeed) {
-        const seeds = topicSeeds[gameType]
+        let seeds = topicSeeds[gameType]
+        if (gameType === 'قراءة متحررة' && passageType && passageType !== 'عشوائي') {
+          seeds = passageType === 'علمي' ? topicSeedsScientific : topicSeedsLiterary
+        }
         topicSeed = seeds[Math.floor(Math.random() * seeds.length)]
       }
 
       // Step 2: Generate with LLM via OpenRouter
-      const prompt = buildPrompt(gameType, difficulty, searchTitle, searchSnippet, previousTopics, topicSeed)
+      const prompt = buildPrompt(gameType, difficulty, passageType, searchTitle, searchSnippet, previousTopics, topicSeed)
 
       const responseText = await callOpenRouterLLM(
         [
@@ -1466,7 +1523,8 @@ io.on('connection', (socket: Socket) => {
           room.settings.difficulty,
           roomCode,
           playerNames,
-          [] // No previous topics for first round
+          [], // No previous topics for first round
+          room.settings.passageType
         )
         room.rounds.push({
           roundNumber: 0,
@@ -1612,6 +1670,10 @@ io.on('connection', (socket: Socket) => {
       if (newSettings.playerMode !== undefined && newSettings.playerMode !== room.settings.playerMode) {
         room.settings.playerMode = newSettings.playerMode
         changes.push('playerMode')
+      }
+      if (newSettings.passageType !== undefined && newSettings.passageType !== room.settings.passageType) {
+        room.settings.passageType = newSettings.passageType
+        changes.push('passageType')
       }
 
       if (changes.length === 0) {
@@ -1850,7 +1912,7 @@ async function generateRemainingRounds(roomCode: string, totalRounds: number, ga
         .filter(r => r.content?.title)
         .map(r => r.content.title)
 
-      const content = await fetchGameContent(gameType, difficulty, roomCode, playerNames, previousTopics)
+      const content = await fetchGameContent(gameType, difficulty, roomCode, playerNames, previousTopics, room?.settings?.passageType)
       if (!rooms.has(roomCode)) return // Room was deleted
 
       room.rounds.push({

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore } from '@/lib/game-store'
+import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType } from '@/lib/game-store'
 import { audioEngine } from '@/lib/audio-engine'
 import { useAudioStore } from '@/lib/audio-store'
 import { Button } from '@/components/ui/button'
@@ -54,6 +54,9 @@ import {
   Volume1,
   Share2,
   X,
+  Microscope,
+  PenTool,
+  Shuffle,
   ShieldAlert,
   AlertTriangle,
 } from 'lucide-react'
@@ -1159,6 +1162,45 @@ function CreateGameScreen() {
               </div>
             </div>
 
+            {/* Passage Type - Only for القراءة المتحررة */}
+            <AnimatePresence>
+              {gameSettings.gameType === 'قراءة متحررة' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, y: -10 }}
+                  animate={{ opacity: 1, height: 'auto', y: 0 }}
+                  exit={{ opacity: 0, height: 0, y: -10 }}
+                  transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-3 pb-1">
+                    <Label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                      نوع القطعة
+                    </Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { value: 'علمي' as PassageType, label: 'علمي', icon: Microscope, desc: 'اكتشافات وتكنولوجيا', color: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400', glow: 'shadow-cyan-500/10' },
+                        { value: 'أدبي' as PassageType, label: 'أدبي', icon: PenTool, desc: 'نصوص تعبيرية', color: 'border-purple-500/40 bg-purple-500/10 text-purple-400', glow: 'shadow-purple-500/10' },
+                        { value: 'عشوائي' as PassageType, label: 'عشوائي', icon: Shuffle, desc: 'مزيج متنوع', color: 'border-amber-500/40 bg-amber-500/10 text-amber-400', glow: 'shadow-amber-500/10' },
+                      ]).map((pt) => (
+                        <motion.button
+                          key={pt.value}
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
+                          onClick={() => setGameSettings({ passageType: pt.value })}
+                          className={`p-3 rounded-xl border text-center transition-all ${gameSettings.passageType === pt.value ? pt.color + ' shadow-lg ' + pt.glow : 'border-white/10 bg-white/5 hover:border-white/20'}`}
+                        >
+                          <pt.icon className={`w-5 h-5 mx-auto mb-1.5 ${gameSettings.passageType === pt.value ? '' : 'text-slate-500'}`} />
+                          <div className="font-bold text-xs">{pt.label}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">{pt.desc}</div>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Difficulty */}
             <div className="space-y-3">
               <Label className="text-sm font-semibold text-slate-300">مستوى الصعوبة</Label>
@@ -1314,7 +1356,7 @@ function JoinGameScreen() {
     const onShowPasswordDialog = (e: Event) => {
       const detail = (e as CustomEvent).detail
       if (detail?.roomCode) {
-        setSelectedRoom({ roomCode: detail.roomCode, roomType: 'خاصة', hasPassword: true, hostName: '', playerCount: 0, maxPlayers: 0, settings: { gameType: 'قراءة متحررة', difficulty: 'متوسط', timePerRound: 15, numberOfRounds: 3, maxPlayers: 10 }, status: 'waiting' })
+        setSelectedRoom({ roomCode: detail.roomCode, roomType: 'خاصة', hasPassword: true, hostName: '', playerCount: 0, maxPlayers: 0, settings: { gameType: 'قراءة متحررة', difficulty: 'متوسط', timePerRound: 15, numberOfRounds: 3, maxPlayers: 10, playerMode: 'fixed', passageType: 'عشوائي' }, status: 'waiting' })
         setDialogPassword('')
         setShowPasswordDialog(true)
       }
@@ -1443,7 +1485,7 @@ function JoinGameScreen() {
                           <div className="flex flex-wrap gap-2 text-xs text-slate-400">
                             <span className="flex items-center gap-1"><Swords className="w-3 h-3" />{room.hostName}</span>
                             <span className="flex items-center gap-1"><Users className="w-3 h-3" />{room.maxPlayers === 0 ? `${room.playerCount} مفتوح` : `${room.playerCount}/${room.maxPlayers}`}</span>
-                            <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{room.settings?.gameType}</span>
+                            <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{room.settings?.gameType}{room.settings?.gameType === 'قراءة متحررة' && room.settings?.passageType ? ` • ${room.settings.passageType}` : ''}</span>
                             <span className="flex items-center gap-1"><Star className="w-3 h-3" />{room.settings?.difficulty}</span>
                             <span className="flex items-center gap-1"><RotateCcw className="w-3 h-3" />{room.settings?.numberOfRounds} جولات</span>
                           </div>
@@ -1610,6 +1652,39 @@ function EditSettingsModal({
                 ))}
               </div>
             </div>
+
+            {/* Passage Type - Only for القراءة المتحررة */}
+            <AnimatePresence>
+              {localSettings.gameType === 'قراءة متحررة' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-2 pb-1">
+                    <Label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      نوع القطعة
+                    </Label>
+                    <div className="flex gap-2">
+                      {([
+                        { value: 'علمي' as PassageType, label: 'علمي', icon: Microscope, color: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400' },
+                        { value: 'أدبي' as PassageType, label: 'أدبي', icon: PenTool, color: 'border-purple-500/40 bg-purple-500/10 text-purple-400' },
+                        { value: 'عشوائي' as PassageType, label: 'عشوائي', icon: Shuffle, color: 'border-amber-500/40 bg-amber-500/10 text-amber-400' },
+                      ]).map((pt) => (
+                        <Button key={pt.value} size="sm"
+                          className={`flex-1 rounded-lg ${localSettings.passageType === pt.value ? pt.color + ' shadow-lg' : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'}`}
+                          onClick={() => setLocalSettings({ ...localSettings, passageType: pt.value })}>
+                          <pt.icon className="w-3.5 h-3.5 ml-1" />{pt.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Time per round */}
             <div className="space-y-2">
@@ -2003,6 +2078,7 @@ function LobbyScreen() {
           numberOfRounds: 'عدد الجولات',
           maxPlayers: 'عدد اللاعبين',
           playerMode: 'نوع الساحة',
+          passageType: 'نوع القطعة',
         }
         const labels = data.changes.map(c => changeLabels[c] || c).join('، ')
         toast({ title: 'تم تحديث الإعدادات', description: `${data.updatedBy} غيّر: ${labels}` })
@@ -2174,6 +2250,7 @@ function LobbyScreen() {
             <div className="flex flex-wrap gap-2 justify-center">
               {[
                 { icon: BookOpen, text: gameSettings.gameType },
+                ...(gameSettings.gameType === 'قراءة متحررة' && gameSettings.passageType ? [{ icon: gameSettings.passageType === 'علمي' ? Microscope : gameSettings.passageType === 'أدبي' ? PenTool : Shuffle, text: gameSettings.passageType }] : []),
                 { icon: Star, text: gameSettings.difficulty },
                 { icon: Clock, text: `${gameSettings.timePerRound} دقيقة` },
                 { icon: RotateCcw, text: `${gameSettings.numberOfRounds} جولات` },
@@ -2469,7 +2546,7 @@ function RoundTransitionScreen() {
       setGameSettings(data.settings)
       if (data.changes.length > 0) {
         const changeLabels: Record<string, string> = {
-          difficulty: 'الصعوبة', timePerRound: 'وقت الجولة', numberOfRounds: 'عدد الجولات',
+          difficulty: 'الصعوبة', timePerRound: 'وقت الجولة', numberOfRounds: 'عدد الجولات', passageType: 'نوع القطعة',
         }
         const labels = data.changes.map(c => changeLabels[c] || c).join('، ')
         toast({ title: 'تم تحديث الإعدادات', description: `${data.updatedBy} غيّر: ${labels}` })

@@ -4,6 +4,7 @@ export type GameType = 'قراءة متحررة' | 'نصوص'
 export type Difficulty = 'سهل' | 'متوسط' | 'صعب'
 export type RoomType = 'عامة' | 'خاصة'
 export type PlayerMode = 'fixed' | 'open'
+export type PassageType = 'علمي' | 'أدبي' | 'عشوائي'
 export type Screen = 'home' | 'create' | 'join' | 'lobby' | 'loading' | 'game' | 'results' | 'round-transition'
 
 export interface Player {
@@ -38,6 +39,7 @@ export interface GameSettings {
   numberOfRounds: number
   maxPlayers: number        // 0 means "open" (unlimited)
   playerMode: PlayerMode    // 'fixed' = specific count, 'open' = host decides when to start
+  passageType: PassageType  // Only relevant when gameType === 'قراءة متحررة'
 }
 
 export interface RoomInfo {
@@ -232,6 +234,7 @@ const defaultSettings: GameSettings = {
   numberOfRounds: 3,
   maxPlayers: 10,
   playerMode: 'fixed',
+  passageType: 'عشوائي',
 }
 
 // Validate rounds rule: 2 players can't play 2 rounds, 3 players can't play 3 rounds
@@ -456,6 +459,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       wasEarlyEnd: false,
       completedRounds: 0,
       earlyEndProcessing: false,
+      passageType: 'عشوائي',
     })
     clearSessionStorage()
   },
