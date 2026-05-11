@@ -52,11 +52,14 @@ import {
   Volume2,
   VolumeX,
   Volume1,
+  Share2,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
 import { useGuestStore, NameEntryModal, EditNameModal, PlayerNameBadge } from '@/components/guest-identity'
+import { ShareModal } from '@/components/share-modal'
+import { parseJoinUrl, cleanJoinParams } from '@/lib/share-utils'
 
 // ============================================
 // GLOBAL SOCKET MANAGEMENT
@@ -1207,8 +1210,9 @@ function CreateGameScreen() {
 // ============================================
 function JoinGameScreen() {
   const guest = useGuestStore((s) => s.guest)
+  const storedRoomCode = useGameStore((s) => s.roomCode)
   const [name, setName] = useState('')
-  const [code, setCode] = useState('')
+  const [code, setCode] = useState(storedRoomCode || '')
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const [selectedRoom, setSelectedRoom] = useState<RoomInfo | null>(null)
   const [dialogPassword, setDialogPassword] = useState('')
@@ -1452,6 +1456,7 @@ function LobbyScreen() {
   const maxPlayers = useGameStore((s) => s.gameSettings.maxPlayers)
   const playerName = useGameStore((s) => s.playerName)
   const [copied, setCopied] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [speakingParticipants, setSpeakingParticipants] = useState<string[]>([])
   const [unreadChatCount, setUnreadChatCount] = useState(0)
@@ -1564,8 +1569,11 @@ function LobbyScreen() {
                 <Button size="icon" variant="outline" onClick={copyCode} className="rounded-xl border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 h-12 w-12">
                   {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
                 </Button>
+                <Button size="icon" variant="outline" onClick={() => setShowShareModal(true)} className="rounded-xl border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 h-12 w-12">
+                  <Share2 className="w-5 h-5" />
+                </Button>
               </div>
-              <p className="text-sm text-slate-500 mt-2">شارك الكود مع المقاتلين</p>
+              <p className="text-sm text-slate-500 mt-2">شارك الكود أو الرابط مع المقاتلين</p>
             </div>
           </div>
 
@@ -1687,6 +1695,9 @@ function LobbyScreen() {
           </div>
         </div>
       </motion.div>
+
+      {/* Share Modal */}
+      <ShareModal open={showShareModal} onClose={() => setShowShareModal(false)} />
     </div>
   )
 }
@@ -2563,6 +2574,22 @@ export default function Home() {
       }
     }
   }, [splashComplete, restoreState, rejoinRoom])
+
+  // Handle deep link invites (?join=ROOMCODE)
+  const setRoomCode = useGameStore((s) => s.setRoomCode)
+  const setScreen = useGameStore((s) => s.setScreen)
+  useEffect(() => {
+    if (splashComplete && guest) {
+      const invite = parseJoinUrl()
+      if (invite && invite.autoJoin) {
+        // Pre-fill room code and navigate to join screen
+        setRoomCode(invite.roomCode)
+        setScreen('join')
+        // Clean URL params to avoid re-processing on refresh
+        cleanJoinParams()
+      }
+    }
+  }, [splashComplete, guest, setRoomCode, setScreen])
 
   // Sync game store playerName with guest identity
   const setPlayerName = useGameStore((s) => s.setPlayerName)
