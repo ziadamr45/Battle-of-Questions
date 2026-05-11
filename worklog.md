@@ -322,3 +322,38 @@ Stage Summary:
 Files Modified:
 1. src/app/globals.css - 15+ new arena CSS animations/classes
 2. src/app/page.tsx - BattleBackground and HomeScreen components rewritten
+
+---
+Task ID: 14
+Agent: Main
+Task: Rebalance difficulty scaling for القراءة المتحررة mode (generate-content route)
+
+Work Log:
+- Updated word counts in generate-content/route.ts:
+  - سهل: 250-350 → 300-450 كلمة
+  - متوسط: 350-500 → 450-650 كلمة
+  - صعب: 450-650 → 600-850 كلمة
+- Enhanced difficulty-specific writing instructions:
+  - سهل: Added "smooth and simple but rich with meanings and clear examples" + "use short paragraphs with concrete examples"
+  - متوسط: Added "deep literary style with multiple meaning layers — use rich language, imagery, connected arguments" + "write like deep intellectual essays" + "present multiple viewpoints before concluding"
+  - صعب: Added "dense complex intellectual writing — use overlapping concepts, apparent contradictions, philosophical depth" + "write like prestigious intellectual essays: complex ideas, interwoven concepts, paradoxes, open questions" + "use contrast, paradox, symbolism, and representation intensively"
+- Updated main prompt:
+  - Changed system identity from "معلم خبير" (expert teacher) to "كاتب ومفكر عربي متمكن" (skilled Arab writer/thinker)
+  - Added "golden rule": text should read like a real essay by great writers, not a test text
+  - Added "writing quality" rule: text must be cohesive, every paragraph connects to the next
+  - Added "do not abbreviate" emphasis: write every paragraph fully and in detail
+- Updated system message in LLM call:
+  - From teacher identity to writer/thinker identity
+  - Added "written in natural human style, not machine-like"
+- Increased LLM max_tokens from 4096 to 8192 in openrouter.ts for longer passages
+- Improved passage readability in page.tsx:
+  - Paragraph spacing: space-y-4 → space-y-5
+  - Line height: leading-[1.9] → leading-[2.1]
+  - Added text-justify for justified text alignment
+- Lint check passes with zero errors
+- Committed and pushed to GitHub
+
+Files Modified:
+1. src/app/api/generate-content/route.ts - Word counts, difficulty instructions, prompt quality
+2. src/lib/openrouter.ts - max_tokens 4096 → 8192
+3. src/app/page.tsx - Passage readability improvements
