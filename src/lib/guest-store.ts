@@ -37,7 +37,8 @@ interface GuestState {
 function setCookie(name: string, value: string, days: number = 365) {
   try {
     const expires = new Date(Date.now() + days * 864e5).toUTCString()
-    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires};path=/;SameSite=Lax`
+    const secure = typeof window !== 'undefined' && window.location.protocol === 'https:' ? ';Secure' : ''
+    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires};path=/;SameSite=Lax${secure}`
   } catch {
     // Ignore
   }

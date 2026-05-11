@@ -28,8 +28,10 @@ export function NameEntryModal() {
     setIsSubmitting(true)
     setPhase('entering')
 
+    const avatarColor = getRandomAvatarColor()
+    let guestSaved = false
+
     try {
-      const avatarColor = getRandomAvatarColor()
       const res = await fetch('/api/guest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,18 +42,27 @@ export function NameEntryModal() {
         const guest = await res.json()
         saveGuestId(guest.id)
         setGuest(guest)
-        // Small delay for the cinematic "entering" animation
-        setTimeout(() => {
-          setShowNameModal(false)
-        }, 1200)
-      } else {
-        setIsSubmitting(false)
-        setPhase('input')
+        guestSaved = true
       }
     } catch {
-      setIsSubmitting(false)
-      setPhase('input')
+      // API unavailable (e.g., Vercel serverless without SQLite)
     }
+
+    // Fallback: create a local-only guest identity if API failed
+    if (!guestSaved) {
+      const localGuest = {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        displayName: finalName,
+        avatarColor,
+      }
+      saveGuestId(localGuest.id)
+      setGuest(localGuest)
+    }
+
+    // Small delay for the cinematic "entering" animation
+    setTimeout(() => {
+      setShowNameModal(false)
+    }, 1200)
   }, [name, suggestedNames, setGuest, saveGuestId, setShowNameModal])
 
   const handleRandomName = useCallback(() => {

@@ -1943,6 +1943,26 @@ function LobbyScreen() {
 
   // Validation for start button (round-player conflict)
   const activePlayers = players.length
+
+  // Dynamic invite system: can invite if room is not full
+  // Open rooms: always can invite (no capacity limit)
+  // Fixed rooms: can invite only when current players < maxPlayers
+  const canInvite = isOpen || activePlayers < maxPlayers
+
+  // Notify when room becomes full (toast, no interruption)
+  const prevCanInviteRef = useRef(true)
+  useEffect(() => {
+    if (prevCanInviteRef.current && !canInvite) {
+      // Room just became full
+      toast({ title: 'الساحة اكتملت', description: 'تم إيقاف الدعوات مؤقتًا' })
+    }
+    if (!prevCanInviteRef.current && canInvite) {
+      // Room is no longer full (player left/disconnected)
+      toast({ title: 'باب الساحة فتح!', description: 'يمكنك دعوة مقاتلين جدد' })
+    }
+    prevCanInviteRef.current = canInvite
+  }, [canInvite, toast])
+
   const startDisabled = activePlayers < 2 ||
     (activePlayers === 2 && gameSettings.numberOfRounds === 2) ||
     (activePlayers === 3 && gameSettings.numberOfRounds === 3)
@@ -2085,14 +2105,67 @@ function LobbyScreen() {
                 <div className="px-8 py-3 rounded-xl bg-black/40 border border-red-500/20">
                   <span className="font-mono text-3xl tracking-[0.3em] font-black text-red-400 text-glow-red">{roomCode}</span>
                 </div>
-                <Button size="icon" variant="outline" onClick={copyCode} className="rounded-xl border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 h-12 w-12">
-                  {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
-                </Button>
-                <Button size="icon" variant="outline" onClick={() => setShowShareModal(true)} className="rounded-xl border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 h-12 w-12">
-                  <Share2 className="w-5 h-5" />
-                </Button>
+                <AnimatePresence mode="wait">
+                  {canInvite && (
+                    <motion.div
+                      key="copy-btn"
+                      initial={{ opacity: 0, scale: 0.8, width: 0 }}
+                      animate={{ opacity: 1, scale: 1, width: 'auto' }}
+                      exit={{ opacity: 0, scale: 0.8, width: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      className="overflow-hidden"
+                    >
+                      <Button size="icon" variant="outline" onClick={copyCode} className="rounded-xl border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 h-12 w-12">
+                        {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
+                      </Button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <AnimatePresence mode="wait">
+                  {canInvite && (
+                    <motion.div
+                      key="share-btn"
+                      initial={{ opacity: 0, scale: 0.8, width: 0 }}
+                      animate={{ opacity: 1, scale: 1, width: 'auto' }}
+                      exit={{ opacity: 0, scale: 0.8, width: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeInOut', delay: 0.05 }}
+                      className="overflow-hidden"
+                    >
+                      <Button size="icon" variant="outline" onClick={() => setShowShareModal(true)} className="rounded-xl border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 h-12 w-12">
+                        <Share2 className="w-5 h-5" />
+                      </Button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-              <p className="text-sm text-slate-500 mt-2">شارك الكود أو الرابط مع المقاتلين</p>
+              {/* Dynamic invite status message */}
+              <AnimatePresence mode="wait">
+                {canInvite ? (
+                  <motion.p
+                    key="invite-open"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 5 }}
+                    className="text-sm text-slate-500 mt-2"
+                  >
+                    شارك الكود أو الرابط مع المقاتلين
+                  </motion.p>
+                ) : (
+                  <motion.div
+                    key="invite-closed"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 5 }}
+                    className="mt-2 flex items-center justify-center gap-2"
+                  >
+                    <Badge className="bg-green-500/10 text-green-400 border border-green-500/30 text-xs">
+                      <Users className="w-3 h-3 ml-1" />
+                      الساحة اكتملت
+                    </Badge>
+                    <span className="text-xs text-slate-500">تم إيقاف الدعوات مؤقتًا</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
@@ -3173,9 +3246,16 @@ export default function Home() {
           setGuest({ id: data.id, displayName: data.displayName, avatarColor: data.avatarColor })
         })
         .catch(() => {
-          // Guest ID in cookie is stale, show name entry
-          setShowNameModal(true)
-          setIsLoading(false)
+          // API failed or guest not found — if it's a local guest ID, restore from cookie
+          if (guestId.startsWith('local-')) {
+            // Local guest — we can't fully restore but mark loading done
+            // The name modal will show again if needed
+            setIsLoading(false)
+          } else {
+            // Database guest not found — show name entry
+            setShowNameModal(true)
+            setIsLoading(false)
+          }
         })
     } else {
       // No guest ID — show name entry modal after splash
