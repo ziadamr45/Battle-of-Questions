@@ -140,7 +140,8 @@ interface GameSettings {
   difficulty: Difficulty
   timePerRound: number       // minutes per round (5, 7, 10, 15, 20, 25)
   numberOfRounds: number     // total rounds to play (max 20)
-  maxPlayers: number         // max players (max 20)
+  maxPlayers: number         // max players (max 20, 0 = open/unlimited)
+  playerMode: 'fixed' | 'open'
 }
 
 interface Player {
@@ -211,6 +212,7 @@ interface RoomInfo {
   hostName: string
   playerCount: number
   maxPlayers: number
+  playerMode: 'fixed' | 'open'
   settings: GameSettings
   status: 'waiting' | 'playing' | 'finished'
 }
@@ -367,6 +369,7 @@ function getPublicRoomsList(): RoomInfo[] {
         hostName: room.hostName,
         playerCount: activePlayerCount,
         maxPlayers: room.settings.maxPlayers,
+        playerMode: room.settings.playerMode,
         settings: room.settings,
         status: room.status,
       })
@@ -1106,9 +1109,12 @@ io.on('connection', (socket: Socket) => {
       }
 
       // Validate rounds rule: 2 players can't play 2 rounds, 3 players can't play 3 rounds
-      if ((settings.maxPlayers === 2 && settings.numberOfRounds === 2) || (settings.maxPlayers === 3 && settings.numberOfRounds === 3)) {
-        socket.emit('game-error', { message: 'عدد الجولات لا يمكن أن يساوي عدد اللاعبين عند 2 أو 3 لاعبين' })
-        return
+      // Only validate for fixed mode (open mode will be validated at start time with actual player count)
+      if (settings.playerMode !== 'open' && settings.maxPlayers !== 0) {
+        if ((settings.maxPlayers === 2 && settings.numberOfRounds === 2) || (settings.maxPlayers === 3 && settings.numberOfRounds === 3)) {
+          socket.emit('game-error', { message: 'عدد الجولات لا يمكن أن يساوي عدد اللاعبين عند 2 أو 3 لاعبين' })
+          return
+        }
       }
 
       // Cap rounds at 20
@@ -1201,7 +1207,7 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
-      if (room.players.size >= room.settings.maxPlayers) {
+      if (room.settings.maxPlayers !== 0 && room.players.size >= room.settings.maxPlayers) {
         socket.emit('game-error', { message: 'الغرفة ممتلئة' })
         return
       }
@@ -1297,6 +1303,17 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
+      // Validate round/player conflict rules with current player count
+      const currentActivePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
+      if (currentActivePlayers === 2 && room.settings.numberOfRounds === 2) {
+        socket.emit('game-error', { message: 'لاعبين ما يلعبوش جولتين' })
+        return
+      }
+      if (currentActivePlayers === 3 && room.settings.numberOfRounds === 3) {
+        socket.emit('game-error', { message: 'ثلاث لاعبين ما يلعبوش ثلاث جولات' })
+        return
+      }
+
       // Update room status
       room.status = 'playing'
       room.currentRound = 0
@@ -1382,6 +1399,161 @@ io.on('connection', (socket: Socket) => {
         })
         broadcastPublicRooms()
       }
+    }
+  )
+
+  // ── update-settings ──────────────────────────────────────────────────────
+  socket.on(
+    'update-settings',
+    (data: {
+      settings: Partial<GameSettings>
+      roomCode: string
+    }) => {
+      const { settings: newSettings, roomCode } = data
+      const room = rooms.get(roomCode?.toUpperCase())
+
+      if (!room) {
+        socket.emit('game-error', { message: 'الغرفة غير موجودة' })
+        return
+      }
+
+      // 1. Only host can update settings
+      if (room.hostId !== socket.id) {
+        socket.emit('game-error', { message: 'فقط المضيف يمكنه تعديل الإعدادات' })
+        return
+      }
+
+      // 2. Room must be in 'waiting' or 'playing' status
+      if (room.status !== 'waiting' && room.status !== 'playing') {
+        socket.emit('game-error', { message: 'لا يمكن تعديل الإعدادات في هذه الحالة' })
+        return
+      }
+
+      const changes: string[] = []
+      const isPlaying = room.status === 'playing'
+
+      // 3. If room is 'playing', only allow changes to: difficulty, timePerRound, numberOfRounds
+      if (isPlaying) {
+        const forbiddenMidGame = ['gameType', 'maxPlayers', 'playerMode'] as const
+        for (const key of forbiddenMidGame) {
+          if (key in newSettings) {
+            socket.emit('game-error', { message: `لا يمكن تغيير ${key === 'gameType' ? 'نوع اللعبة' : key === 'maxPlayers' ? 'عدد اللاعبين' : 'وضع اللاعبين'} أثناء اللعب` })
+            return
+          }
+        }
+      }
+
+      // 5/6. Validate rounds vs players before applying
+      const effectiveMaxPlayers = newSettings.maxPlayers !== undefined ? newSettings.maxPlayers : room.settings.maxPlayers
+      const effectivePlayerMode = newSettings.playerMode !== undefined ? newSettings.playerMode : room.settings.playerMode
+      const effectiveNumberOfRounds = newSettings.numberOfRounds !== undefined ? newSettings.numberOfRounds : room.settings.numberOfRounds
+
+      if (newSettings.numberOfRounds !== undefined) {
+        if (effectivePlayerMode === 'open' || effectiveMaxPlayers === 0) {
+          // Open mode: validate rounds vs current player count
+          const currentActivePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
+          if (currentActivePlayers === 2 && effectiveNumberOfRounds === 2) {
+            socket.emit('game-error', { message: 'لاعبين ما يلعبوش جولتين' })
+            return
+          }
+          if (currentActivePlayers === 3 && effectiveNumberOfRounds === 3) {
+            socket.emit('game-error', { message: 'ثلاث لاعبين ما يلعبوش ثلاث جولات' })
+            return
+          }
+        } else {
+          // Fixed mode: validate rounds vs maxPlayers
+          if ((effectiveMaxPlayers === 2 && effectiveNumberOfRounds === 2) || (effectiveMaxPlayers === 3 && effectiveNumberOfRounds === 3)) {
+            socket.emit('game-error', { message: 'عدد الجولات لا يمكن أن يساوي عدد اللاعبين عند 2 أو 3 لاعبين' })
+            return
+          }
+        }
+      }
+
+      // If changing playerMode to open, also validate existing rounds vs current players
+      if (newSettings.playerMode === 'open' || (newSettings.maxPlayers === 0 && effectivePlayerMode === 'open')) {
+        const currentActivePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
+        if (currentActivePlayers === 2 && effectiveNumberOfRounds === 2) {
+          socket.emit('game-error', { message: 'لاعبين ما يلعبوش جولتين' })
+          return
+        }
+        if (currentActivePlayers === 3 && effectiveNumberOfRounds === 3) {
+          socket.emit('game-error', { message: 'ثلاث لاعبين ما يلعبوش ثلاث جولات' })
+          return
+        }
+      }
+
+      // 7. Apply changes to room.settings
+      if (newSettings.gameType !== undefined && newSettings.gameType !== room.settings.gameType) {
+        room.settings.gameType = newSettings.gameType
+        changes.push('gameType')
+      }
+      if (newSettings.difficulty !== undefined && newSettings.difficulty !== room.settings.difficulty) {
+        room.settings.difficulty = newSettings.difficulty
+        changes.push('difficulty')
+      }
+      if (newSettings.timePerRound !== undefined && newSettings.timePerRound !== room.settings.timePerRound) {
+        room.settings.timePerRound = newSettings.timePerRound
+        changes.push('timePerRound')
+      }
+      if (newSettings.numberOfRounds !== undefined && newSettings.numberOfRounds !== room.settings.numberOfRounds) {
+        room.settings.numberOfRounds = newSettings.numberOfRounds
+        changes.push('numberOfRounds')
+      }
+      if (newSettings.maxPlayers !== undefined && newSettings.maxPlayers !== room.settings.maxPlayers) {
+        room.settings.maxPlayers = newSettings.maxPlayers
+        changes.push('maxPlayers')
+      }
+      if (newSettings.playerMode !== undefined && newSettings.playerMode !== room.settings.playerMode) {
+        room.settings.playerMode = newSettings.playerMode
+        changes.push('playerMode')
+      }
+
+      if (changes.length === 0) {
+        socket.emit('game-error', { message: 'لا توجد تغييرات لتطبيقها' })
+        return
+      }
+
+      // 8. If timePerRound changed during a game, update roundTimerSeconds for next round
+      if (isPlaying && changes.includes('timePerRound')) {
+        room.roundTimerSeconds = room.settings.timePerRound * 60
+      }
+
+      // 9. If numberOfRounds reduced during a game, ensure currentRound < new numberOfRounds
+      if (isPlaying && changes.includes('numberOfRounds')) {
+        if (room.currentRound >= room.settings.numberOfRounds) {
+          // Auto-end the game since current round exceeds new total rounds
+          console.log(`[update-settings] numberOfRounds reduced below currentRound+1 in room ${room.roomCode}. Auto-ending game.`)
+          // Finish the current round and end the game
+          room.settings.numberOfRounds = room.currentRound + 1 // Set to current+1 so handleRoundEnd detects it as last round
+        }
+      }
+
+      // When switching to open mode, set maxPlayers to 0
+      if (changes.includes('playerMode') && room.settings.playerMode === 'open') {
+        room.settings.maxPlayers = 0
+      }
+      // When switching from open to fixed, set maxPlayers to current player count or 2 (whichever is greater)
+      if (changes.includes('playerMode') && room.settings.playerMode === 'fixed' && room.settings.maxPlayers === 0) {
+        const currentActivePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
+        room.settings.maxPlayers = Math.max(2, currentActivePlayers)
+        if (!changes.includes('maxPlayers')) {
+          changes.push('maxPlayers')
+        }
+      }
+
+      // Log the settings update
+      console.log(`[update-settings] Room ${room.roomCode}: ${changes.join(', ')} updated by ${room.hostName}`)
+
+      // 10. Broadcast 'settings-updated' event to all players in room
+      const hostPlayer = room.players.get(socket.id)
+      io.to(room.roomCode).emit('settings-updated', {
+        settings: room.settings,
+        updatedBy: hostPlayer?.name || room.hostName,
+        changes,
+      })
+
+      // 11. Broadcast updated public rooms list
+      broadcastPublicRooms()
     }
   )
 

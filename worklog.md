@@ -1,7 +1,52 @@
 ---
-Task ID: 2
+Task ID: 3
 Agent: Main
-Task: Fix critical import error and verify share system
+Task: Add Open player mode + Dynamic settings editing for معركة الأسئلة
+
+Work Log:
+- Updated game-store.ts: Added PlayerMode type ('fixed'|'open'), playerMode to GameSettings, isOpenMode() helper
+- Updated game-service/index.ts via subagent:
+  - Added playerMode to GameSettings and RoomInfo interfaces
+  - create-game: Skip rounds/players validation for open mode (validated at start time instead)
+  - join-game: Skip room capacity check when maxPlayers === 0 (open mode)
+  - start-game: Added current player count validation for round conflicts (2p/2r, 3p/3r)
+  - Added update-settings socket event: host-only, validates by room status, tracks changes, broadcasts settings-updated
+  - Mid-game restrictions: can't change gameType/maxPlayers/playerMode during play
+  - Auto-adjusts numberOfRounds if reduced below current round during game
+- Updated CreateGameScreen in page.tsx:
+  - Added player mode toggle: "عدد محدد" (fixed) vs "مفتوح" (open)
+  - When open: maxPlayers=0, shows "الساحة مفتوحة" info box
+  - When fixed: shows the existing slider (2-20)
+  - Updated rounds hint text for open mode
+- Created EditSettingsModal component:
+  - Difficulty selector, time per round, number of rounds
+  - Player mode toggle (lobby only, not mid-game)
+  - Rounds/players conflict validation with Arabic messages
+  - isMidGame flag to restrict changes between rounds
+- Updated LobbyScreen:
+  - Added isOpen flag, startDisabled validation with Arabic error messages
+  - Added handleUpdateSettings callback that emits update-settings to server
+  - Added settings-updated listener with toast notifications
+  - Open mode UI: "الساحة مفتوحة" badge, dynamic player count, "المضيف يحدد وقت البداية"
+  - Added "تعديل" button for host next to "ابدأ المعركة"
+  - Updated settings badges to show open mode correctly
+- Updated RoundTransitionScreen:
+  - Added host "تعديل إعدادات الجولة القادمة" button
+  - Added EditSettingsModal with isMidGame=true
+  - Added settings-updated listener
+- Added settings-updated handler in global socket hook
+- Updated JoinGameScreen public rooms display: shows "مفتوح" for open rooms
+- Added X icon import from lucide-react
+- Fixed lint errors: setState-in-effect in EditSettingsModal using queueMicrotask
+- All lint checks pass, both services running on ports 3000 and 3003
+
+Stage Summary:
+- Open player mode: unlimited join until host starts, with proper round/player validation at start time
+- Dynamic settings editing: host can edit in lobby (all settings) and between rounds (difficulty, time, rounds)
+- Real-time sync: settings-updated event broadcasts to all players with toast notifications
+- Arabic validation messages for all error states
+- EditSettingsModal is reusable for both lobby and mid-game contexts
+- Everything working: Next.js (3000) + game-service (3003) both returning 200
 
 Work Log:
 - Fixed critical import error in page.tsx: useGuestStore was incorrectly imported from `@/components/guest-identity` instead of `@/lib/guest-store`

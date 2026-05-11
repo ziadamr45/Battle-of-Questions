@@ -3,6 +3,7 @@ import { create } from 'zustand'
 export type GameType = 'قراءة متحررة' | 'نصوص'
 export type Difficulty = 'سهل' | 'متوسط' | 'صعب'
 export type RoomType = 'عامة' | 'خاصة'
+export type PlayerMode = 'fixed' | 'open'
 export type Screen = 'home' | 'create' | 'join' | 'lobby' | 'loading' | 'game' | 'results' | 'round-transition'
 
 export interface Player {
@@ -35,7 +36,8 @@ export interface GameSettings {
   difficulty: Difficulty
   timePerRound: number      // minutes per round
   numberOfRounds: number
-  maxPlayers: number
+  maxPlayers: number        // 0 means "open" (unlimited)
+  playerMode: PlayerMode    // 'fixed' = specific count, 'open' = host decides when to start
 }
 
 export interface RoomInfo {
@@ -221,11 +223,17 @@ const defaultSettings: GameSettings = {
   timePerRound: 15,
   numberOfRounds: 3,
   maxPlayers: 10,
+  playerMode: 'fixed',
 }
 
 // Validate rounds rule: 2 players can't play 2 rounds, 3 players can't play 3 rounds
 export function isRoundsPlayerCountConflict(players: number, rounds: number): boolean {
   return (players === 2 && rounds === 2) || (players === 3 && rounds === 3)
+}
+
+// Helper to check if maxPlayers means "open" mode
+export function isOpenMode(maxPlayers: number, playerMode?: PlayerMode): boolean {
+  return playerMode === 'open' || maxPlayers === 0
 }
 
 // Helper to get the persistable state from the store
@@ -429,6 +437,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastRoundWinner: null,
       loadingStep: 'preparing',
       progressSteps: [],
+      playerMode: 'fixed',
     })
     clearSessionStorage()
   },

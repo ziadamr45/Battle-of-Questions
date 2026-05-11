@@ -53,6 +53,7 @@ import {
   VolumeX,
   Volume1,
   Share2,
+  X,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { BattleLogo } from '@/components/battle-logo'
@@ -320,6 +321,10 @@ function useGameSocket() {
     })
 
     socket.on('public-rooms-update', (data: { rooms: RoomInfo[] }) => { store.getState().setPublicRooms(data.rooms) })
+
+    socket.on('settings-updated', (data: { settings: GameSettings; updatedBy: string; changes: string[] }) => {
+      store.getState().setGameSettings(data.settings)
+    })
 
     socket.on('rejoin-success', (data: {
       roomCode: string; players: Player[]; settings: GameSettings; roomType: RoomType; hasPassword: boolean; isHost: boolean;
@@ -1172,25 +1177,59 @@ function CreateGameScreen() {
               <div className="flex justify-between text-xs text-slate-500">
                 <span>1</span>
                 <span className="text-amber-400/80">
-                  {maxPlayers === 2 ? 'لاعبين ما يلعبوش جولتين' : maxPlayers === 3 ? 'ثلاث لاعبين ما يلعبوش ثلاث جولات' : 'كل الأعداد متاحة'}
+                  {gameSettings.playerMode === 'open' 
+                    ? 'التحقق بعدد اللاعبين هيحصل وقت البداية'
+                    : maxPlayers === 2 ? 'لاعبين ما يلعبوش جولتين' : maxPlayers === 3 ? 'ثلاث لاعبين ما يلعبوش ثلاث جولات' : 'كل الأعداد متاحة'}
                 </span>
                 <span>20</span>
               </div>
             </div>
 
-            {/* Max players */}
+            {/* Max players / Open mode */}
             <div className="space-y-3">
-              <Label className="text-sm font-semibold text-slate-300"><Users className="w-4 h-4 inline ml-1 text-red-400" /> عدد المقاتلين: <span className="text-red-400">{gameSettings.maxPlayers}</span></Label>
-              <Slider value={[gameSettings.maxPlayers]} min={2} max={20} step={1}
-                onValueChange={(v) => {
-                  const newMax = v[0]
-                  const roundsConflict = (newMax === 2 && gameSettings.numberOfRounds === 2) || (newMax === 3 && gameSettings.numberOfRounds === 3)
-                  if (roundsConflict) {
-                    const newRounds = gameSettings.numberOfRounds < 20 ? gameSettings.numberOfRounds + 1 : gameSettings.numberOfRounds - 1
-                    setGameSettings({ maxPlayers: newMax, numberOfRounds: newRounds })
-                  } else { setGameSettings({ maxPlayers: newMax }) }
-                }} className="w-full" />
-              <div className="flex justify-between text-xs text-slate-500"><span>2</span><span>20</span></div>
+              <Label className="text-sm font-semibold text-slate-300"><Users className="w-4 h-4 inline ml-1 text-red-400" /> عدد المقاتلين: <span className="text-red-400">{gameSettings.playerMode === 'open' ? 'مفتوح' : gameSettings.maxPlayers}</span></Label>
+              
+              {/* Player mode toggle */}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className={`flex-1 rounded-lg ${gameSettings.playerMode === 'fixed' ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white'}`}
+                  onClick={() => setGameSettings({ playerMode: 'fixed', maxPlayers: gameSettings.maxPlayers || 10 })}
+                >
+                  <Users className="w-3.5 h-3.5 ml-1" /> عدد محدد
+                </Button>
+                <Button
+                  size="sm"
+                  className={`flex-1 rounded-lg ${gameSettings.playerMode === 'open' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-500/20' : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white'}`}
+                  onClick={() => setGameSettings({ playerMode: 'open', maxPlayers: 0 })}
+                >
+                  <Globe className="w-3.5 h-3.5 ml-1" /> مفتوح
+                </Button>
+              </div>
+
+              {/* Fixed mode slider */}
+              {gameSettings.playerMode === 'fixed' && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+                  <Slider value={[gameSettings.maxPlayers]} min={2} max={20} step={1}
+                    onValueChange={(v) => {
+                      const newMax = v[0]
+                      const roundsConflict = (newMax === 2 && gameSettings.numberOfRounds === 2) || (newMax === 3 && gameSettings.numberOfRounds === 3)
+                      if (roundsConflict) {
+                        const newRounds = gameSettings.numberOfRounds < 20 ? gameSettings.numberOfRounds + 1 : gameSettings.numberOfRounds - 1
+                        setGameSettings({ maxPlayers: newMax, numberOfRounds: newRounds })
+                      } else { setGameSettings({ maxPlayers: newMax }) }
+                    }} className="w-full" />
+                  <div className="flex justify-between text-xs text-slate-500"><span>2</span><span>20</span></div>
+                </motion.div>
+              )}
+
+              {/* Open mode info */}
+              {gameSettings.playerMode === 'open' && (
+                <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                  <p className="text-sm text-amber-300 font-medium">🌍 الساحة مفتوحة</p>
+                  <p className="text-xs text-slate-400 mt-1">أي عدد ممكن يدخل وانت اللي بتحدد امتى تبدأ المعركة</p>
+                </motion.div>
+              )}
             </div>
 
             <div className="border-t border-white/5 pt-4">
@@ -1380,7 +1419,7 @@ function JoinGameScreen() {
                           </div>
                           <div className="flex flex-wrap gap-2 text-xs text-slate-400">
                             <span className="flex items-center gap-1"><Swords className="w-3 h-3" />{room.hostName}</span>
-                            <span className="flex items-center gap-1"><Users className="w-3 h-3" />{room.playerCount}/{room.maxPlayers}</span>
+                            <span className="flex items-center gap-1"><Users className="w-3 h-3" />{room.maxPlayers === 0 ? `${room.playerCount} مفتوح` : `${room.playerCount}/${room.maxPlayers}`}</span>
                             <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{room.settings?.gameType}</span>
                             <span className="flex items-center gap-1"><Star className="w-3 h-3" />{room.settings?.difficulty}</span>
                             <span className="flex items-center gap-1"><RotateCcw className="w-3 h-3" />{room.settings?.numberOfRounds} جولات</span>
@@ -1445,6 +1484,199 @@ function JoinGameScreen() {
 }
 
 // ============================================
+// EDIT SETTINGS MODAL
+// Host can edit room settings in lobby & between rounds
+// ============================================
+function EditSettingsModal({
+  open,
+  onClose,
+  settings,
+  onSave,
+  currentPlayers,
+  isOpen,
+  isMidGame = false,
+}: {
+  open: boolean
+  onClose: () => void
+  settings: GameSettings
+  onSave: (settings: Partial<GameSettings>) => void
+  currentPlayers: number
+  isOpen: boolean
+  isMidGame?: boolean
+}) {
+  const [localSettings, setLocalSettings] = useState({ ...settings })
+
+  useEffect(() => {
+    if (open) queueMicrotask(() => setLocalSettings({ ...settings }))
+  }, [open, settings])
+
+  const difficulties: { value: Difficulty; label: string; color: string }[] = [
+    { value: 'سهل', label: 'سهل', color: 'border-green-500/40 bg-green-500/10 text-green-400' },
+    { value: 'متوسط', label: 'متوسط', color: 'border-amber-500/40 bg-amber-500/10 text-amber-400' },
+    { value: 'صعب', label: 'صعب', color: 'border-red-500/40 bg-red-500/10 text-red-400' },
+  ]
+
+  const timeOptions = [
+    { value: 5, label: '5 د' }, { value: 7, label: '7 د' }, { value: 10, label: '10 د' },
+    { value: 15, label: '15 د' }, { value: 20, label: '20 د' }, { value: 25, label: '25 د' },
+  ]
+
+  const handleSave = () => {
+    const changes: Partial<GameSettings> = {}
+    let hasChanges = false
+
+    for (const [key, value] of Object.entries(localSettings)) {
+      if (settings[key as keyof GameSettings] !== value) {
+        ;(changes as any)[key] = value
+        hasChanges = true
+      }
+    }
+
+    if (hasChanges) onSave(changes)
+    onClose()
+  }
+
+  const effectivePlayers = isOpen ? currentPlayers : localSettings.maxPlayers
+  const roundsConflict = (effectivePlayers === 2 && localSettings.numberOfRounds === 2) ||
+    (effectivePlayers === 3 && localSettings.numberOfRounds === 3)
+
+  if (!open) return null
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 20 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-md max-h-[90vh] overflow-y-auto mx-4 p-6 rounded-2xl bg-[#12121E] border border-white/10 shadow-2xl custom-scrollbar"
+          style={{ boxShadow: '0 0 40px rgba(220,38,38,0.15), 0 0 80px rgba(245,158,11,0.08)' }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-black text-white">تعديل الإعدادات</h3>
+            <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {isMidGame && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs text-amber-300">
+              التغييرات هتأثر على الجولات الجاية بس
+            </div>
+          )}
+
+          <div className="space-y-5">
+            {/* Difficulty */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-300">الصعوبة</Label>
+              <div className="flex gap-2">
+                {difficulties.map((diff) => (
+                  <Button key={diff.value} size="sm"
+                    className={`flex-1 rounded-lg ${localSettings.difficulty === diff.value ? diff.color + ' shadow-lg' : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'}`}
+                    onClick={() => setLocalSettings({ ...localSettings, difficulty: diff.value })}>
+                    {diff.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time per round */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-300">وقت الجولة: <span className="text-cyan-400">{localSettings.timePerRound}</span> دقيقة</Label>
+              <div className="flex flex-wrap gap-2">
+                {timeOptions.map((opt) => (
+                  <Button key={opt.value} size="sm"
+                    className={`rounded-lg ${localSettings.timePerRound === opt.value ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'}`}
+                    onClick={() => setLocalSettings({ ...localSettings, timePerRound: opt.value })}>
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Number of rounds */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-300">عدد الجولات: <span className="text-amber-400">{localSettings.numberOfRounds}</span></Label>
+              <Slider value={[localSettings.numberOfRounds]} min={1} max={20} step={1}
+                onValueChange={(v) => {
+                  const val = v[0]
+                  const effectiveP = isOpen ? currentPlayers : localSettings.maxPlayers
+                  if ((effectiveP === 2 && val === 2) || (effectiveP === 3 && val === 3)) {
+                    const next = val < 20 ? val + 1 : val - 1
+                    setLocalSettings({ ...localSettings, numberOfRounds: next })
+                  } else {
+                    setLocalSettings({ ...localSettings, numberOfRounds: val })
+                  }
+                }} className="w-full" />
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>1</span>
+                <span className={roundsConflict ? 'text-red-400' : 'text-amber-400/80'}>
+                  {roundsConflict ? 'العدد ده مش مسموح!' : 'كل الأعداد متاحة'}
+                </span>
+                <span>20</span>
+              </div>
+            </div>
+
+            {/* Player mode - only in lobby (not mid-game) */}
+            {!isMidGame && (
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-slate-300">نوع الساحة</Label>
+                <div className="flex gap-2">
+                  <Button size="sm"
+                    className={`flex-1 rounded-lg ${localSettings.playerMode === 'fixed' ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'}`}
+                    onClick={() => setLocalSettings({ ...localSettings, playerMode: 'fixed', maxPlayers: localSettings.maxPlayers || 10 })}>
+                    <Users className="w-3.5 h-3.5 ml-1" /> عدد محدد
+                  </Button>
+                  <Button size="sm"
+                    className={`flex-1 rounded-lg ${localSettings.playerMode === 'open' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-500/20' : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'}`}
+                    onClick={() => setLocalSettings({ ...localSettings, playerMode: 'open', maxPlayers: 0 })}>
+                    <Globe className="w-3.5 h-3.5 ml-1" /> مفتوح
+                  </Button>
+                </div>
+
+                {localSettings.playerMode === 'fixed' && (
+                  <div className="space-y-1">
+                    <Slider value={[localSettings.maxPlayers]} min={2} max={20} step={1}
+                      onValueChange={(v) => {
+                        const newMax = v[0]
+                        const conflict = (newMax === 2 && localSettings.numberOfRounds === 2) || (newMax === 3 && localSettings.numberOfRounds === 3)
+                        if (conflict) {
+                          const newRounds = localSettings.numberOfRounds < 20 ? localSettings.numberOfRounds + 1 : localSettings.numberOfRounds - 1
+                          setLocalSettings({ ...localSettings, maxPlayers: newMax, numberOfRounds: newRounds })
+                        } else { setLocalSettings({ ...localSettings, maxPlayers: newMax }) }
+                      }} className="w-full" />
+                    <div className="flex justify-between text-xs text-slate-500"><span>2</span><span>{localSettings.maxPlayers}</span><span>20</span></div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 mt-6">
+            <Button onClick={handleSave} disabled={roundsConflict}
+              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold border-0 disabled:opacity-50">
+              حفظ التعديلات
+            </Button>
+            <Button variant="ghost" onClick={onClose}
+              className="px-6 py-3 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5">
+              إلغاء
+            </Button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+// ============================================
 // LOBBY SCREEN (ARENA)
 // ============================================
 function LobbyScreen() {
@@ -1455,14 +1687,33 @@ function LobbyScreen() {
   const isHost = useGameStore((s) => s.isHost)
   const gameSettings = useGameStore((s) => s.gameSettings)
   const maxPlayers = useGameStore((s) => s.gameSettings.maxPlayers)
+  const playerMode = useGameStore((s) => s.gameSettings.playerMode)
   const playerName = useGameStore((s) => s.playerName)
+  const setGameSettings = useGameStore((s) => s.setGameSettings)
   const [copied, setCopied] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
+  const [showEditSettings, setShowEditSettings] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [speakingParticipants, setSpeakingParticipants] = useState<string[]>([])
   const [unreadChatCount, setUnreadChatCount] = useState(0)
   const { startGame, leaveAndDisconnect } = useGameSocket()
   const resetGame = useGameStore((s) => s.resetGame)
+  const { toast } = useToast()
+
+  const isOpen = playerMode === 'open' || maxPlayers === 0
+
+  // Validation for start button (round-player conflict)
+  const activePlayers = players.length
+  const startDisabled = activePlayers < 2 ||
+    (activePlayers === 2 && gameSettings.numberOfRounds === 2) ||
+    (activePlayers === 3 && gameSettings.numberOfRounds === 3)
+  const startValidationError = activePlayers < 2
+    ? 'لازم يكون لاعبين على الأقل'
+    : activePlayers === 2 && gameSettings.numberOfRounds === 2
+      ? 'لاعبين ما يلعبوش جولتين'
+      : activePlayers === 3 && gameSettings.numberOfRounds === 3
+        ? 'ثلاث لاعبين ما يلعبوش ثلاث جولات'
+        : ''
 
   const copyCode = async () => {
     try { await navigator.clipboard.writeText(roomCode); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* */ }
@@ -1473,6 +1724,34 @@ function LobbyScreen() {
   const handleStartWithCountdown = () => {
     setCountdown(3)
   }
+
+  // Send settings update to server (host only)
+  const handleUpdateSettings = useCallback((newSettings: Partial<typeof gameSettings>) => {
+    if (!isHost || !globalSocket) return
+    globalSocket.emit('update-settings', { settings: newSettings, roomCode })
+  }, [isHost, roomCode])
+
+  // Listen for settings-updated from server
+  useEffect(() => {
+    if (!globalSocket) return
+    const handler = (data: { settings: typeof gameSettings; updatedBy: string; changes: string[] }) => {
+      setGameSettings(data.settings)
+      if (data.changes.length > 0) {
+        const changeLabels: Record<string, string> = {
+          gameType: 'نوع اللعبة',
+          difficulty: 'الصعوبة',
+          timePerRound: 'وقت الجولة',
+          numberOfRounds: 'عدد الجولات',
+          maxPlayers: 'عدد اللاعبين',
+          playerMode: 'نوع الساحة',
+        }
+        const labels = data.changes.map(c => changeLabels[c] || c).join('، ')
+        toast({ title: 'تم تحديث الإعدادات', description: `${data.updatedBy} غيّر: ${labels}` })
+      }
+    }
+    globalSocket.on('settings-updated', handler)
+    return () => { globalSocket?.off('settings-updated', handler) }
+  }, [setGameSettings, toast])
 
   // Listen for LiveKit speaking state changes
   useEffect(() => {
@@ -1586,7 +1865,7 @@ function LobbyScreen() {
                 { icon: Star, text: gameSettings.difficulty },
                 { icon: Clock, text: `${gameSettings.timePerRound} دقيقة` },
                 { icon: RotateCcw, text: `${gameSettings.numberOfRounds} جولات` },
-                { icon: Users, text: `${players.length}/${maxPlayers}` },
+                { icon: isOpen ? Globe : Users, text: isOpen ? `${players.length} مفتوح` : `${players.length}/${maxPlayers}` },
               ].map((badge, i) => (
                 <Badge key={i} className="bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10">
                   <badge.icon className="w-3 h-3 ml-1" />{badge.text}
@@ -1639,33 +1918,42 @@ function LobbyScreen() {
               </ScrollArea>
             </div>
 
-            {/* Waiting for players */}
-            {players.length < 2 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center py-4"
-              >
-                <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-red-500" />
-                <p className="text-sm text-slate-400">بانتظار مقاتلين آخرين...</p>
+            {/* Player status */}
+            {isOpen ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-3">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <Globe className="w-4 h-4 text-amber-400" />
+                  <span className="text-amber-300 font-bold">الساحة مفتوحة</span>
+                </div>
+                <p className="text-sm text-slate-400 mt-2">
+                  {activePlayers === 0 ? 'لسه محدش دخل...' : activePlayers === 1 ? 'محارب واحد مستني...' : `${activePlayers} لاعبين داخل المعركة`}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">المضيف يحدد وقت البداية</p>
               </motion.div>
+            ) : (
+              <>
+                {players.length < 2 && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-4">
+                    <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-red-500" />
+                    <p className="text-sm text-slate-400">بانتظار مقاتلين آخرين...</p>
+                  </motion.div>
+                )}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>المقاتلون</span>
+                    <span>{players.length}/{maxPlayers}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(players.length / maxPlayers) * 100}%` }}
+                      className="h-full rounded-full battle-progress"
+                      transition={{ duration: 0.5 }}
+                    />
+                  </div>
+                </div>
+              </>
             )}
-
-            {/* Progress bar showing player fill */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-slate-500">
-                <span>المقاتلون</span>
-                <span>{players.length}/{maxPlayers}</span>
-              </div>
-              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(players.length / maxPlayers) * 100}%` }}
-                  className="h-full rounded-full battle-progress"
-                  transition={{ duration: 0.5 }}
-                />
-              </div>
-            </div>
 
             <div className="border-t border-white/5 pt-4 flex gap-3">
               <AlertDialog>
@@ -1686,19 +1974,39 @@ function LobbyScreen() {
                 </AlertDialogContent>
               </AlertDialog>
               {isHost && (
-                <Button className="flex-1 btn-battle rounded-xl h-12"
-                  onClick={handleStartWithCountdown} disabled={players.length < 2}>
-                  <Flame className="w-4 h-4 ml-2" />ابدأ المعركة!
-                </Button>
+                <>
+                  <Button variant="outline" className="flex-1 border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 rounded-xl h-12"
+                    onClick={() => setShowEditSettings(true)}>
+                    <Zap className="w-4 h-4 ml-2" />تعديل
+                  </Button>
+                  <Button className="flex-1 btn-battle rounded-xl h-12"
+                    onClick={handleStartWithCountdown} disabled={startDisabled}
+                    title={startValidationError}>
+                    <Flame className="w-4 h-4 ml-2" />ابدأ المعركة!
+                  </Button>
+                </>
               )}
             </div>
             {!isHost && <p className="text-center text-sm text-slate-500">في انتظار القائد يبدأ المعركة...</p>}
+      {isHost && startValidationError && activePlayers >= 2 && (
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-xs text-red-400 mt-1">{startValidationError}</motion.p>
+      )}
           </div>
         </div>
       </motion.div>
 
       {/* Share Modal */}
       <ShareModal open={showShareModal} onClose={() => setShowShareModal(false)} />
+
+      {/* Edit Settings Modal */}
+      <EditSettingsModal
+        open={showEditSettings}
+        onClose={() => setShowEditSettings(false)}
+        settings={gameSettings}
+        onSave={handleUpdateSettings}
+        currentPlayers={activePlayers}
+        isOpen={isOpen}
+      />
     </div>
   )
 }
@@ -1824,6 +2132,37 @@ function RoundTransitionScreen() {
   const currentRound = useGameStore((s) => s.currentRound)
   const totalRounds = useGameStore((s) => s.totalRounds)
   const isLastRound = currentRound + 1 >= totalRounds
+  const isHost = useGameStore((s) => s.isHost)
+  const gameSettings = useGameStore((s) => s.gameSettings)
+  const setGameSettings = useGameStore((s) => s.setGameSettings)
+  const players = useGameStore((s) => s.players)
+  const roomCode = useGameStore((s) => s.roomCode)
+  const [showEditSettings, setShowEditSettings] = useState(false)
+  const { toast } = useToast()
+  const isOpen = gameSettings.playerMode === 'open' || gameSettings.maxPlayers === 0
+
+  // Send settings update to server (host only)
+  const handleUpdateSettings = useCallback((newSettings: Partial<typeof gameSettings>) => {
+    if (!isHost || !globalSocket) return
+    globalSocket.emit('update-settings', { settings: newSettings, roomCode })
+  }, [isHost, roomCode])
+
+  // Listen for settings-updated from server
+  useEffect(() => {
+    if (!globalSocket) return
+    const handler = (data: { settings: typeof gameSettings; updatedBy: string; changes: string[] }) => {
+      setGameSettings(data.settings)
+      if (data.changes.length > 0) {
+        const changeLabels: Record<string, string> = {
+          difficulty: 'الصعوبة', timePerRound: 'وقت الجولة', numberOfRounds: 'عدد الجولات',
+        }
+        const labels = data.changes.map(c => changeLabels[c] || c).join('، ')
+        toast({ title: 'تم تحديث الإعدادات', description: `${data.updatedBy} غيّر: ${labels}` })
+      }
+    }
+    globalSocket.on('settings-updated', handler)
+    return () => { globalSocket?.off('settings-updated', handler) }
+  }, [setGameSettings, toast])
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -1916,8 +2255,38 @@ function RoundTransitionScreen() {
             <Loader2 className="w-4 h-4 animate-spin" />
             <span className="text-sm">{isLastRound ? 'جاري إعلان النتائج النهائية...' : 'جاري تحضير الجولة التالية...'}</span>
           </div>
+
+          {/* Host edit settings button between rounds */}
+          {isHost && !isLastRound && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 2 }}
+              className="mt-4 text-center"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEditSettings(true)}
+                className="border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 rounded-xl gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5" /> تعديل إعدادات الجولة القادمة
+              </Button>
+            </motion.div>
+          )}
         </motion.div>
       </motion.div>
+
+      {/* Edit Settings Modal for between rounds */}
+      <EditSettingsModal
+        open={showEditSettings}
+        onClose={() => setShowEditSettings(false)}
+        settings={gameSettings}
+        onSave={handleUpdateSettings}
+        currentPlayers={players.length}
+        isOpen={isOpen}
+        isMidGame={true}
+      />
     </div>
   )
 }
