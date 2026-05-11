@@ -63,7 +63,7 @@ export async function callLLM(
         model,
         messages,
         temperature: options?.temperature ?? 0.8,
-        max_tokens: options?.maxTokens ?? 4096,
+        max_tokens: options?.maxTokens ?? 8192,
         response_format: { type: 'json_object' },
       }),
       signal: controller.signal,

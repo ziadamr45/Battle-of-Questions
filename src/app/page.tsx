@@ -920,12 +920,34 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
 function BattleBackground() {
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      {/* Base grid */}
       <div className="absolute inset-0 battle-grid" />
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-red-900/10 rounded-full blur-[120px]" />
-      <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-amber-900/8 rounded-full blur-[150px]" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-cyan-900/5 rounded-full blur-[100px]" />
+      
+      {/* Noise texture */}
+      <div className="absolute inset-0 arena-noise opacity-40" />
+      
+      {/* Depth glow layers */}
+      <div className="absolute inset-0 arena-depth-glow-top" />
+      <div className="absolute inset-0 arena-depth-glow-bottom" />
+      
+      {/* Ambient glows */}
+      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-red-900/8 rounded-full blur-[150px] arena-ambient-glow" />
+      <div className="absolute bottom-0 left-0 w-[700px] h-[700px] bg-amber-900/6 rounded-full blur-[180px] arena-ambient-glow" style={{ animationDelay: '3s' }} />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-cyan-900/4 rounded-full blur-[120px]" />
+      
+      {/* Fog layers */}
+      <div className="absolute inset-0 arena-fog opacity-30" />
+      <div className="absolute inset-0 arena-fog-reverse opacity-25" />
+      
+      {/* Energy streaks */}
+      <div className="absolute top-[20%] left-0 w-full h-[2px] arena-energy-streak" />
+      <div className="absolute top-[60%] left-0 w-full h-[1px] arena-energy-streak" style={{ animationDelay: '4s', animationDuration: '12s' }} />
+      
+      {/* Light sweep */}
+      <div className="absolute inset-0 arena-light-sweep" style={{ animationDelay: '5s' }} />
+      
       {/* Floating particles */}
-      <div className="absolute inset-0 particles-bg opacity-50" />
+      <div className="absolute inset-0 particles-bg opacity-40" />
     </div>
   )
 }
@@ -935,9 +957,56 @@ function BattleBackground() {
 // ============================================
 function HomeScreen() {
   const setScreen = useGameStore((s) => s.setScreen)
+  
+  // Mock live arena data with animated counters
+  const [arenaStats, setArenaStats] = useState({
+    activeBattles: 12,
+    onlineWarriors: 84,
+    roomsFighting: 7,
+    latestWinner: 'فارس الكلمة',
+  })
+  
+  // Live battle feed - mock data that rotates
+  const battleFeedItems = [
+    { text: 'ساحة ABC بدأت المعركة', time: 'الآن', type: 'battle' as const },
+    { text: 'فارس الكلمة فاز بالجولة 3', time: '12 ثانية', type: 'win' as const },
+    { text: 'محارب جديد دخل الساحة', time: '25 ثانية', type: 'join' as const },
+    { text: 'ساحة XYZ انتهت المعركة', time: '40 ثانية', type: 'end' as const },
+    { text: 'أسد البيان حقق فوز ساحق', time: '55 ثانية', type: 'win' as const },
+    { text: '6 مقاتلين يتنافسون الآن', time: '1 دقيقة', type: 'battle' as const },
+  ]
+  
+  // Top warriors - mock data
+  const topWarriors = [
+    { name: 'فارس الكلمة', wins: 47, streak: 5, color: '#F59E0B' },
+    { name: 'أسد البيان', wins: 38, streak: 3, color: '#DC2626' },
+    { name: 'نبع الحكمة', wins: 31, streak: 2, color: '#06B6D4' },
+  ]
+  
+  // Animate arena stats periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setArenaStats(prev => ({
+        activeBattles: Math.max(5, prev.activeBattles + (Math.random() > 0.5 ? 1 : -1) * Math.floor(Math.random() * 3)),
+        onlineWarriors: Math.max(40, prev.onlineWarriors + (Math.random() > 0.5 ? 1 : -1) * Math.floor(Math.random() * 8)),
+        roomsFighting: Math.max(3, prev.roomsFighting + (Math.random() > 0.5 ? 1 : -1) * Math.floor(Math.random() * 2)),
+        latestWinner: ['فارس الكلمة', 'أسد البيان', 'نبع الحكمة', 'سيف العقل', 'درع المعرفة'][Math.floor(Math.random() * 5)],
+      }))
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [])
+  
+  // Rotating feed index
+  const [feedIndex, setFeedIndex] = useState(0)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFeedIndex(prev => (prev + 1) % battleFeedItems.length)
+    }, 3500)
+    return () => clearInterval(interval)
+  }, [battleFeedItems.length])
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center p-4 relative overflow-hidden">
       <BattleBackground />
 
       <motion.div
@@ -945,24 +1014,45 @@ function HomeScreen() {
         animate="animate"
         variants={pageVariants}
         transition={{ duration: 0.6 }}
-        className="relative z-10 text-center max-w-2xl w-full"
+        className="relative z-10 w-full max-w-3xl"
       >
-        {/* Logo */}
-        <motion.div
-          initial={{ scale: 0, rotate: -10 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
-          className="mb-10"
-        >
+        {/* ═══════════════════════════════════ */}
+        {/* HERO SECTION - Logo + Title */}
+        {/* ═══════════════════════════════════ */}
+        <div className="text-center pt-8 sm:pt-12 mb-6">
+          {/* Logo with cinematic aura */}
           <motion.div
-            className="mx-auto mb-4 relative"
-            whileHover={{ scale: 1.05 }}
+            initial={{ scale: 0, rotate: -10 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
+            className="relative inline-block mb-6"
           >
-            <BattleLogo size="2xl" />
+            {/* Aura ring behind logo */}
+            <motion.div
+              className="absolute inset-0 rounded-full logo-aura-ring"
+              style={{ margin: '-15%' }}
+            />
+            {/* Energy glow behind logo */}
+            <motion.div
+              className="absolute inset-0 rounded-full"
+              style={{
+                margin: '-20%',
+                background: 'radial-gradient(circle, rgba(220,38,38,0.08) 0%, rgba(245,158,11,0.05) 40%, transparent 70%)',
+              }}
+              animate={{
+                scale: [1, 1.1, 1],
+                opacity: [0.5, 0.8, 0.5],
+              }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <motion.div whileHover={{ scale: 1.05 }} className="relative">
+              <BattleLogo size="2xl" />
+            </motion.div>
           </motion.div>
 
+          {/* Title with improved typography */}
           <motion.h1
-            className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-red-500 mb-3 whitespace-nowrap py-3 px-2"
+            className="text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-red-500 mb-3 whitespace-nowrap py-3 px-2"
             animate={{
               backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
             }}
@@ -971,39 +1061,72 @@ function HomeScreen() {
           >
             معركة الأسئلة
           </motion.h1>
-          <p className="text-xl text-slate-400">
+          
+          {/* Subtitle - improved contrast and readability */}
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="text-lg sm:text-xl text-slate-300 font-semibold tracking-wide"
+          >
             ادخل الساحة وتنافس مع أصدقائك في أقوى التحديات
-          </p>
-        </motion.div>
-
-        {/* Feature cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-          {[
-            { icon: Target, title: 'أسئلة ذكية', desc: 'محتوى مولّد بالذكاء الاصطناعي', color: 'from-red-500/20 to-red-900/10', border: 'border-red-500/20', iconColor: 'text-red-400' },
-            { icon: Swords, title: 'مباريات حية', desc: 'حتى 20 مقاتل في نفس الساحة', color: 'from-amber-500/20 to-amber-900/10', border: 'border-amber-500/20', iconColor: 'text-amber-400' },
-            { icon: Zap, title: 'سرعة ودقة', desc: 'نظام نقاط يعتمد على السرعة', color: 'from-cyan-500/20 to-cyan-900/10', border: 'border-cyan-500/20', iconColor: 'text-cyan-400' },
-          ].map((feature, i) => (
-            <motion.div
-              key={feature.title}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 + i * 0.1 }}
-            >
-              <div className={`p-5 rounded-2xl bg-gradient-to-br ${feature.color} border ${feature.border} backdrop-blur-sm hover:scale-[1.02] transition-transform cursor-default`}>
-                <feature.icon className={`w-8 h-8 mx-auto mb-3 ${feature.iconColor}`} />
-                <h3 className="font-bold text-sm mb-1 text-white">{feature.title}</h3>
-                <p className="text-xs text-slate-400">{feature.desc}</p>
-              </div>
-            </motion.div>
-          ))}
+          </motion.p>
         </div>
 
-        {/* Action buttons */}
+        {/* ═══════════════════════════════════ */}
+        {/* LIVE ARENA STATS - Replaces feature cards */}
+        {/* ═══════════════════════════════════ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="flex flex-col sm:flex-row gap-4 justify-center"
+          transition={{ delay: 0.3 }}
+          className="grid grid-cols-3 gap-3 mb-6"
+        >
+          {/* Active Battles */}
+          <div className="arena-stat-card rounded-xl p-3 sm:p-4 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <div className="w-2 h-2 rounded-full bg-red-500 live-pulse-dot" />
+              <Flame className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-white count-up">
+              {arenaStats.activeBattles}
+            </div>
+            <div className="text-xs sm:text-sm text-slate-400 font-medium">ساحة مشتعلة</div>
+          </div>
+
+          {/* Online Warriors */}
+          <div className="arena-stat-card rounded-xl p-3 sm:p-4 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <div className="w-2 h-2 rounded-full bg-amber-500 live-pulse-dot" style={{ animationDelay: '0.5s' }} />
+              <Users className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-white count-up">
+              {arenaStats.onlineWarriors}
+            </div>
+            <div className="text-xs sm:text-sm text-slate-400 font-medium">مقاتل بالساحة</div>
+          </div>
+
+          {/* Rooms Fighting */}
+          <div className="arena-stat-card rounded-xl p-3 sm:p-4 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <div className="w-2 h-2 rounded-full bg-cyan-500 live-pulse-dot" style={{ animationDelay: '1s' }} />
+              <Swords className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-white count-up">
+              {arenaStats.roomsFighting}
+            </div>
+            <div className="text-xs sm:text-sm text-slate-400 font-medium">معركة جارية</div>
+          </div>
+        </motion.div>
+
+        {/* ═══════════════════════════════════ */}
+        {/* ACTION BUTTONS - Keep existing style */}
+        {/* ═══════════════════════════════════ */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="flex flex-col sm:flex-row gap-4 justify-center mb-6"
         >
           <Button
             size="lg"
@@ -1021,6 +1144,98 @@ function HomeScreen() {
             <Shield className="w-5 h-5 ml-2" />
             انضم لساحة
           </Button>
+        </motion.div>
+
+        {/* ═══════════════════════════════════ */}
+        {/* LIVE BATTLE FEED - Scrolling events */}
+        {/* ═══════════════════════════════════ */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.7 }}
+          className="mb-6"
+        >
+          <div className="arena-stat-card rounded-xl p-4 overflow-hidden">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-500 live-pulse-dot" />
+                <span className="text-sm font-bold text-slate-300">أحداث الساحة</span>
+              </div>
+              <span className="text-xs text-slate-500">مباشر</span>
+            </div>
+            <div className="relative h-8 overflow-hidden">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={feedIndex}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -15 }}
+                  transition={{ duration: 0.4 }}
+                  className="flex items-center gap-2"
+                >
+                  {battleFeedItems[feedIndex].type === 'win' && <Trophy className="w-4 h-4 text-amber-400 shrink-0" />}
+                  {battleFeedItems[feedIndex].type === 'battle' && <Flame className="w-4 h-4 text-red-400 shrink-0" />}
+                  {battleFeedItems[feedIndex].type === 'join' && <Users className="w-4 h-4 text-cyan-400 shrink-0" />}
+                  {battleFeedItems[feedIndex].type === 'end' && <Swords className="w-4 h-4 text-slate-400 shrink-0" />}
+                  <span className="text-sm text-slate-300 truncate">{battleFeedItems[feedIndex].text}</span>
+                  <span className="text-xs text-slate-500 mr-auto whitespace-nowrap">{battleFeedItems[feedIndex].time}</span>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ═══════════════════════════════════ */}
+        {/* TOP WARRIORS - Champions section */}
+        {/* ═══════════════════════════════════ */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.9 }}
+          className="mb-8"
+        >
+          <div className="flex items-center gap-2 mb-3 justify-center">
+            <Crown className="w-5 h-5 text-amber-400" />
+            <span className="text-sm font-bold text-slate-300">أبطال الساحة</span>
+          </div>
+          <div className="flex gap-3 justify-center">
+            {topWarriors.map((warrior, i) => (
+              <motion.div
+                key={warrior.name}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 1.0 + i * 0.1 }}
+                className="champion-card rounded-xl p-3 sm:p-4 text-center min-w-[100px] sm:min-w-[120px]"
+              >
+                <div
+                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-full mx-auto mb-2 flex items-center justify-center text-white font-black text-lg"
+                  style={{ backgroundColor: warrior.color + '30', border: `2px solid ${warrior.color}50` }}
+                >
+                  {warrior.name.charAt(0)}
+                </div>
+                <div className="text-sm font-bold text-white truncate">{warrior.name}</div>
+                <div className="flex items-center justify-center gap-1 mt-1">
+                  <Trophy className="w-3 h-3 text-amber-400" />
+                  <span className="text-xs text-amber-400 font-semibold">{warrior.wins}</span>
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5">سلسلة {warrior.streak} انتصارات</div>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* ═══════════════════════════════════ */}
+        {/* BOTTOM AREA - Quick join hint */}
+        {/* ═══════════════════════════════════ */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.1 }}
+          className="text-center pb-4"
+        >
+          <p className="text-sm text-slate-500">
+            أنشئ ساحة أو انضم لمعركة جارية ⚔️
+          </p>
         </motion.div>
       </motion.div>
     </div>
@@ -2902,9 +3117,9 @@ function GameScreen() {
                 <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 shrink-0" />
                 <span className="bg-gradient-to-l from-red-300 via-amber-200 to-red-300 bg-clip-text text-transparent">{gameContent.title}</span>
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {textParagraphs.map((paragraph, idx) => (
-                  <p key={idx} className="text-slate-200 leading-[1.9] text-[15px] sm:text-[17px] tracking-wide">
+                  <p key={idx} className="text-slate-200 leading-[2.1] text-[15px] sm:text-[17px] tracking-wide text-justify">
                     {paragraph.trim()}
                   </p>
                 ))}

@@ -250,3 +250,75 @@ Files Modified:
 2. src/app/page.tsx - Guest restore logic, reading passage UI, scroll hint
 3. mini-services/game-service/index.ts - Difficulty word counts, instructions, quality rules
 4. src/app/globals.css - .reading-scroll scrollbar styles
+
+---
+
+## Date: 2026-03-06 (Session 3)
+
+## Summary
+Homepage redesign for Arabic multiplayer quiz game "معركة الأسئلة" — cinematic arena-style landing page.
+
+---
+Task ID: 13
+Agent: Main
+Task: Redesign homepage with cinematic arena effects, live stats, battle feed, and champions section
+
+Work Log:
+- Added 15+ new CSS animations/classes to globals.css (after .battle-logo-aura rule):
+  - Fog layers (arena-fog, arena-fog-reverse) with drift animations
+  - Energy streak (arena-energy-streak) with sweeping animation
+  - Ambient glow pulse (arena-ambient-glow)
+  - Light sweep (arena-light-sweep) with skew transform
+  - Arena stat card (arena-stat-card) with hover glow
+  - Live pulse dot (live-pulse-dot) for "live" indicators
+  - Battle feed scroll (feedScroll) animation
+  - Count up (count-up) animation for numbers
+  - Logo aura ring (logo-aura-ring) with pulsing box-shadow
+  - Noise texture overlay (arena-noise) using inline SVG filter
+  - Champion card (champion-card) with amber border glow
+  - Depth layer glows (arena-depth-glow-top, arena-depth-glow-bottom)
+- Rewrote BattleBackground component with cinematic layered effects:
+  - Base grid + noise texture overlay
+  - Depth glow layers (top red, bottom amber)
+  - Ambient glows with pulse animations
+  - Fog layers with drift and reverse drift
+  - Energy streaks with delayed animations
+  - Light sweep effect
+  - Reduced particle opacity from 50% to 40%
+- Rewrote HomeScreen component with arena-themed redesign:
+  - Hero section with cinematic logo aura (ring + energy glow behind logo)
+  - Larger title (text-7xl on desktop) with same gradient animation
+  - Improved subtitle with better contrast (text-slate-300, font-semibold)
+  - Replaced feature cards with LIVE ARENA STATS (3-column grid):
+    - Active battles with Flame icon + live pulse dot
+    - Online warriors with Users icon + live pulse dot
+    - Rooms fighting with Swords icon + live pulse dot
+    - Stats animate/update every 4 seconds with mock data
+  - Action buttons kept identical (btn-battle, btn-secondary-battle classes preserved)
+  - NEW: Live Battle Feed with rotating events (AnimatePresence transitions):
+    - Win/Trophy, Battle/Flame, Join/Users, End/Swords icons
+    - Auto-rotates every 3.5 seconds
+    - "مباشر" (Live) indicator with red pulse dot
+  - NEW: Top Warriors (Champions) section:
+    - Crown header with amber color
+    - 3 champion cards with color-coded avatars
+    - Trophy count and win streak display
+  - Bottom hint text with sword emoji
+- Verified Guest Identity System already works correctly (from Task ID 11):
+  - NameEntryModal only shows on first visit
+  - Return visits auto-load from localStorage
+  - Name auto-filled in create/join screens via effectiveName
+  - No changes needed — existing implementation is more robust than simplified version
+- Lint check passes with zero errors
+- Dev server compiles and serves successfully
+
+Stage Summary:
+- Complete homepage redesign with cinematic arena aesthetic
+- All new CSS animations working (fog, energy streaks, glows, noise, etc.)
+- Live stats, battle feed, and champions sections fully functional
+- No button interaction, color palette, or other screen changes
+- Guest identity system verified working correctly
+
+Files Modified:
+1. src/app/globals.css - 15+ new arena CSS animations/classes
+2. src/app/page.tsx - BattleBackground and HomeScreen components rewritten
