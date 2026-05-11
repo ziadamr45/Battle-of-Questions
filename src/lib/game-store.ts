@@ -213,6 +213,14 @@ interface GameState {
   addProgressStep: (step: string, text: string) => void
   resetProgressSteps: () => void
 
+  // Early end game state
+  wasEarlyEnd: boolean
+  setWasEarlyEnd: (was: boolean) => void
+  completedRounds: number
+  setCompletedRounds: (rounds: number) => void
+  earlyEndProcessing: boolean
+  setEarlyEndProcessing: (processing: boolean) => void
+
   resetGame: () => void
   restoreState: (state: PersistedState) => void
 }
@@ -412,6 +420,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
   resetProgressSteps: () => set({ progressSteps: [], loadingStep: 'preparing' }),
 
+  wasEarlyEnd: false,
+  setWasEarlyEnd: (was) => set({ wasEarlyEnd: was }),
+  completedRounds: 0,
+  setCompletedRounds: (rounds) => set({ completedRounds: rounds }),
+  earlyEndProcessing: false,
+  setEarlyEndProcessing: (processing) => set({ earlyEndProcessing: processing }),
+
   resetGame: () => {
     set({
       screen: 'home',
@@ -438,6 +453,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       loadingStep: 'preparing',
       progressSteps: [],
       playerMode: 'fixed',
+      wasEarlyEnd: false,
+      completedRounds: 0,
+      earlyEndProcessing: false,
     })
     clearSessionStorage()
   },

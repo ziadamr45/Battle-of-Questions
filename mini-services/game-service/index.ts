@@ -202,6 +202,7 @@ interface GameRoom {
   roundResults: Map<number, RoundScore[]>  // roundIndex -> scores for that round
   roundWinners: Map<number, string>  // roundIndex -> playerId of winner
   roundEnding: boolean            // true if round-end processing has started (prevents double calls)
+  earlyEnding: boolean            // true if early-end-game processing has started (prevents duplicate requests)
 }
 
 // Info sent to clients about public rooms
@@ -1063,6 +1064,11 @@ io.on('connection', (socket: Socket) => {
         rejoinData.roundResults = Object.fromEntries(
           Array.from(room.roundResults.entries()).map(([k, v]) => [k, v])
         )
+        // Include early end info if applicable
+        if (room.earlyEnding) {
+          rejoinData.wasEarlyEnd = true
+          rejoinData.completedRounds = room.roundResults.size
+        }
       }
 
       socket.emit('rejoin-success', rejoinData)
@@ -1091,6 +1097,105 @@ io.on('connection', (socket: Socket) => {
     socket.leave(roomCode)
     removePlayerFromRoom(socket.id, 'leave')
   })
+
+  // ── early-end-game ─────────────────────────────────────────────────────
+  // Host can end the game early, subject to round-player restriction rules
+  socket.on(
+    'early-end-game',
+    (data: { roomCode: string }) => {
+      const { roomCode } = data
+
+      // Validate room exists
+      const room = rooms.get(roomCode?.toUpperCase())
+      if (!room) {
+        socket.emit('early-end-rejected', { message: 'الغرفة مش موجودة' })
+        return
+      }
+
+      // Validate sender is the host
+      if (room.hostId !== socket.id) {
+        socket.emit('early-end-rejected', { message: 'فقط القائد يقدر ينهي المعركة' })
+        return
+      }
+
+      // Validate game is in progress
+      if (room.status !== 'playing') {
+        socket.emit('early-end-rejected', { message: 'المعركة مش شغالة حالياً' })
+        return
+      }
+
+      // Prevent duplicate processing
+      if (room.earlyEnding) {
+        socket.emit('early-end-rejected', { message: 'جاري معالجة إنهاء المعركة بالفعل' })
+        return
+      }
+
+      // Count active (non-disconnected) players
+      const activePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected)
+      const activePlayerCount = activePlayers.length
+
+      // Count completed rounds (rounds that have scores calculated)
+      const completedRoundsCount = room.roundResults.size
+
+      // Round-player restriction rule:
+      // 2 active players CANNOT end game if exactly 2 rounds completed
+      // 3 active players CANNOT end game if exactly 3 rounds completed
+      if (activePlayerCount === 2 && completedRoundsCount === 2) {
+        socket.emit('early-end-rejected', { message: 'لاعبين ما يلعبوش جولتين — القاعدة بتمنع إنهاء المعركة دلوقتي' })
+        return
+      }
+      if (activePlayerCount === 3 && completedRoundsCount === 3) {
+        socket.emit('early-end-rejected', { message: 'ثلاث لاعبين ما يلعبوش ثلاث جولات — القاعدة بتمنع إنهاء المعركة دلوقتي' })
+        return
+      }
+
+      // All validations passed - set earlyEnding flag
+      room.earlyEnding = true
+
+      console.log(`[early-end-game] Host ${socket.id} ending game early in room ${room.roomCode}. Completed rounds: ${completedRoundsCount}, Active players: ${activePlayerCount}`)
+
+      // If a round is currently in progress (roundStartTime is set and round is not already ending),
+      // finalize the current round's scores first
+      if (room.roundStartTime && !room.roundEnding) {
+        const currentRound = room.currentRound
+
+        // Calculate and store current round scores
+        const roundScores = calculateRoundScores(room, currentRound)
+        room.roundResults.set(currentRound, roundScores)
+
+        // Determine round winner and update roundWins
+        if (roundScores.length > 0) {
+          const winnerId = roundScores[0].playerId
+          room.roundWinners.set(currentRound, winnerId)
+
+          const winnerPlayer = room.players.get(winnerId)
+          if (winnerPlayer) {
+            winnerPlayer.roundWins++
+          }
+        }
+
+        // Reset player scores for consistency
+        for (const player of room.players.values()) {
+          player.score = 0
+        }
+
+        // Emit round-end for the current (interrupted) round
+        io.to(room.roomCode).emit('round-end', {
+          roundNumber: currentRound,
+          totalRounds: room.settings.numberOfRounds,
+          roundScores,
+          roundWinner: roundScores[0] || null,
+          isLastRound: true,
+        })
+      }
+
+      // Now end the game with early end flag
+      // Small delay to let clients process the round-end event first
+      setTimeout(() => {
+        handleGameEnd(room.roomCode, true)
+      }, 1500)
+    }
+  )
 
   // ── create-game ────────────────────────────────────────────────────────
   socket.on(
@@ -1157,6 +1262,7 @@ io.on('connection', (socket: Socket) => {
         roundResults: new Map(),
         roundWinners: new Map(),
         roundEnding: false,
+        earlyEnding: false,
       }
 
       rooms.set(roomCode, room)
@@ -1880,7 +1986,7 @@ function handleRoundEnd(roomCode: string) {
   }, 5000) // 5 second delay between rounds to show round results
 }
 
-function handleGameEnd(roomCode: string) {
+function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
   const room = rooms.get(roomCode)
   if (!room) return
 
@@ -1897,6 +2003,8 @@ function handleGameEnd(roomCode: string) {
     score: p.roundWins, // Override score with roundWins for the leaderboard
   }))
 
+  const completedRounds = room.roundResults.size
+
   io.to(roomCode).emit('game-ended', {
     scores: scoresWithWins,
     roundWinners: Object.fromEntries(room.roundWinners),
@@ -1906,7 +2014,16 @@ function handleGameEnd(roomCode: string) {
     totalRounds: room.settings.numberOfRounds,
   })
 
-  console.log(`[handleGameEnd] Game ended in room ${roomCode}. Winner: ${finalResults[0]?.name} (${finalResults[0]?.roundWins} round wins)`)
+  // If this was an early end, emit additional info
+  if (wasEarlyEnd) {
+    io.to(roomCode).emit('early-end-confirmed', {
+      completedRounds,
+      totalPlannedRounds: room.settings.numberOfRounds,
+      wasEarlyEnd: true,
+    })
+  }
+
+  console.log(`[handleGameEnd] Game ended in room ${roomCode}. Winner: ${finalResults[0]?.name} (${finalResults[0]?.roundWins} round wins)${wasEarlyEnd ? ' (early end)' : ''}`)
   broadcastPublicRooms()
 }
 

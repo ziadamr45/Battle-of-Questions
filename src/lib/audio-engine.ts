@@ -661,6 +661,48 @@ function playProgressStep() {
 }
 
 // ============================================
+// SOUND: Early End Game - Dramatic cinematic horn
+// ============================================
+function playEarlyEndHorn() {
+  // Deep dramatic horn blast
+  playTone(80, 0.8, 'sawtooth', 0.3)
+  playTone(120, 0.7, 'sine', 0.25, 0.05)
+  playNoise(0.4, 0.3, 200, 'lowpass')
+  // Rising tension
+  setTimeout(() => {
+    playTone(150, 0.5, 'sine', 0.15)
+    playTone(200, 0.4, 'sine', 0.12, 0.1)
+  }, 300)
+  // Final impact
+  setTimeout(() => {
+    playTone(60, 1.0, 'sine', 0.4)
+    playTone(90, 0.8, 'sine', 0.3, 0.05)
+    playNoise(0.3, 0.15, 150, 'lowpass')
+  }, 700)
+}
+
+// ============================================
+// SOUND: Early End Confirmation - Final buzzer
+// ============================================
+function playEarlyEndConfirmed() {
+  // Low rumble
+  playTone(50, 1.2, 'sine', 0.5)
+  playNoise(0.5, 0.2, 100, 'lowpass')
+  // Dramatic descending tones
+  setTimeout(() => {
+    playTone(400, 0.3, 'sine', 0.12)
+    playTone(350, 0.3, 'sine', 0.10, 0.15)
+    playTone(300, 0.4, 'sine', 0.08, 0.3)
+  }, 200)
+  // Final gong
+  setTimeout(() => {
+    playTone(100, 1.5, 'sine', 0.4)
+    playTone(150, 1.0, 'sine', 0.25, 0.1)
+    playNoise(0.2, 0.1, 300, 'lowpass')
+  }, 800)
+}
+
+// ============================================
 // EXPORT: Audio Engine API
 // ============================================
 export const audioEngine = {
@@ -689,6 +731,8 @@ export const audioEngine = {
   surrender: playSurrender,
   error: playError,
   progressStep: playProgressStep,
+  earlyEndHorn: playEarlyEndHorn,
+  earlyEndConfirmed: playEarlyEndConfirmed,
 
   // Ambient
   startAmbient: startAmbientTension,

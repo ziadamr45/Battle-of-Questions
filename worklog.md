@@ -1,107 +1,63 @@
----
-Task ID: 3
-Agent: Main
-Task: Add Open player mode + Dynamic settings editing for معركة الأسئلة
+# Work Log: Early End Game System Implementation
 
-Work Log:
-- Updated game-store.ts: Added PlayerMode type ('fixed'|'open'), playerMode to GameSettings, isOpenMode() helper
-- Updated game-service/index.ts via subagent:
-  - Added playerMode to GameSettings and RoomInfo interfaces
-  - create-game: Skip rounds/players validation for open mode (validated at start time instead)
-  - join-game: Skip room capacity check when maxPlayers === 0 (open mode)
-  - start-game: Added current player count validation for round conflicts (2p/2r, 3p/3r)
-  - Added update-settings socket event: host-only, validates by room status, tracks changes, broadcasts settings-updated
-  - Mid-game restrictions: can't change gameType/maxPlayers/playerMode during play
-  - Auto-adjusts numberOfRounds if reduced below current round during game
-- Updated CreateGameScreen in page.tsx:
-  - Added player mode toggle: "عدد محدد" (fixed) vs "مفتوح" (open)
-  - When open: maxPlayers=0, shows "الساحة مفتوحة" info box
-  - When fixed: shows the existing slider (2-20)
-  - Updated rounds hint text for open mode
-- Created EditSettingsModal component:
-  - Difficulty selector, time per round, number of rounds
-  - Player mode toggle (lobby only, not mid-game)
-  - Rounds/players conflict validation with Arabic messages
-  - isMidGame flag to restrict changes between rounds
-- Updated LobbyScreen:
-  - Added isOpen flag, startDisabled validation with Arabic error messages
-  - Added handleUpdateSettings callback that emits update-settings to server
-  - Added settings-updated listener with toast notifications
-  - Open mode UI: "الساحة مفتوحة" badge, dynamic player count, "المضيف يحدد وقت البداية"
-  - Added "تعديل" button for host next to "ابدأ المعركة"
-  - Updated settings badges to show open mode correctly
-- Updated RoundTransitionScreen:
-  - Added host "تعديل إعدادات الجولة القادمة" button
-  - Added EditSettingsModal with isMidGame=true
-  - Added settings-updated listener
-- Added settings-updated handler in global socket hook
-- Updated JoinGameScreen public rooms display: shows "مفتوح" for open rooms
-- Added X icon import from lucide-react
-- Fixed lint errors: setState-in-effect in EditSettingsModal using queueMicrotask
-- All lint checks pass, both services running on ports 3000 and 3003
+## Date: 2026-03-05
 
-Stage Summary:
-- Open player mode: unlimited join until host starts, with proper round/player validation at start time
-- Dynamic settings editing: host can edit in lobby (all settings) and between rounds (difficulty, time, rounds)
-- Real-time sync: settings-updated event broadcasts to all players with toast notifications
-- Arabic validation messages for all error states
-- EditSettingsModal is reusable for both lobby and mid-game contexts
-- Everything working: Next.js (3000) + game-service (3003) both returning 200
+## Summary
+Implemented the "Early End Game" system in the game-service backend (`/home/z/my-project/mini-services/game-service/index.ts`).
 
-Work Log:
-- Fixed critical import error in page.tsx: useGuestStore was incorrectly imported from `@/components/guest-identity` instead of `@/lib/guest-store`
-- Split the import into two lines: NameEntryModal/EditNameModal/PlayerNameBadge from guest-identity, useGuestStore from guest-store
-- Fixed lint errors in voice-chat.tsx (3 setState-in-effect violations) using queueMicrotask
-- Restarted dev server - app now runs successfully on port 3000 with HTTP 200
-- Verified game-service runs on port 3003
-- Verified share system integration:
-  - ShareModal rendered in LobbyScreen with Share2 button beside Copy button
-  - Deep link joining (?join=ROOMCODE) implemented in Home component
-  - Auto-fills room code and navigates to join screen
-  - Cleans URL params after processing
-- Lint passes clean with zero errors
+## Changes Made
 
-Stage Summary:
-- App is fully functional: both Next.js (3000) and game-service (3003) running
-- Guest identity system working (import fixed)
-- Smart share system fully operational:
-  - WhatsApp, Telegram, Messenger, SMS sharing via share-utils.ts
-  - Web Share API for native mobile sharing
-  - Dynamic Egyptian Arabic invite messages with time-aware templates (invite-generator.ts)
-  - Beautiful share modal with preview, quick actions, room info badges (share-modal.tsx)
-  - Deep link joining with auto-fill room code
-  - Copy invite link + copy invite message
-  - Message refresh for new random templates
+### 1. GameRoom Interface Update (line ~205)
+- Added `earlyEnding: boolean` field to the `GameRoom` interface
+- Purpose: Prevents duplicate early-end-game requests from being processed
 
----
-Task ID: 1
-Agent: Main
-Task: Implement persistent guest identity system for معركة الأسئلة
+### 2. Room Creation Update (line ~1161)
+- Initialized `earlyEnding: false` when creating new rooms
+- Ensures the flag starts as false for every new game room
 
-Work Log:
-- Updated Prisma schema with Guest model (id UUID, displayName, avatarColor, createdAt, lastSeen)
-- Ran `bun run db:push` to sync database
-- Created `/api/guest` API route with GET (lookup), POST (create/restore), PATCH (update name)
-- Created `src/lib/arabic-names.ts` with Arabic warrior/arena-themed name generator and avatar color palette
-- Created `src/lib/guest-store.ts` - Zustand store for guest identity with cookie persistence
-- Created `src/components/guest-identity.tsx` with:
-  - NameEntryModal: Cinematic first-visit name entry with Framer Motion, glow effects, random name generator
-  - EditNameModal: Small modal for changing display name
-  - PlayerNameBadge: Compact badge showing avatar initial + name + edit icon
-- Integrated into `src/app/page.tsx`:
-  - Added guest store imports
-  - CreateGameScreen: Uses guest.displayName as effectiveName, shows edit button
-  - JoinGameScreen: Uses guest.displayName as effectiveJoinName, shows edit button
-  - Home component: Restores guest from cookie on mount, shows NameEntryModal for first-timers, syncs playerName with guest identity
-  - All button disabled checks use effective name instead of raw input
-- Fixed lint errors: Replaced useEffect-based name sync with direct derived variables (effectiveName, effectiveJoinName)
+### 3. `early-end-game` Socket Event Handler (lines ~1101-1198)
+- Added inside `io.on('connection')` block
+- **Validations (in order):**
+  1. Room exists → "الغرفة مش موجودة"
+  2. Sender is host → "فقط القائد يقدر ينهي المعركة"
+  3. Game is in progress → "المعركة مش شغالة حالياً"
+  4. Not already processing → "جاري معالجة إنهاء المعركة بالفعل"
+  5. Round-player restriction:
+     - 2 active players + 2 completed rounds → "لاعبين ما يلعبوش جولتين — القاعدة بتمنع إنهاء المعركة دلوقتي"
+     - 3 active players + 3 completed rounds → "ثلاث لاعبين ما يلعبوش ثلاث جولات — القاعدة بتمنع إنهاء المعركة دلوقتي"
+- **Completed rounds** counted using `room.roundResults.size` (actual finalized rounds)
+- **Active players** counted by filtering `!p.isDisconnected`
+- All validation failures emit `early-end-rejected` with Arabic message
+- On success, sets `room.earlyEnding = true`
+- If round in progress (`roundStartTime` set and not `roundEnding`), finalizes current round:
+  - Calls `calculateRoundScores(room, currentRound)`
+  - Stores in `room.roundResults`
+  - Determines winner and updates `roundWins`
+  - Emits `round-end` with `isLastRound: true`
+- Then calls `handleGameEnd(roomCode, true)` after 1.5s delay
 
-Stage Summary:
-- Full guest identity system implemented: database → API → Zustand store → UI components
-- First visit shows cinematic name-entry modal
-- Returning users auto-restore from cookie + database lookup
-- Name is editable via edit icon on create/join screens
-- Arabic random name generator with warrior/arena themes
-- PlayerNameBadge component available for in-game use
-- Game store playerName stays synced with guest displayName
-- No authentication required - lightweight cookie-based persistence
+### 4. `handleGameEnd` Function Update (line ~1885)
+- Added optional `wasEarlyEnd: boolean = false` parameter
+- Added `completedRounds` calculation using `room.roundResults.size`
+- When `wasEarlyEnd` is true, emits `early-end-confirmed` event with:
+  - `completedRounds`: number of finalized rounds
+  - `totalPlannedRounds`: originally planned number of rounds
+  - `wasEarlyEnd: true`
+- Updated console log to indicate early end
+
+### 5. `rejoin-room` Handler Update (lines ~1067-1071)
+- When room status is 'finished' and `room.earlyEnding` is true:
+  - Includes `wasEarlyEnd: true` in rejoin data
+  - Includes `completedRounds: room.roundResults.size` in rejoin data
+
+## Key Design Decisions
+- Used `room.roundResults.size` for completed rounds count (not `currentRound`), as specified in requirements — this counts rounds with calculated scores
+- The `earlyEnding` flag persists on the room object, allowing rejoin detection
+- Round-player restriction uses strict equality (2 players ↔ 2 rounds, 3 players ↔ 3 rounds)
+- 1.5s delay before `handleGameEnd` to allow clients to process the final round-end event
+- Existing `handleGameEnd` calls (from opponent leaving, etc.) still work with default `wasEarlyEnd = false`
+
+## Verification
+- Lint check passed (no new errors)
+- Game service is running on port 3003 (health check returns OK)
+- All TypeScript errors are pre-existing (module configuration issues, not related to changes)

@@ -54,6 +54,8 @@ import {
   Volume1,
   Share2,
   X,
+  ShieldAlert,
+  AlertTriangle,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { BattleLogo } from '@/components/battle-logo'
@@ -296,6 +298,7 @@ function useGameSocket() {
       store.getState().setScores(data.scores.sort((a: Player, b: Player) => b.score - a.score))
       if (data.roundWinners) store.getState().setRoundWinners(data.roundWinners)
       if (data.roundResults) store.getState().setRoundResults(data.roundResults)
+      store.getState().setEarlyEndProcessing(false)
       store.getState().setScreen('results')
       // Play victory or defeat based on player position
       const sortedScores = data.scores.sort((a: Player, b: Player) => b.score - a.score)
@@ -308,6 +311,18 @@ function useGameSocket() {
       }
       // Podium reveal after a delay
       setTimeout(() => audioEngine.podiumReveal(), 1500)
+    })
+
+    socket.on('early-end-rejected', (data: { message: string }) => {
+      store.getState().setEarlyEndProcessing(false)
+      audioEngine.error()
+      toast({ title: 'لا يمكن إنهاء المعركة', description: data.message, variant: 'destructive' })
+    })
+
+    socket.on('early-end-confirmed', (data: { completedRounds: number; totalPlannedRounds: number; wasEarlyEnd: boolean }) => {
+      store.getState().setWasEarlyEnd(true)
+      store.getState().setCompletedRounds(data.completedRounds)
+      audioEngine.earlyEndConfirmed()
     })
 
     socket.on('host-changed', (data: { newHostId: string; newHostName: string; oldHostName: string; players: Player[] }) => {
@@ -447,7 +462,15 @@ function useGameSocket() {
     }
   }, [])
 
-  return { leaveAndDisconnect, createGame, joinGame, rejoinRoom, startGame, submitAnswer, surrender, setupSocketListeners }
+  const requestEarlyEnd = useCallback((roomCode: string) => {
+    if (globalSocket) {
+      store.getState().setEarlyEndProcessing(true)
+      audioEngine.earlyEndHorn()
+      globalSocket.emit('early-end-game', { roomCode })
+    }
+  }, [])
+
+  return { leaveAndDisconnect, createGame, joinGame, rejoinRoom, startGame, submitAnswer, surrender, requestEarlyEnd, setupSocketListeners }
 }
 
 // ============================================
@@ -1677,6 +1700,222 @@ function EditSettingsModal({
 }
 
 // ============================================
+// EARLY END GAME CONFIRMATION MODAL
+// Cinematic, dramatic, competitive gaming UI
+// ============================================
+function EarlyEndConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  currentRound,
+  totalRounds,
+  isProcessing,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm: () => void
+  currentRound: number
+  totalRounds: number
+  isProcessing: boolean
+}) {
+  const [phase, setPhase] = useState<'idle' | 'warning' | 'ready'>('idle')
+  const [shakeCount, setShakeCount] = useState(0)
+
+  useEffect(() => {
+    if (open) {
+      setPhase('idle')
+      setShakeCount(0)
+      // Staggered reveal phases
+      const t1 = setTimeout(() => setPhase('warning'), 300)
+      const t2 = setTimeout(() => setPhase('ready'), 800)
+      // Subtle screen shake effect
+      const shakeInterval = setInterval(() => {
+        setShakeCount(prev => prev + 1)
+      }, 600)
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+        clearInterval(shakeInterval)
+      }
+    }
+  }, [open])
+
+  if (!open) return null
+
+  const completedRounds = currentRound + 1
+  const remainingRounds = totalRounds - completedRounds
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md"
+        onClick={onClose}
+      >
+        {/* Background dramatic glow */}
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          animate={{
+            background: [
+              'radial-gradient(circle at center, rgba(220,38,38,0.08) 0%, transparent 50%)',
+              'radial-gradient(circle at center, rgba(220,38,38,0.15) 0%, transparent 50%)',
+              'radial-gradient(circle at center, rgba(220,38,38,0.08) 0%, transparent 50%)',
+            ],
+          }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        />
+
+        {/* Floating embers */}
+        {[...Array(6)].map((_, i) => (
+          <motion.div
+            key={`ember-${i}`}
+            className="absolute w-1 h-1 rounded-full bg-red-500"
+            style={{
+              boxShadow: '0 0 6px rgba(220,38,38,0.8), 0 0 12px rgba(220,38,38,0.4)',
+              left: `${20 + Math.random() * 60}%`,
+              top: `${20 + Math.random() * 60}%`,
+            }}
+            animate={{
+              y: [0, -40, -80],
+              opacity: [0, 0.8, 0],
+              scale: [0.5, 1, 0.5],
+            }}
+            transition={{
+              duration: 2 + Math.random(),
+              delay: i * 0.3,
+              repeat: Infinity,
+              ease: 'easeOut',
+            }}
+          />
+        ))}
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.7, y: 30 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.8, y: 20 }}
+          transition={{ type: 'spring', stiffness: 250, damping: 20 }}
+          onClick={(e) => e.stopPropagation()}
+          className="relative w-full max-w-md mx-4 rounded-2xl overflow-hidden"
+          style={{
+            background: 'linear-gradient(180deg, #1A0A0A 0%, #120818 50%, #0A0A12 100%)',
+            boxShadow: '0 0 60px rgba(220,38,38,0.3), 0 0 120px rgba(220,38,38,0.1), inset 0 1px 0 rgba(255,255,255,0.05)',
+            border: '1px solid rgba(220,38,38,0.3)',
+          }}
+        >
+          {/* Top accent line */}
+          <div className="h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent" />
+
+          <div className="p-6 sm:p-8 text-center">
+            {/* Dramatic icon */}
+            <motion.div
+              initial={{ scale: 0, rotate: -20 }}
+              animate={{ scale: phase === 'warning' || phase === 'ready' ? 1 : 0, rotate: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 15 }}
+              className="mx-auto mb-6 w-20 h-20 rounded-full flex items-center justify-center"
+              style={{
+                background: 'radial-gradient(circle, rgba(220,38,38,0.2) 0%, rgba(220,38,38,0.05) 70%)',
+                border: '2px solid rgba(220,38,38,0.4)',
+                boxShadow: '0 0 30px rgba(220,38,38,0.3), inset 0 0 20px rgba(220,38,38,0.1)',
+              }}
+            >
+              <ShieldAlert className="w-10 h-10 text-red-400" />
+            </motion.div>
+
+            {/* Title */}
+            <motion.h2
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: phase === 'warning' || phase === 'ready' ? 1 : 0, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="text-2xl sm:text-3xl font-black text-white mb-2"
+              style={{ textShadow: '0 0 20px rgba(220,38,38,0.4)' }}
+            >
+              إنهاء المعركة؟
+            </motion.h2>
+
+            {/* Warning message */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: phase === 'ready' ? 1 : 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="mb-6"
+            >
+              <div className="p-4 rounded-xl bg-red-500/5 border border-red-500/20 mb-4">
+                <p className="text-red-300 text-sm leading-relaxed font-medium">
+                  هل تريد إنهاء المعركة الآن؟
+                </p>
+                <p className="text-red-400/80 text-xs mt-2">
+                  سيتم اعتماد النتائج الحالية بشكل نهائي
+                </p>
+              </div>
+
+              {/* Round info */}
+              <div className="flex items-center justify-center gap-3 mb-3">
+                <Badge className="bg-red-500/10 text-red-400 border border-red-500/30 text-xs">
+                  <Swords className="w-3 h-3 ml-1" />
+                  اتعملت {completedRounds} جولات
+                </Badge>
+                <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-xs">
+                  <RotateCcw className="w-3 h-3 ml-1" />
+                  متبقي {remainingRounds} جولات
+                </Badge>
+              </div>
+
+              <div className="flex items-center justify-center gap-1.5 text-amber-400/70">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span className="text-xs">الإجراء ده نهائي ومش هيترجع</span>
+              </div>
+            </motion.div>
+
+            {/* Action buttons */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: phase === 'ready' ? 1 : 0, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="flex gap-3"
+            >
+              <Button
+                variant="ghost"
+                onClick={onClose}
+                disabled={isProcessing}
+                className="flex-1 py-3 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 hover:text-white transition-all"
+              >
+                إلغاء
+              </Button>
+              <Button
+                onClick={onConfirm}
+                disabled={isProcessing}
+                className="flex-1 py-3 rounded-xl font-bold border-0 transition-all relative overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
+                  boxShadow: '0 0 20px rgba(220,38,38,0.3), 0 4px 15px rgba(220,38,38,0.2)',
+                }}
+              >
+                {isProcessing ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    جاري الإنهاء...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4" />
+                    إنهاء المعركة
+                  </span>
+                )}
+              </Button>
+            </motion.div>
+          </div>
+
+          {/* Bottom accent line */}
+          <div className="h-0.5 bg-gradient-to-r from-transparent via-red-500/50 to-transparent" />
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+// ============================================
 // LOBBY SCREEN (ARENA)
 // ============================================
 function LobbyScreen() {
@@ -2137,8 +2376,11 @@ function RoundTransitionScreen() {
   const setGameSettings = useGameStore((s) => s.setGameSettings)
   const players = useGameStore((s) => s.players)
   const roomCode = useGameStore((s) => s.roomCode)
+  const earlyEndProcessing = useGameStore((s) => s.earlyEndProcessing)
   const [showEditSettings, setShowEditSettings] = useState(false)
+  const [showEarlyEndModal, setShowEarlyEndModal] = useState(false)
   const { toast } = useToast()
+  const { requestEarlyEnd } = useGameSocket()
   const isOpen = gameSettings.playerMode === 'open' || gameSettings.maxPlayers === 0
 
   // Send settings update to server (host only)
@@ -2256,13 +2498,13 @@ function RoundTransitionScreen() {
             <span className="text-sm">{isLastRound ? 'جاري إعلان النتائج النهائية...' : 'جاري تحضير الجولة التالية...'}</span>
           </div>
 
-          {/* Host edit settings button between rounds */}
+          {/* Host controls between rounds */}
           {isHost && !isLastRound && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 2 }}
-              className="mt-4 text-center"
+              className="mt-4 flex flex-col items-center gap-2"
             >
               <Button
                 variant="outline"
@@ -2271,6 +2513,15 @@ function RoundTransitionScreen() {
                 className="border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 rounded-xl gap-1.5"
               >
                 <Zap className="w-3.5 h-3.5" /> تعديل إعدادات الجولة القادمة
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEarlyEndModal(true)}
+                disabled={earlyEndProcessing}
+                className="border-red-500/30 bg-red-500/5 text-red-400 hover:bg-red-500/15 hover:text-red-300 rounded-xl gap-1.5"
+              >
+                <ShieldAlert className="w-3.5 h-3.5" /> إنهاء المعركة
               </Button>
             </motion.div>
           )}
@@ -2286,6 +2537,19 @@ function RoundTransitionScreen() {
         currentPlayers={players.length}
         isOpen={isOpen}
         isMidGame={true}
+      />
+
+      {/* Early End Game Confirmation Modal */}
+      <EarlyEndConfirmModal
+        open={showEarlyEndModal}
+        onClose={() => setShowEarlyEndModal(false)}
+        onConfirm={() => {
+          requestEarlyEnd(roomCode)
+          setShowEarlyEndModal(false)
+        }}
+        currentRound={currentRound}
+        totalRounds={totalRounds}
+        isProcessing={earlyEndProcessing}
       />
     </div>
   )
@@ -2597,6 +2861,8 @@ function ResultsScreen() {
   const roundWinners = useGameStore((s) => s.roundWinners)
   const roundResults = useGameStore((s) => s.roundResults)
   const totalRounds = useGameStore((s) => s.totalRounds)
+  const wasEarlyEnd = useGameStore((s) => s.wasEarlyEnd)
+  const completedRounds = useGameStore((s) => s.completedRounds)
   const resetGame = useGameStore((s) => s.resetGame)
   const { leaveAndDisconnect } = useGameSocket()
 
@@ -2639,9 +2905,24 @@ function ResultsScreen() {
             transition={{ duration: 2, repeat: Infinity }}
             className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 mb-2"
           >
-            انتهت المعركة!
+            {wasEarlyEnd ? 'تم إنهاء المعركة' : 'انتهت المعركة!'}
           </motion.div>
-          <p className="text-slate-400">النتائج النهائية للساحة</p>
+          <p className="text-slate-400">{wasEarlyEnd ? 'اعتماد النتائج النهائية' : 'النتائج النهائية للساحة'}</p>
+          
+          {/* Early end indicator */}
+          {wasEarlyEnd && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mt-3"
+            >
+              <Badge className="bg-red-500/10 text-red-400 border border-red-500/30 text-xs px-3 py-1">
+                <ShieldAlert className="w-3 h-3 ml-1" />
+                أنهى القائد المعركة مبكراً — اتعملت {completedRounds} من {totalRounds} جولات
+              </Badge>
+            </motion.div>
+          )}
         </motion.div>
 
         {/* Podium - Top 3 */}
