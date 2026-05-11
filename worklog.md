@@ -1,27 +1,39 @@
-# Battle of Questions - Work Log
-
 ---
 Task ID: 1
 Agent: Main Agent
-Task: Switch from z-ai-web-dev-sdk to OpenRouter API
+Task: Fix all 5 game issues (reconnection, timer, progress, game flow, question count)
 
 Work Log:
-- Analyzed project structure to identify all z-ai-web-dev-sdk usage
-- Found SDK usage in 2 files: src/app/api/generate-content/route.ts and mini-services/game-service/index.ts
-- Created OpenRouter utility module at src/lib/openrouter.ts with callLLM() and webSearch() functions
-- Replaced z-ai-web-dev-sdk LLM calls with direct OpenRouter API calls using fetch
-- Replaced SDK web_search with DuckDuckGo HTML search
-- Updated game-service to use inline OpenRouter API functions
-- Removed z-ai-web-dev-sdk dependency from game-service/package.json
-- Added OPENROUTER_API_KEY and OPENROUTER_MODEL to .env
-- Tested OpenRouter API - Gemini 2.0 Flash not available in region, switched to DeepSeek Chat V3
-- DeepSeek Chat V3 tested successfully with Arabic content
-- Removed .env from git tracking, added .env.example with placeholders
+- Read and analyzed entire codebase (game-service/index.ts 1629 lines, page.tsx 2542 lines, game-store.ts)
+- Identified critical reconnection bug: disconnect handler immediately removes player, making rejoin impossible
+- Added 60-second grace period for disconnected players with periodic cleanup
+- Added `isDisconnected`, `disconnectedAt`, `oldSocketIds` fields to Player interface
+- Added `roundEnding` flag to GameRoom to prevent double handleRoundEnd calls
+- Updated `playersToArray` to filter out disconnected players from visible list
+- Added `playersToArrayAll` helper for internal use
+- Added `cleanupExpiredDisconnects` function running every 15 seconds
+- Updated `removePlayerFromRoom` to mark players as disconnected instead of removing them
+- Updated `rejoin-room` handler to find disconnected players by name and restore them
+- Updated `start-game` to remove lingering disconnected players before starting
+- Updated `submit-answer` to only check active (non-disconnected) players for all-answered
+- Updated `handleRoundEnd` with roundEnding guard to prevent double calls
+- Updated disconnect handler to use new grace period system
+- Updated `findNextHost` to skip disconnected players
+- Updated `getPublicRoomsList` to count only active players
+- Updated `calculateRoundScores` to skip disconnected players
+- Changed question count from 7 to 10 for medium difficulty
+- Increased max_tokens from 4096 to 8192 for longer LLM responses
+- Made timer full-width at top of game HUD (mobile-friendly)
+- Moved badges (round/question progress) below timer
+- Fixed progress steps clearing on game-starting and round-loading events
+- Improved progress step rendering (ready/validating show as completed)
+- Updated completion message to say "waiting for other player or time to end"
+- Changed game-service .env to use google/gemini-2.0-flash-001 for speed
 - Pushed all changes to GitHub
 
 Stage Summary:
-- z-ai-web-dev-sdk completely replaced with OpenRouter API
-- Default model: deepseek/deepseek-chat-v3-0324
-- Both Next.js (port 3000) and Game Service (port 3003) running successfully
-- OpenRouter API key configured via environment variable
-- GitHub push successful with no secret leaks
+- Reconnection now works: players can refresh and rejoin within 60 seconds
+- Timer is now the most prominent element at the top of the game screen
+- Progress levels are accurate and cleared between rounds
+- Both players finishing ends the round immediately (no double-call bugs)
+- Medium difficulty now generates 10 questions instead of 7
