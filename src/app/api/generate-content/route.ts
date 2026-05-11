@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { callLLM, webSearch } from '@/lib/openrouter'
 import { db } from '@/lib/db'
 
 // ============================================
@@ -106,7 +106,7 @@ const searchQueriesPool: Record<GameType, string[]> = {
     'شعر محمود درويش الهوية والأرض والمنفى',
     'نثر جبران خليل جبران الفلسفة والتصوف الأدبي',
     'شعر أحمد شوقي أمير الشعراء بين التقليد والتجديد',
-    'أدب نجيب محفوذ الواقعية المصرية والرمز',
+    'أدب نجيب محفوظ الواقعية المصرية والرمز',
     'شعر إلياس أبو شبكة الألم والوجدان',
     // بلاغة قرآنية
     'البلاغة القرآنية في سورة الرحمن التكرار والجمال',
@@ -365,7 +365,6 @@ ${searchInspiration}${seedInstruction}${varietyConstraint}
 // HELPER: Generate content with retry logic
 // ============================================
 async function generateWithRetry(
-  zai: ZAI,
   gameType: GameType,
   difficulty: Difficulty,
   previousTopics?: string[],
@@ -397,26 +396,12 @@ async function generateWithRetry(
         const seeds = topicSeeds[gameType]
         topicSeed = seeds[Math.floor(Math.random() * seeds.length)]
 
-        // Race the web search with a timeout
-        const searchPromise = zai.functions.invoke('web_search', {
-          query: randomQuery,
-          num: 10,
-        })
-        const searchTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000))
+        // Search using DuckDuckGo
+        const searchResults = await webSearch(randomQuery)
 
-        const searchResults = await Promise.race([searchPromise, searchTimeout])
-
-        // Pick a good result with a decent snippet
-        if (Array.isArray(searchResults) && searchResults.length > 0) {
-          const goodResults = searchResults.filter(
-            (r: { snippet?: string }) => r.snippet && r.snippet.length > 50
-          )
-          const chosenResult =
-            goodResults.length > 0
-              ? goodResults[Math.floor(Math.random() * Math.min(goodResults.length, 5))]
-              : searchResults[0]
-
-          searchTitle = chosenResult.name || chosenResult.host_name
+        if (searchResults.length > 0) {
+          const chosenResult = searchResults[Math.floor(Math.random() * Math.min(searchResults.length, 5))]
+          searchTitle = chosenResult.name
           searchSnippet = chosenResult.snippet
         }
       } catch (searchError) {
@@ -429,7 +414,7 @@ async function generateWithRetry(
         topicSeed = seeds[Math.floor(Math.random() * seeds.length)]
       }
 
-      // Step 2: Use LLM to generate content
+      // Step 2: Use LLM to generate content via OpenRouter
       const prompt = buildPrompt(
         gameType,
         difficulty,
@@ -440,10 +425,10 @@ async function generateWithRetry(
         topicSeed
       )
 
-      const llmPromise = zai.chat.completions.create({
-        messages: [
+      const responseText = await callLLM(
+        [
           {
-            role: 'assistant',
+            role: 'system',
             content:
               'أنت معلم خبير في اللغة العربية متخصص في إعداد امتحانات القراءة المتحررة والنصوص لمرحلة الثانوية العامة. تُنتج محتوى عربياً أصيلاً ومتنوعاً بأسلوب أدبي رفيع مع الالتزام التام بقواعد اللغة العربية النحوية والصرفية والإملائية. كل نص تنتجه يجب أن يكون فريداً ومختلفاً. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي.',
           },
@@ -452,21 +437,10 @@ async function generateWithRetry(
             content: prompt,
           },
         ],
-        thinking: { type: 'disabled' },
-      })
-      const llmTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 40000))
+        { timeoutMs: 45000 }
+      )
 
-      const completion = await Promise.race([llmPromise, llmTimeout])
-      if (!completion) {
-        console.error(`[Generate] Attempt ${attempt + 1}: LLM timed out`)
-        continue
-      }
-
-      // Extract the response text
-      const responseText =
-        completion?.choices?.[0]?.message?.content || completion?.content || ''
-
-      if (!responseText || typeof responseText !== 'string') {
+      if (!responseText) {
         console.error(`[Generate] Attempt ${attempt + 1}: Empty LLM response`)
         continue
       }
@@ -577,7 +551,6 @@ async function warmCache() {
   warmingInProgress = true
 
   try {
-    const zai = await ZAI.create()
     const combos: [GameType, Difficulty][] = [
       ['قراءة متحررة', 'سهل'],
       ['قراءة متحررة', 'متوسط'],
@@ -594,7 +567,7 @@ async function warmCache() {
       if (cached.length >= 2) continue // Already have enough
 
       console.log(`[Cache] Pre-warming: ${gt} / ${diff}`)
-      const result = await generateWithRetry(zai, gt, diff, undefined, undefined, 2)
+      const result = await generateWithRetry(gt, diff, undefined, undefined, 2)
       if (result) {
         addToCache(result.content, gt, diff)
         console.log(`[Cache] Pre-warmed: ${gt} / ${diff} - "${result.content.title}"`)
@@ -702,20 +675,8 @@ export async function POST(request: NextRequest) {
     // Step 2: No cache hit — generate fresh content
     console.log(`[Cache] MISS: ${gameType} / ${difficulty} — generating fresh`)
 
-    // Initialize ZAI SDK
-    let zai
-    try {
-      zai = await ZAI.create()
-    } catch (sdkError) {
-      console.error('Failed to initialize ZAI SDK:', sdkError)
-      return NextResponse.json(
-        { error: 'فشل في الاتصال بالذكاء الاصطناعي. حاول مرة أخرى.' },
-        { status: 503 }
-      )
-    }
-
     // Generate with retry logic (3 attempts with different search queries)
-    const result = await generateWithRetry(zai, gameType, difficulty, previousTopics, seenTitles, 3)
+    const result = await generateWithRetry(gameType, difficulty, previousTopics, seenTitles, 3)
 
     if (!result) {
       return NextResponse.json(
