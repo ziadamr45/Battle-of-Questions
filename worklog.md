@@ -189,3 +189,64 @@ Files Modified:
 1. prisma/schema.prisma - Changed provider to postgresql, url to env variable
 2. .env - Updated DATABASE_URL to Neon PostgreSQL connection string
 3. src/lib/db.ts - Added PostgreSQL connection pooling, improved logging
+
+---
+
+## Date: 2026-05-11 (Session 2)
+
+## Summary
+Two major features: (1) Guest identity persistence across visits, (2) Difficulty rebalancing + reading UX improvements for القراءة المتحررة mode.
+
+---
+Task ID: 11
+Agent: Main
+Task: Fix guest identity to only show name modal on first visit
+
+Work Log:
+- Updated guest-store.ts with localStorage persistence (GUEST_PROFILE_KEY = 'maaraka-guest-profile')
+- Added saveGuestProfile/loadGuestProfile/removeGuestProfile/hasVisitedBefore actions
+- setGuest now automatically saves to both localStorage AND cookie
+- Updated page.tsx restore logic with 3-step priority: localStorage → cookie + API → first visit
+- On return visits: instantly restore from localStorage, background API refresh for DB guests
+- NameEntryModal only shows for truly first-time visitors (hasVisitedBefore() check)
+- EditNameModal still available via PlayerNameBadge for changing name anytime
+
+Stage Summary:
+- Name entry modal ONLY appears on first visit
+- Return visits: instant restore, no blocking, no modal
+- localStorage survives across sessions even if API is down
+
+---
+Task ID: 12
+Agent: Main
+Task: Rebalance difficulty scaling + improve reading passage UX
+
+Work Log:
+- Updated game-service buildPrompt with increased word counts:
+  - سهل: 250-350 → 350-500 كلمة
+  - متوسط: 350-500 → 500-750 كلمة
+  - صعب: 450-650 → 700-1000 كلمة
+- Enhanced difficulty-specific instructions:
+  - سهل: coherent + engaging even at easy level, clear but not naive Arabic
+  - متوسط: deep reading required, literary style, layers of meaning
+  - صعب: intellectual density, high focus, complex rhetorical structures, interconnected ideas
+- Added Rule 8 (text quality): professional writer feel, no repetitive templates, each paragraph adds value
+- Added Rule 9 (text structure): 4-6 paragraphs, engaging intro → escalating depth → thought-provoking conclusion
+- Updated page.tsx reading passage display:
+  - Paragraph-level rendering (split by \n\n/\n, space-y-4 spacing)
+  - Better typography: 15-17px text, leading-[1.9], tracking-wide
+  - Gradient title styling (from-red-300 via-amber-200 to-red-300)
+  - Custom amber-tinted scrollbar (.reading-scroll class)
+  - Scroll hint "↕ اسحب للقراءة" that fades when user reaches bottom
+  - Increased reading area from max-h-[60vh] to max-h-[65vh]
+  - Mobile-responsive padding (p-4 sm:p-6) and font sizes
+  - Source attribution with border separator
+- Added scroll hint reset when gameContent changes (queueMicrotask to avoid lint error)
+- All lint checks pass with zero errors
+- Committed and pushed to GitHub
+
+Files Modified:
+1. src/lib/guest-store.ts - localStorage persistence, hasVisitedBefore
+2. src/app/page.tsx - Guest restore logic, reading passage UI, scroll hint
+3. mini-services/game-service/index.ts - Difficulty word counts, instructions, quality rules
+4. src/app/globals.css - .reading-scroll scrollbar styles
