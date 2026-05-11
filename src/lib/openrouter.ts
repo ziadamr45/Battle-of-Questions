@@ -40,7 +40,7 @@ export async function callLLM(
   }
 ): Promise<string | null> {
   const apiKey = process.env.OPENROUTER_API_KEY
-  const model = options?.model || process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001'
+  const model = options?.model || process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324'
   const timeoutMs = options?.timeoutMs || 45000
 
   if (!apiKey) {

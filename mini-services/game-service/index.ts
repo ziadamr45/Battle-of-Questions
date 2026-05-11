@@ -3,7 +3,7 @@ import { Server, Socket } from 'socket.io'
 // OpenRouter API - replaces z-ai-web-dev-sdk
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001'
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324'
 
 interface ChatMessage {
   role: 'system' | 'assistant' | 'user'
