@@ -42,7 +42,8 @@ async function callOpenRouterLLM(
   options?: { temperature?: number; maxTokens?: number; timeoutMs?: number }
 ): Promise<string | null> {
   if (!OPENROUTER_API_KEY) {
-    console.error('[OpenRouter] OPENROUTER_API_KEY is not set!')
+    console.error('[OpenRouter] ❌ OPENROUTER_API_KEY is not set! Content generation will fail.')
+    console.error('[OpenRouter] Please set OPENROUTER_API_KEY in your environment variables or .env file')
     return null
   }
   const timeoutMs = options?.timeoutMs || 120000  // 2 minutes default
@@ -697,6 +698,9 @@ async function fetchGameContent(
   }
 
   console.error(`[fetchGameContent] All ${MAX_CONTENT_RETRIES} attempts failed for room ${roomCode}`)
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('مفتاح OpenRouter API غير موجود! يرجى إضافة OPENROUTER_API_KEY في متغيرات البيئة على Railway.')
+  }
   throw new Error('فشل في توليد المحتوى بعد محاولات متعددة. يرجى المحاولة مرة أخرى.')
 }
 
