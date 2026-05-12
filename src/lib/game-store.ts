@@ -5,6 +5,8 @@ export type Difficulty = 'سهل' | 'متوسط' | 'صعب'
 export type RoomType = 'عامة' | 'خاصة'
 export type PlayerMode = 'fixed' | 'open'
 export type PassageType = 'علمي' | 'أدبي' | 'عشوائي'
+export type BattleMode = 'فردي' | 'فرق'
+export type TeamId = 'A' | 'B'
 export type Screen = 'home' | 'create' | 'join' | 'lobby' | 'loading' | 'game' | 'results' | 'round-transition' | 'history' | 'about'
 
 export interface Player {
@@ -15,6 +17,8 @@ export interface Player {
   isReady: boolean
   joinOrder: number
   roundWins?: number
+  teamId?: TeamId | null
+  isCaptain?: boolean
 }
 
 export interface Question {
@@ -40,6 +44,7 @@ export interface GameSettings {
   maxPlayers: number        // 0 means "open" (unlimited)
   playerMode: PlayerMode    // 'fixed' = specific count, 'open' = host decides when to start
   passageType: PassageType  // Only relevant when gameType === 'قراءة متحررة'
+  battleMode: BattleMode    // 'فردي' = solo, 'فرق' = team
 }
 
 export interface RoomInfo {
@@ -51,6 +56,7 @@ export interface RoomInfo {
   maxPlayers: number
   settings: GameSettings
   status: 'waiting' | 'playing' | 'finished'
+  battleMode?: BattleMode
 }
 
 export interface RoundScore {
@@ -89,6 +95,51 @@ export interface FinishedStatus {
   totalActive: number
   unfinishedPlayerNames: string[]
 }
+
+// ─── Team Types ──────────────────────────────────────────────────────────────
+
+export interface TeamInfo {
+  id: TeamId
+  name: string
+  color: string
+  captainId: string | null
+  captainName: string | null
+  playerIds: string[]
+}
+
+export interface TeamsState {
+  teamA: TeamInfo
+  teamB: TeamInfo
+}
+
+export interface TeamRoundScores {
+  A: { score: number; correctAnswers: number }
+  B: { score: number; correctAnswers: number }
+  winningTeam: TeamId | null
+}
+
+export interface ApprovalRequestState {
+  approvalId: string
+  type: 'settings' | 'early-end' | 'voice-merge' | 'round-start'
+  description: string
+  requestedByName: string
+  requestedByTeam: TeamId | null
+  expiresAt: number
+}
+
+export interface ChatMessage {
+  id: string
+  senderId: string
+  senderName: string
+  content: string
+  mode: 'team' | 'global' | 'private'
+  teamId?: TeamId | null
+  targetId?: string
+  targetName?: string
+  timestamp: number
+}
+
+export type ChatMode = 'team' | 'global' | 'private'
 
 // ─── Session Storage Helpers ──────────────────────────────────────────────────
 
@@ -276,6 +327,38 @@ interface GameState {
   battleData: any
   setBattleData: (data: any) => void
 
+  // ─── Team Mode State ───────────────────────────────────────────────────
+  battleMode: BattleMode
+  setBattleMode: (mode: BattleMode) => void
+
+  teams: TeamsState | null
+  setTeams: (teams: TeamsState | null) => void
+
+  myTeamId: TeamId | null
+  setMyTeamId: (teamId: TeamId | null) => void
+
+  isCaptain: boolean
+  setIsCaptain: (captain: boolean) => void
+
+  voiceMerged: boolean
+  setVoiceMerged: (merged: boolean) => void
+
+  pendingApproval: ApprovalRequestState | null
+  setPendingApproval: (request: ApprovalRequestState | null) => void
+
+  approvalSent: { approvalId: string; targetCaptainName: string } | null
+  setApprovalSent: (data: { approvalId: string; targetCaptainName: string } | null) => void
+
+  teamRoundScores: TeamRoundScores | null
+  setTeamRoundScores: (scores: TeamRoundScores | null) => void
+
+  // Chat state
+  chatMessages: ChatMessage[]
+  addChatMessage: (message: ChatMessage) => void
+  clearChatMessages: () => void
+  chatMode: ChatMode
+  setChatMode: (mode: ChatMode) => void
+
   resetGame: () => void
   restoreState: (state: PersistedState) => void
 }
@@ -288,6 +371,7 @@ const defaultSettings: GameSettings = {
   maxPlayers: 10,
   playerMode: 'fixed',
   passageType: 'عشوائي',
+  battleMode: 'فردي',
 }
 
 // Validate rounds rule: 2 players can't play 2 rounds, 3 players can't play 3 rounds
@@ -510,6 +594,43 @@ export const useGameStore = create<GameState>((set, get) => ({
   battleData: null,
   setBattleData: (data) => set({ battleData: data }),
 
+  // ─── Team Mode State ───────────────────────────────────────────────────
+  battleMode: 'فردي',
+  setBattleMode: (mode) => {
+    set({ battleMode: mode })
+    setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
+  },
+
+  teams: null,
+  setTeams: (teams) => set({ teams }),
+
+  myTeamId: null,
+  setMyTeamId: (teamId) => set({ myTeamId: teamId }),
+
+  isCaptain: false,
+  setIsCaptain: (captain) => set({ isCaptain: captain }),
+
+  voiceMerged: false,
+  setVoiceMerged: (merged) => set({ voiceMerged: merged }),
+
+  pendingApproval: null,
+  setPendingApproval: (request) => set({ pendingApproval: request }),
+
+  approvalSent: null,
+  setApprovalSent: (data) => set({ approvalSent: data }),
+
+  teamRoundScores: null,
+  setTeamRoundScores: (scores) => set({ teamRoundScores: scores }),
+
+  // Chat state
+  chatMessages: [],
+  addChatMessage: (message) => set((state) => ({
+    chatMessages: [...state.chatMessages.slice(-99), message], // Keep last 100
+  })),
+  clearChatMessages: () => set({ chatMessages: [] }),
+  chatMode: 'team',
+  setChatMode: (mode) => set({ chatMode: mode }),
+
   resetGame: () => {
     set({
       screen: 'home',
@@ -545,6 +666,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       isPlayerFinished: false,
       answerExplanations: {},
       battleData: null,
+      battleMode: 'فردي',
+      teams: null,
+      myTeamId: null,
+      isCaptain: false,
+      voiceMerged: false,
+      pendingApproval: null,
+      approvalSent: null,
+      teamRoundScores: null,
+      chatMessages: [],
+      chatMode: 'team',
     })
     clearSessionStorage()
   },

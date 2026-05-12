@@ -397,3 +397,65 @@ Stage Summary:
 - Voice chat auto-disconnects when battle ends
 - Players can rematch with same settings in a new room
 - First player to rematch becomes the new host
+---
+Task ID: 4
+Agent: Main
+Task: Implement complete Team Battle Mode (نظام الفرق)
+
+Work Log:
+- Added BattleMode ('فردي'|'فرق') and TeamId ('A'|'B') types to game-store
+- Added battleMode to GameSettings with default 'فردي'
+- Added teamId and isCaptain to Player interface
+- Added TeamInfo, TeamsState, TeamRoundScores, ApprovalRequestState, ChatMessage, ChatMode types
+- Added 14 new state fields to Zustand store (battleMode, teams, myTeamId, isCaptain, voiceMerged, pendingApproval, approvalSent, teamRoundScores, chatMessages, chatMode, etc.)
+- Added team state reset to resetGame()
+- Updated game-service with full team infrastructure:
+  - Team helper functions: getTeamPlayers, getTeamsInfo, findNextTeamCaptain, transferTeamCaptain
+  - Team fields in GameRoom: battleMode, voiceMerged, pendingApproval
+  - Team fields in Player: teamId, isCaptain
+  - ApprovalRequest and TeamInfo interfaces
+  - Updated create-game: creator is Team A captain in team mode
+  - Updated join-game: auto-assign teams, first joiner is Team B captain
+  - Added switch-team socket event with captain transfer on switch
+  - Added captain-approval-request/response events with 40s timeout
+  - Added voice-merge-request event with approval flow
+  - Added team-chat-message, global-chat-message, private-message events
+  - Updated update-settings to require captain approval in team mode
+  - Updated early-end-game to require captain approval in team mode
+  - Updated handleRoundEnd with teamRoundScores calculation
+  - Updated handleGameEnd with battleMode and teams data
+  - Updated removePlayerFromRoom with per-team captain transfer
+  - Updated rematch system to preserve team mode settings
+  - Updated rejoin-room with team data
+- Updated page.tsx with:
+  - New type imports (BattleMode, TeamId, TeamsState, TeamInfo, etc.)
+  - New icon imports (UsersRound, ArrowLeftRight, ShieldCheck, Send, Radio)
+  - 15+ new socket event listeners for team events
+  - Updated game-created/joined handlers with team data
+  - Updated player-joined/left handlers with team data
+  - Updated round-end handler with teamRoundScores
+  - Updated game-ended handler with battleMode and teams
+  - Battle type selector in CreateGameScreen (فردي/فرق)
+  - Dual-team lobby layout with Team A (Red) and Team B (Blue)
+  - Captain badges with Crown icon
+  - Team switching buttons
+  - Voice merge request button for captains
+  - Captain Approval popup with countdown timer
+  - ApprovalTimer component with progress bar
+  - Team chat panel with mode selector (فريقي/الكل)
+  - Team indicator badge in GameScreen HUD
+  - Team round scores in RoundTransitionScreen
+  - Team battle results in ResultsScreen with MVP
+  - Team badge on "خلصت?" button area
+  - Settings change through approval system in team mode
+  - Start game validation requiring players in both teams
+
+Stage Summary:
+- Complete Team Battle Mode implemented across server and client
+- Solo mode (فردي) works exactly as before with no changes
+- Team mode (فرق) adds: dual-team lobby, captains, team switching, approval system, team chat, team scoring, team results
+- Captain approval system with 40s timeout for settings changes, early end, and voice merge
+- Team-specific voice merge request between captains
+- Team chat with فريقي/الكل modes
+- MVP display in results
+- All builds and lint pass cleanly

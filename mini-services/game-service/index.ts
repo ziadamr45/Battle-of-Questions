@@ -135,6 +135,8 @@ type GameType = 'قراءة متحررة' | 'نصوص'
 type Difficulty = 'سهل' | 'متوسط' | 'صعب'
 type RoomType = 'عامة' | 'خاصة'
 type PassageType = 'علمي' | 'أدبي' | 'عشوائي'
+type BattleMode = 'فردي' | 'فرق'
+type TeamId = 'A' | 'B'
 
 interface GameSettings {
   gameType: GameType
@@ -144,6 +146,7 @@ interface GameSettings {
   maxPlayers: number         // max players (max 20, 0 = open/unlimited)
   playerMode: 'fixed' | 'open'
   passageType: PassageType   // Only relevant when gameType === 'قراءة متحررة'
+  battleMode: BattleMode
 }
 
 interface Player {
@@ -157,6 +160,8 @@ interface Player {
   isDisconnected: boolean   // true if player disconnected but can still rejoin
   disconnectedAt: number | null  // timestamp when player disconnected
   oldSocketIds: string[]    // previous socket IDs for reconnection matching
+  teamId: TeamId | null
+  isCaptain: boolean
 }
 
 interface Question {
@@ -208,6 +213,9 @@ interface GameRoom {
   gameStartTime: number | null    // timestamp when the game first started (for accurate duration)
   readyPlayers: Set<string>       // player IDs who marked ready for next round
   finishedPlayers: Set<string>    // player IDs who clicked "خلصت" in current round
+  battleMode: BattleMode
+  voiceMerged: boolean
+  pendingApproval: ApprovalRequest | null
 }
 
 // Info sent to clients about public rooms
@@ -221,6 +229,30 @@ interface RoomInfo {
   playerMode: 'fixed' | 'open'
   settings: GameSettings
   status: 'waiting' | 'playing' | 'finished'
+  battleMode: BattleMode
+}
+
+interface ApprovalRequest {
+  id: string
+  type: 'settings' | 'early-end' | 'voice-merge' | 'round-start'
+  description: string
+  requestedBy: string
+  requestedByName: string
+  targetCaptainId: string
+  targetCaptainName: string
+  createdAt: number
+  expiresAt: number
+  data: any
+  status: 'pending' | 'approved' | 'rejected' | 'expired'
+}
+
+interface TeamInfo {
+  id: TeamId
+  name: string
+  color: string
+  captainId: string | null
+  captainName: string | null
+  playerIds: string[]
 }
 
 // ─── In-Memory State (declared BEFORE createServer so health-check can read them) ──
@@ -373,6 +405,73 @@ function findNextHost(players: Map<string, Player>, excludeId?: string): Player 
   return earliest
 }
 
+function getTeamPlayers(room: GameRoom, teamId: TeamId): Player[] {
+  return Array.from(room.players.values())
+    .filter(p => !p.isDisconnected && p.teamId === teamId)
+    .sort((a, b) => a.joinOrder - b.joinOrder)
+}
+
+function getTeamsInfo(room: GameRoom): { teamA: TeamInfo; teamB: TeamInfo } {
+  const teamAPlayers = getTeamPlayers(room, 'A')
+  const teamBPlayers = getTeamPlayers(room, 'B')
+  const teamACaptain = teamAPlayers.find(p => p.isCaptain)
+  const teamBCaptain = teamBPlayers.find(p => p.isCaptain)
+  
+  return {
+    teamA: {
+      id: 'A',
+      name: 'الفريق الأحمر',
+      color: '#EF4444',
+      captainId: teamACaptain?.id || null,
+      captainName: teamACaptain?.name || null,
+      playerIds: teamAPlayers.map(p => p.id),
+    },
+    teamB: {
+      id: 'B',
+      name: 'الفريق الأزرق',
+      color: '#3B82F6',
+      captainId: teamBCaptain?.id || null,
+      captainName: teamBCaptain?.name || null,
+      playerIds: teamBPlayers.map(p => p.id),
+    },
+  }
+}
+
+function findNextTeamCaptain(room: GameRoom, teamId: TeamId, excludeId?: string): Player | undefined {
+  const teamPlayers = getTeamPlayers(room, teamId)
+  let earliest: Player | undefined
+  for (const player of teamPlayers) {
+    if (excludeId && player.id === excludeId) continue
+    if (!earliest || player.joinOrder < earliest.joinOrder) {
+      earliest = player
+    }
+  }
+  return earliest
+}
+
+function transferTeamCaptain(room: GameRoom, teamId: TeamId, excludeId?: string): void {
+  const newCaptain = findNextTeamCaptain(room, teamId, excludeId)
+  if (!newCaptain) return
+  
+  // Remove captain from all players in this team
+  for (const player of room.players.values()) {
+    if (player.teamId === teamId) {
+      player.isCaptain = false
+    }
+  }
+  
+  // Set new captain
+  newCaptain.isCaptain = true
+  
+  const teamsInfo = getTeamsInfo(room)
+  io.to(room.roomCode).emit('team-captain-changed', {
+    teamId,
+    newCaptainId: newCaptain.id,
+    newCaptainName: newCaptain.name,
+    teams: teamsInfo,
+  })
+}
+
 function getPublicRoomsList(): RoomInfo[] {
   const list: RoomInfo[] = []
   for (const room of rooms.values()) {
@@ -389,6 +488,7 @@ function getPublicRoomsList(): RoomInfo[] {
         playerMode: room.settings.playerMode,
         settings: room.settings,
         status: room.status,
+        battleMode: room.battleMode,
       })
     }
   }
@@ -982,6 +1082,14 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
       }
     }
 
+    // In team mode, transfer team captain if needed
+    if (room.battleMode === 'فرق' && player?.teamId) {
+      const oldTeamId = player.teamId
+      if (player.isCaptain) {
+        transferTeamCaptain(room, oldTeamId, socketId)
+      }
+    }
+
     io.to(roomCode).emit('player-left', {
       playerId: socketId,
       playerName,
@@ -1009,6 +1117,11 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
       player.oldSocketIds.push(socketId)
     }
     socketRoomMap.delete(socketId)
+
+    // In team mode, transfer team captain if needed
+    if (room.battleMode === 'فرق' && player?.teamId && player.isCaptain) {
+      transferTeamCaptain(room, player.teamId, socketId)
+    }
 
     // Notify others that this player is temporarily disconnected
     io.to(roomCode).emit('player-disconnected', {
@@ -1123,6 +1236,8 @@ io.on('connection', (socket: Socket) => {
         isHost: existingPlayer.isHost,
         status: room.status,
         currentRound: room.currentRound,
+        battleMode: room.battleMode,
+        teams: room.battleMode === 'فرق' ? getTeamsInfo(room) : null,
       }
 
       // If game is in progress, send current round content and progress
@@ -1235,6 +1350,67 @@ io.on('connection', (socket: Socket) => {
       if (room.hostId !== socket.id) {
         socket.emit('early-end-rejected', { message: 'فقط القائد يقدر ينهي المعركة' })
         return
+      }
+
+      // In team mode, early-end requires captain approval
+      if (room.battleMode === 'فرق') {
+        const player = room.players.get(socket.id)
+        if (!player?.isCaptain) {
+          socket.emit('early-end-rejected', { message: 'فقط قائد الفريق يقدر يطلب إنهاء المعركة' })
+          return
+        }
+        
+        // Check if this is already an approved action
+        // If not, send approval request
+        const otherTeamId: TeamId = player.teamId === 'A' ? 'B' : 'A'
+        const otherCaptain = getTeamPlayers(room, otherTeamId).find(p => p.isCaptain)
+        
+        if (otherCaptain) {
+          if (room.pendingApproval && room.pendingApproval.status === 'pending') {
+            socket.emit('early-end-rejected', { message: 'يوجد طلب موافقة معلق بالفعل' })
+            return
+          }
+          
+          const approvalId = `approval-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+          
+          room.pendingApproval = {
+            id: approvalId,
+            type: 'early-end',
+            description: 'طلب إنهاء المعركة مبكراً',
+            requestedBy: socket.id,
+            requestedByName: player.name,
+            targetCaptainId: otherCaptain.id,
+            targetCaptainName: otherCaptain.name,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 40000,
+            data: { roomCode },
+            status: 'pending',
+          }
+          
+          io.to(otherCaptain.id).emit('approval-requested', {
+            approvalId,
+            type: 'early-end',
+            description: 'طلب إنهاء المعركة مبكراً',
+            requestedByName: player.name,
+            requestedByTeam: player.teamId,
+            expiresAt: room.pendingApproval.expiresAt,
+          })
+          
+          socket.emit('approval-sent', {
+            approvalId,
+            targetCaptainName: otherCaptain.name,
+          })
+          
+          setTimeout(() => {
+            if (room.pendingApproval && room.pendingApproval.id === approvalId && room.pendingApproval.status === 'pending') {
+              room.pendingApproval.status = 'expired'
+              io.to(roomCode).emit('approval-expired', { approvalId })
+              room.pendingApproval = null
+            }
+          }, 41000)
+          
+          return
+        }
       }
 
       // Validate game is in progress
@@ -1359,6 +1535,8 @@ io.on('connection', (socket: Socket) => {
         isDisconnected: false,
         disconnectedAt: null,
         oldSocketIds: [],
+        teamId: settings.battleMode === 'فرق' ? 'A' : null,
+        isCaptain: settings.battleMode === 'فرق' ? true : false,
       }
 
       const playersMap = new Map<string, Player>()
@@ -1385,6 +1563,9 @@ io.on('connection', (socket: Socket) => {
         gameStartTime: null,
         readyPlayers: new Set(),
         finishedPlayers: new Set(),
+        battleMode: settings.battleMode || 'فردي',
+        voiceMerged: false,
+        pendingApproval: null,
       }
 
       rooms.set(roomCode, room)
@@ -1395,6 +1576,8 @@ io.on('connection', (socket: Socket) => {
         roomCode,
         roomType: room.roomType,
         hasPassword: !!room.password,
+        battleMode: room.battleMode,
+        teams: getTeamsInfo(room),
       })
 
       if (room.roomType === 'عامة') {
@@ -1469,6 +1652,8 @@ io.on('connection', (socket: Socket) => {
         isDisconnected: false,
         disconnectedAt: null,
         oldSocketIds: [],
+        teamId: room.battleMode === 'فرق' ? (getTeamPlayers(room, 'B').length === 0 ? 'B' : (getTeamPlayers(room, 'A').length <= getTeamPlayers(room, 'B').length ? 'A' : 'B')) : null,
+        isCaptain: room.battleMode === 'فرق' ? (getTeamPlayers(room, 'B').length === 0) : false,
       }
 
       room.players.set(socket.id, player)
@@ -1482,12 +1667,16 @@ io.on('connection', (socket: Socket) => {
         settings: room.settings,
         roomType: room.roomType,
         hasPassword: !!room.password,
+        battleMode: room.battleMode,
+        teams: getTeamsInfo(room),
       })
 
       // Notify others in the room
       socket.to(roomCode).emit('player-joined', {
         player,
         players: playersToArray(room.players),
+        battleMode: room.battleMode,
+        teams: getTeamsInfo(room),
       })
 
       broadcastPublicRooms()
@@ -1656,6 +1845,73 @@ io.on('connection', (socket: Socket) => {
       if (room.status !== 'waiting' && room.status !== 'playing') {
         socket.emit('game-error', { message: 'لا يمكن تعديل الإعدادات في هذه الحالة' })
         return
+      }
+
+      // In team mode, settings changes require captain approval
+      const player = room.players.get(socket.id)
+      if (room.battleMode === 'فرق' && player?.isCaptain) {
+        // Build description of changes
+        const changeLabels: Record<string, string> = {
+          gameType: 'نوع اللعبة',
+          difficulty: 'الصعوبة',
+          timePerRound: 'وقت الجولة',
+          numberOfRounds: 'عدد الجولات',
+          maxPlayers: 'عدد اللاعبين',
+          playerMode: 'نوع الساحة',
+          passageType: 'نوع القطعة',
+        }
+        const changesDesc = Object.keys(newSettings).map(k => changeLabels[k] || k).join('، ')
+        
+        // Send approval request
+        const otherTeamId: TeamId = player.teamId === 'A' ? 'B' : 'A'
+        const otherCaptain = getTeamPlayers(room, otherTeamId).find(p => p.isCaptain)
+        
+        if (otherCaptain) {
+          if (room.pendingApproval && room.pendingApproval.status === 'pending') {
+            socket.emit('game-error', { message: 'يوجد طلب موافقة معلق بالفعل' })
+            return
+          }
+          
+          const approvalId = `approval-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+          
+          room.pendingApproval = {
+            id: approvalId,
+            type: 'settings',
+            description: `طلب تعديل: ${changesDesc}`,
+            requestedBy: socket.id,
+            requestedByName: player.name,
+            targetCaptainId: otherCaptain.id,
+            targetCaptainName: otherCaptain.name,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 40000,
+            data: newSettings,
+            status: 'pending',
+          }
+          
+          io.to(otherCaptain.id).emit('approval-requested', {
+            approvalId,
+            type: 'settings',
+            description: `طلب تعديل: ${changesDesc}`,
+            requestedByName: player.name,
+            requestedByTeam: player.teamId,
+            expiresAt: room.pendingApproval.expiresAt,
+          })
+          
+          socket.emit('approval-sent', {
+            approvalId,
+            targetCaptainName: otherCaptain.name,
+          })
+          
+          setTimeout(() => {
+            if (room.pendingApproval && room.pendingApproval.id === approvalId && room.pendingApproval.status === 'pending') {
+              room.pendingApproval.status = 'expired'
+              io.to(roomCode).emit('approval-expired', { approvalId })
+              room.pendingApproval = null
+            }
+          }, 41000)
+          
+          return // Don't apply settings directly - wait for approval
+        }
       }
 
       const changes: string[] = []
@@ -2144,6 +2400,8 @@ io.on('connection', (socket: Socket) => {
           isDisconnected: false,
           disconnectedAt: null,
           oldSocketIds: [],
+          teamId: existingRoom.battleMode === 'فرق' ? (getTeamPlayers(existingRoom, 'B').length === 0 ? 'B' : (getTeamPlayers(existingRoom, 'A').length <= getTeamPlayers(existingRoom, 'B').length ? 'A' : 'B')) : null,
+          isCaptain: existingRoom.battleMode === 'فرق' ? (getTeamPlayers(existingRoom, 'B').length === 0) : false,
         }
 
         existingRoom.players.set(socket.id, player)
@@ -2156,11 +2414,15 @@ io.on('connection', (socket: Socket) => {
           settings: existingRoom.settings,
           roomType: existingRoom.roomType,
           hasPassword: !!existingRoom.password,
+          battleMode: existingRoom.battleMode,
+          teams: getTeamsInfo(existingRoom),
         })
 
         socket.to(rData.newRoomCode).emit('player-joined', {
           player,
           players: playersToArray(existingRoom.players),
+          battleMode: existingRoom.battleMode,
+          teams: getTeamsInfo(existingRoom),
         })
 
         broadcastPublicRooms()
@@ -2183,6 +2445,8 @@ io.on('connection', (socket: Socket) => {
       isDisconnected: false,
       disconnectedAt: null,
       oldSocketIds: [],
+      teamId: rData.settings.battleMode === 'فرق' ? 'A' : null,
+      isCaptain: rData.settings.battleMode === 'فرق' ? true : false,
     }
 
     const playersMap = new Map<string, Player>()
@@ -2209,6 +2473,9 @@ io.on('connection', (socket: Socket) => {
       gameStartTime: null,
       readyPlayers: new Set(),
       finishedPlayers: new Set(),
+      battleMode: rData.settings.battleMode || 'فردي',
+      voiceMerged: false,
+      pendingApproval: null,
     }
 
     rooms.set(newRoomCode, newRoom)
@@ -2222,6 +2489,8 @@ io.on('connection', (socket: Socket) => {
       roomCode: newRoomCode,
       roomType: newRoom.roomType,
       hasPassword: !!newRoom.password,
+      battleMode: newRoom.battleMode,
+      teams: getTeamsInfo(newRoom),
     })
 
     broadcastPublicRooms()
@@ -2427,6 +2696,392 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     })
   })
 
+  // ── switch-team ────────────────────────────────────────────────────────
+  socket.on('switch-team', (data: { teamId: TeamId }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    
+    const room = rooms.get(roomCode)
+    if (!room || room.status !== 'waiting') return
+    if (room.battleMode !== 'فرق') return
+    
+    const player = room.players.get(socket.id)
+    if (!player) return
+    
+    const targetTeam = data.teamId
+    if (targetTeam !== 'A' && targetTeam !== 'B') return
+    if (player.teamId === targetTeam) return
+    
+    const oldTeamId = player.teamId
+    
+    // If captain is switching, transfer captain role
+    if (player.isCaptain && oldTeamId) {
+      player.isCaptain = false
+      // Transfer captain to next player in old team
+      const otherTeamPlayers = getTeamPlayers(room, oldTeamId).filter(p => p.id !== socket.id)
+      if (otherTeamPlayers.length > 0) {
+        const newCaptain = otherTeamPlayers[0]
+        newCaptain.isCaptain = true
+      }
+    }
+    
+    // Switch team
+    player.teamId = targetTeam
+    
+    // If the new team has no captain, make this player captain
+    const newTeamPlayers = getTeamPlayers(room, targetTeam)
+    const hasCaptain = newTeamPlayers.some(p => p.isCaptain)
+    if (!hasCaptain) {
+      player.isCaptain = true
+    }
+    
+    const teamsInfo = getTeamsInfo(room)
+    io.to(roomCode).emit('team-update', {
+      teams: teamsInfo,
+      players: playersToArray(room.players),
+      switchedPlayerId: socket.id,
+      switchedPlayerName: player.name,
+      newTeamId: targetTeam,
+    })
+    
+    broadcastPublicRooms()
+    console.log(`[switch-team] ${player.name} switched to Team ${targetTeam} in room ${roomCode}`)
+  })
+
+  // ── captain-approval-request ──────────────────────────────────────────
+  socket.on('captain-approval-request', (data: { type: string; description: string; data: any }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    
+    const room = rooms.get(roomCode)
+    if (!room || room.battleMode !== 'فرق') return
+    
+    const player = room.players.get(socket.id)
+    if (!player || !player.isCaptain) {
+      socket.emit('game-error', { message: 'فقط قائد الفريق يقدر يطلب موافقة' })
+      return
+    }
+    
+    // Can't have multiple pending approvals
+    if (room.pendingApproval && room.pendingApproval.status === 'pending') {
+      socket.emit('game-error', { message: 'يوجد طلب موافقة معلق بالفعل' })
+      return
+    }
+    
+    // Find the other team's captain
+    const otherTeamId: TeamId = player.teamId === 'A' ? 'B' : 'A'
+    const otherCaptain = getTeamPlayers(room, otherTeamId).find(p => p.isCaptain)
+    
+    if (!otherCaptain) {
+      socket.emit('game-error', { message: 'لا يوجد قائد للفريق الآخر' })
+      return
+    }
+    
+    const approvalId = `approval-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    
+    const approval: ApprovalRequest = {
+      id: approvalId,
+      type: data.type as any,
+      description: data.description,
+      requestedBy: socket.id,
+      requestedByName: player.name,
+      targetCaptainId: otherCaptain.id,
+      targetCaptainName: otherCaptain.name,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 40000, // 40 seconds
+      data: data.data,
+      status: 'pending',
+    }
+    
+    room.pendingApproval = approval
+    
+    // Send to the other captain
+    io.to(otherCaptain.id).emit('approval-requested', {
+      approvalId,
+      type: data.type,
+      description: data.description,
+      requestedByName: player.name,
+      requestedByTeam: player.teamId,
+      expiresAt: approval.expiresAt,
+    })
+    
+    // Confirm to requester
+    socket.emit('approval-sent', {
+      approvalId,
+      targetCaptainName: otherCaptain.name,
+    })
+    
+    // Auto-expire after 40 seconds
+    setTimeout(() => {
+      if (room.pendingApproval && room.pendingApproval.id === approvalId && room.pendingApproval.status === 'pending') {
+        room.pendingApproval.status = 'expired'
+        io.to(roomCode).emit('approval-expired', { approvalId })
+        room.pendingApproval = null
+      }
+    }, 41000)
+  })
+
+  // ── captain-approval-response ──────────────────────────────────────────
+  socket.on('captain-approval-response', (data: { approvalId: string; approved: boolean }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    
+    const room = rooms.get(roomCode)
+    if (!room) return
+    
+    const player = room.players.get(socket.id)
+    if (!player || !player.isCaptain) {
+      socket.emit('game-error', { message: 'فقط قائد الفريق يقدر يوافق أو يرفض' })
+      return
+    }
+    
+    if (!room.pendingApproval || room.pendingApproval.id !== data.approvalId) {
+      socket.emit('game-error', { message: 'طلب الموافقة مش موجود أو انتهت صلاحيته' })
+      return
+    }
+    
+    if (room.pendingApproval.status !== 'pending') {
+      socket.emit('game-error', { message: 'طلب الموافقة تم الرد عليه بالفعل' })
+      return
+    }
+    
+    if (room.pendingApproval.targetCaptainId !== socket.id) {
+      socket.emit('game-error', { message: 'أنت مش القائد المطلوب للموافقة' })
+      return
+    }
+    
+    const approval = room.pendingApproval
+    
+    if (data.approved) {
+      approval.status = 'approved'
+      
+      io.to(roomCode).emit('approval-resolved', {
+        approvalId: approval.id,
+        approved: true,
+        approvedByName: player.name,
+        type: approval.type,
+      })
+      
+      // Execute the approved action
+      if (approval.type === 'settings' && approval.data) {
+        // Apply settings changes
+        Object.assign(room.settings, approval.data)
+        io.to(roomCode).emit('settings-updated', {
+          settings: room.settings,
+          updatedBy: approval.requestedByName,
+          changes: Object.keys(approval.data),
+        })
+      } else if (approval.type === 'early-end') {
+        // Execute early end
+        room.earlyEnding = true
+        if (room.roundStartTime && !room.roundEnding) {
+          const currentRound = room.currentRound
+          const roundScores = calculateRoundScores(room, currentRound)
+          room.roundResults.set(currentRound, roundScores)
+          if (roundScores.length > 0) {
+            const winnerId = roundScores[0].playerId
+            room.roundWinners.set(currentRound, winnerId)
+            const winnerPlayer = room.players.get(winnerId)
+            if (winnerPlayer) winnerPlayer.roundWins++
+          }
+          for (const p of room.players.values()) p.score = 0
+          io.to(room.roomCode).emit('round-end', {
+            roundNumber: currentRound,
+            totalRounds: room.settings.numberOfRounds,
+            roundScores,
+            roundWinner: roundScores[0] || null,
+            isLastRound: true,
+          })
+        }
+        setTimeout(() => handleGameEnd(room.roomCode, true), 1500)
+      } else if (approval.type === 'voice-merge') {
+        room.voiceMerged = true
+        io.to(roomCode).emit('voice-merge-status', {
+          merged: true,
+          requestedByName: approval.requestedByName,
+          approvedByName: player.name,
+        })
+      }
+    } else {
+      approval.status = 'rejected'
+      
+      io.to(roomCode).emit('approval-resolved', {
+        approvalId: approval.id,
+        approved: false,
+        rejectedByName: player.name,
+        type: approval.type,
+      })
+    }
+    
+    room.pendingApproval = null
+  })
+
+  // ── voice-merge-request ──────────────────────────────────────────────────
+  socket.on('voice-merge-request', () => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    
+    const room = rooms.get(roomCode)
+    if (!room || room.battleMode !== 'فرق') return
+    
+    const player = room.players.get(socket.id)
+    if (!player || !player.isCaptain) {
+      socket.emit('game-error', { message: 'فقط قائد الفريق يقدر يطلب دمج المحادثة الصوتية' })
+      return
+    }
+    
+    if (room.voiceMerged) {
+      socket.emit('game-error', { message: 'المحادثة الصوتية مدمجة بالفعل' })
+      return
+    }
+    
+    // This goes through the approval system
+    socket.emit('captain-approval-needed', {
+      type: 'voice-merge',
+      description: 'طلب دمج المحادثة الصوتية بين الفريقين',
+    })
+    
+    // Actually send the approval request
+    const otherTeamId: TeamId = player.teamId === 'A' ? 'B' : 'A'
+    const otherCaptain = getTeamPlayers(room, otherTeamId).find(p => p.isCaptain)
+    
+    if (!otherCaptain) {
+      socket.emit('game-error', { message: 'لا يوجد قائد للفريق الآخر' })
+      return
+    }
+    
+    if (room.pendingApproval && room.pendingApproval.status === 'pending') {
+      socket.emit('game-error', { message: 'يوجد طلب موافقة معلق بالفعل' })
+      return
+    }
+    
+    const approvalId = `approval-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    
+    room.pendingApproval = {
+      id: approvalId,
+      type: 'voice-merge',
+      description: 'طلب دمج المحادثة الصوتية بين الفريقين',
+      requestedBy: socket.id,
+      requestedByName: player.name,
+      targetCaptainId: otherCaptain.id,
+      targetCaptainName: otherCaptain.name,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 40000,
+      data: null,
+      status: 'pending',
+    }
+    
+    io.to(otherCaptain.id).emit('approval-requested', {
+      approvalId,
+      type: 'voice-merge',
+      description: 'طلب دمج المحادثة الصوتية بين الفريقين',
+      requestedByName: player.name,
+      requestedByTeam: player.teamId,
+      expiresAt: room.pendingApproval.expiresAt,
+    })
+    
+    socket.emit('approval-sent', {
+      approvalId,
+      targetCaptainName: otherCaptain.name,
+    })
+    
+    setTimeout(() => {
+      if (room.pendingApproval && room.pendingApproval.id === approvalId && room.pendingApproval.status === 'pending') {
+        room.pendingApproval.status = 'expired'
+        io.to(roomCode).emit('approval-expired', { approvalId })
+        room.pendingApproval = null
+      }
+    }, 41000)
+  })
+
+  // ── team-chat-message ──────────────────────────────────────────────────
+  socket.on('team-chat-message', (data: { content: string }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    
+    const room = rooms.get(roomCode)
+    if (!room) return
+    
+    const player = room.players.get(socket.id)
+    if (!player || !player.teamId) return
+    
+    if (!data.content?.trim()) return
+    
+    const message = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      senderId: socket.id,
+      senderName: player.name,
+      content: data.content.trim(),
+      mode: 'team' as const,
+      teamId: player.teamId,
+      timestamp: Date.now(),
+    }
+    
+    // Send only to teammates
+    const teammates = getTeamPlayers(room, player.teamId)
+    for (const teammate of teammates) {
+      io.to(teammate.id).emit('chat-message', message)
+    }
+  })
+
+  // ── global-chat-message ──────────────────────────────────────────────────
+  socket.on('global-chat-message', (data: { content: string }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    
+    const room = rooms.get(roomCode)
+    if (!room) return
+    
+    const player = room.players.get(socket.id)
+    if (!player) return
+    
+    if (!data.content?.trim()) return
+    
+    const message = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      senderId: socket.id,
+      senderName: player.name,
+      content: data.content.trim(),
+      mode: 'global' as const,
+      teamId: player.teamId,
+      timestamp: Date.now(),
+    }
+    
+    io.to(roomCode).emit('chat-message', message)
+  })
+
+  // ── private-message ──────────────────────────────────────────────────
+  socket.on('private-message', (data: { targetId: string; content: string }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    
+    const room = rooms.get(roomCode)
+    if (!room) return
+    
+    const player = room.players.get(socket.id)
+    if (!player) return
+    
+    const target = room.players.get(data.targetId)
+    if (!target) return
+    
+    if (!data.content?.trim()) return
+    
+    const message = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      senderId: socket.id,
+      senderName: player.name,
+      content: data.content.trim(),
+      mode: 'private' as const,
+      targetId: data.targetId,
+      targetName: target.name,
+      timestamp: Date.now(),
+    }
+    
+    // Send to sender and target only
+    socket.emit('chat-message', message)
+    io.to(data.targetId).emit('chat-message', message)
+  })
+
   // ── disconnect ─────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     const roomCode = socketRoomMap.get(socket.id)
@@ -2547,6 +3202,48 @@ function handleRoundEnd(roomCode: string) {
     }
   }
 
+  // Calculate team scores for team mode
+  let teamRoundScores: {
+    A: { score: number; correctAnswers: number }
+    B: { score: number; correctAnswers: number }
+    winningTeam: string | null
+  } | null = null
+  if (room.battleMode === 'فرق') {
+    const teamAScore = roundScores
+      .filter(s => {
+        const p = room.players.get(s.playerId)
+        return p?.teamId === 'A'
+      })
+      .reduce((sum, s) => sum + s.score, 0)
+    
+    const teamBScore = roundScores
+      .filter(s => {
+        const p = room.players.get(s.playerId)
+        return p?.teamId === 'B'
+      })
+      .reduce((sum, s) => sum + s.score, 0)
+    
+    const teamACorrect = roundScores
+      .filter(s => {
+        const p = room.players.get(s.playerId)
+        return p?.teamId === 'A'
+      })
+      .reduce((sum, s) => sum + s.correctAnswers, 0)
+    
+    const teamBCorrect = roundScores
+      .filter(s => {
+        const p = room.players.get(s.playerId)
+        return p?.teamId === 'B'
+      })
+      .reduce((sum, s) => sum + s.correctAnswers, 0)
+    
+    teamRoundScores = {
+      A: { score: teamAScore, correctAnswers: teamACorrect },
+      B: { score: teamBScore, correctAnswers: teamBCorrect },
+      winningTeam: teamAScore > teamBScore ? 'A' : teamBScore > teamAScore ? 'B' : null,
+    }
+  }
+
   // Check if this was the last round
   if (currentRound >= totalRounds - 1) {
     // Game over! Send round-end first, then game-ended
@@ -2557,6 +3254,7 @@ function handleRoundEnd(roomCode: string) {
       roundWinner: roundScores[0] || null,
       isLastRound: true,
       playerAnswerReviews,
+      teamRoundScores,
     })
 
     // Small delay before showing final results
@@ -2574,6 +3272,7 @@ function handleRoundEnd(roomCode: string) {
     roundWinner: roundScores[0] || null,
     isLastRound: false,
     playerAnswerReviews,
+    teamRoundScores,
   })
 
   // Wait for all players to be ready instead of auto-advancing
@@ -2782,6 +3481,8 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
     ),
     totalRounds: room.settings.numberOfRounds,
     battleData, // Full battle data for history saving
+    battleMode: room.battleMode,
+    teams: room.battleMode === 'فرق' ? getTeamsInfo(room) : null,
   })
 
   // If this was an early end, emit additional info
