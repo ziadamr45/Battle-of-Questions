@@ -299,12 +299,16 @@ export function EditNameModal() {
   const setGuest = useGuestStore((s) => s.setGuest)
   const showEditModal = useGuestStore((s) => s.showEditModal)
   const setShowEditModal = useGuestStore((s) => s.setShowEditModal)
+  const saveGuestId = useGuestStore((s) => s.saveGuestId)
   const [name, setName] = useState(guest?.displayName || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Sync name when guest changes or modal opens
   useEffect(() => {
-    if (showEditModal && guest?.displayName) setName(guest.displayName)
+    if (showEditModal && guest?.displayName) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setName(guest.displayName)
+    }
   }, [showEditModal, guest?.displayName])
 
   const handleRandomName = useCallback(() => {
@@ -315,7 +319,10 @@ export function EditNameModal() {
     if (!guest?.id || !name.trim()) return
 
     setIsSubmitting(true)
+    let apiSucceeded = false
+
     try {
+      // Try PATCH first (update existing guest)
       const res = await fetch('/api/guest', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -325,16 +332,36 @@ export function EditNameModal() {
       if (res.ok) {
         const updated = await res.json()
         setGuest({ ...guest, displayName: updated.displayName })
-        setShowEditModal(false)
-        // Notify game server so other players see the new name
-        window.dispatchEvent(new CustomEvent('player-name-changed', { detail: { newName: updated.displayName } }))
+        apiSucceeded = true
+      } else {
+        // PATCH failed — guest may not exist in DB (e.g. local-only fallback)
+        // Try creating a new guest record instead
+        const createRes = await fetch('/api/guest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ displayName: name.trim(), avatarColor: guest.avatarColor, guestId: guest.id }),
+        })
+        if (createRes.ok) {
+          const created = await createRes.json()
+          setGuest({ ...guest, id: created.id, displayName: created.displayName })
+          saveGuestId(created.id)
+          apiSucceeded = true
+        }
       }
     } catch {
-      // Ignore
-    } finally {
-      setIsSubmitting(false)
+      // API unavailable — update locally anyway
     }
-  }, [guest, name, setGuest, setShowEditModal])
+
+    // Always update local state even if API failed
+    if (!apiSucceeded) {
+      setGuest({ ...guest, displayName: name.trim() })
+    }
+
+    setShowEditModal(false)
+    setIsSubmitting(false)
+    // Notify game server so other players see the new name
+    window.dispatchEvent(new CustomEvent('player-name-changed', { detail: { newName: name.trim() } }))
+  }, [guest, name, setGuest, setShowEditModal, saveGuestId])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSubmit()
