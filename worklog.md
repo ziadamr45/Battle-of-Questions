@@ -729,3 +729,44 @@ Stage Summary:
 - Disconnect/leave: team-mode awareness prevents stale game states when a team empties
 - Solo mode completely unaffected - all changes are conditional on battleMode === 'فرق'
 - Philosophy applied: "extend, adapt, augment" NOT "duplicate, rewrite, replace"
+
+---
+Task ID: 14
+Agent: Main Agent
+Task: Add Custom Team Names feature for Team Battle Mode
+
+Work Log:
+- Added customName (string | null) to TeamInfo interface in both game-service and game-store
+- Added teamNames: Record<TeamId, string | null> to GameRoom interface in game-service
+- Initialized teamNames: { A: null, B: null } in create-game and rematch room creation
+- Updated getTeamsInfo() to include customName from room.teamNames
+- Added getTeamDisplayName() helper function in game-service for server-side name resolution
+- Added rename-team socket event with full validation:
+  - Only captains can rename their OWN team
+  - Min 2 chars, max 20 chars
+  - Must contain at least one letter (Arabic or Latin)
+  - Profanity filter for common Arabic profanity
+  - Duplicate prevention against other team's name
+- Updated all server-side team name references (disconnect, leave, player-finished, join-request) to use getTeamDisplayName()
+- Added team-renamed socket listener in page.tsx with audio feedback and toast
+- Added getTeamDisplayName() helper function in page.tsx for client-side name resolution
+- Updated LobbyScreen with inline rename UI:
+  - Edit icon (PenTool) visible only to captains on their own team
+  - Clicking shows inline input with ✓/✕ buttons
+  - Enter key submits, Escape cancels
+  - Auto-focuses input, maxLength 20
+- Updated all team name displays across the app:
+  - GameScreen: team indicator badges, "خلصت" button, waiting overlay, team completion indicators
+  - RoundTransitionScreen: team round scores labels
+  - ResultsScreen: winning team announcement, team score labels, MVP label
+  - LobbyScreen: team headers, join buttons, approval overlays, start validation
+- Lint passes clean, both services running successfully
+
+Stage Summary:
+- Custom team names fully implemented across server and client
+- Captains can rename their team with smooth inline UI (no browser prompt)
+- All validations: length, letter requirement, profanity filter, duplicate prevention
+- Custom names propagate to all displays: lobby, game HUD, waiting overlay, round results, victory screen
+- Real-time sync: all players instantly see name changes via team-update + team-renamed events
+- Default names preserved as fallback when customName is null
+- Solo mode completely unaffected

@@ -217,6 +217,7 @@ interface GameRoom {
   voiceMerged: boolean
   pendingApproval: ApprovalRequest | null
   joinRequests: Map<string, JoinRequest>  // requestId -> JoinRequest
+  teamNames: Record<TeamId, string | null>  // custom team names set by captains
 }
 
 // Info sent to clients about public rooms
@@ -261,7 +262,8 @@ interface JoinRequest {
 
 interface TeamInfo {
   id: TeamId
-  name: string
+  name: string        // default name: "الفريق الأحمر" or "الفريق الأزرق"
+  customName: string | null  // captain-chosen name, null = use default
   color: string
   captainId: string | null
   captainName: string | null
@@ -441,6 +443,7 @@ function getTeamsInfo(room: GameRoom): { teamA: TeamInfo; teamB: TeamInfo; unass
     teamA: {
       id: 'A',
       name: 'الفريق الأحمر',
+      customName: room.teamNames?.A || null,
       color: '#EF4444',
       captainId: teamACaptain?.id || null,
       captainName: teamACaptain?.name || null,
@@ -449,6 +452,7 @@ function getTeamsInfo(room: GameRoom): { teamA: TeamInfo; teamB: TeamInfo; unass
     teamB: {
       id: 'B',
       name: 'الفريق الأزرق',
+      customName: room.teamNames?.B || null,
       color: '#3B82F6',
       captainId: teamBCaptain?.id || null,
       captainName: teamBCaptain?.name || null,
@@ -456,6 +460,11 @@ function getTeamsInfo(room: GameRoom): { teamA: TeamInfo; teamB: TeamInfo; unass
     },
     unassignedPlayerIds: unassignedPlayers.map(p => p.id),
   }
+}
+
+function getTeamDisplayName(room: GameRoom, teamId: TeamId): string {
+  const customName = room.teamNames?.[teamId]
+  return customName || (teamId === 'A' ? 'الفريق الأحمر' : 'الفريق الأزرق')
 }
 
 function findNextTeamCaptain(room: GameRoom, teamId: TeamId, excludeId?: string): Player | undefined {
@@ -1147,18 +1156,22 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
       const teamBActive = activePlayers.filter(p => p.teamId === 'B')
       
       if (teamAActive.length === 0 && teamBActive.length > 0) {
+        const teamBName = getTeamDisplayName(room, 'B')
+        const teamAName = getTeamDisplayName(room, 'A')
         io.to(roomCode).emit('team-ready-state', {
           teamId: 'B',
-          teamName: 'الفريق الأزرق',
-          message: 'الفريق الأحمر غادر الساحة! الفريق الأزرق يفوز! 🌊',
+          teamName: teamBName,
+          message: `${teamAName} غادر الساحة! ${teamBName} يفوز! 🌊`,
           allTeamsReady: true,
         })
         handleRoundEnd(roomCode)
       } else if (teamBActive.length === 0 && teamAActive.length > 0) {
+        const teamAName = getTeamDisplayName(room, 'A')
+        const teamBName = getTeamDisplayName(room, 'B')
         io.to(roomCode).emit('team-ready-state', {
           teamId: 'A',
-          teamName: 'الفريق الأحمر',
-          message: 'الفريق الأزرق غادر الساحة! الفريق الأحمر يفوز! 🔥',
+          teamName: teamAName,
+          message: `${teamBName} غادر الساحة! ${teamAName} يفوز! 🔥`,
           allTeamsReady: true,
         })
         handleRoundEnd(roomCode)
@@ -1220,20 +1233,24 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
       
       if (teamAActive.length === 0 && teamBActive.length > 0) {
         // Team A has no active players - Team B wins by default
+        const teamBName = getTeamDisplayName(room, 'B')
+        const teamAName = getTeamDisplayName(room, 'A')
         io.to(roomCode).emit('team-ready-state', {
           teamId: 'B',
-          teamName: 'الفريق الأزرق',
-          message: 'الفريق الأحمر غادر الساحة! الفريق الأزرق يفوز! 🌊',
+          teamName: teamBName,
+          message: `${teamAName} غادر الساحة! ${teamBName} يفوز! 🌊`,
           allTeamsReady: true,
         })
         // End the round/game - Team B wins
         handleRoundEnd(roomCode)
       } else if (teamBActive.length === 0 && teamAActive.length > 0) {
         // Team B has no active players - Team A wins by default
+        const teamAName = getTeamDisplayName(room, 'A')
+        const teamBName = getTeamDisplayName(room, 'B')
         io.to(roomCode).emit('team-ready-state', {
           teamId: 'A',
-          teamName: 'الفريق الأحمر',
-          message: 'الفريق الأزرق غادر الساحة! الفريق الأحمر يفوز! 🔥',
+          teamName: teamAName,
+          message: `${teamBName} غادر الساحة! ${teamAName} يفوز! 🔥`,
           allTeamsReady: true,
         })
         handleRoundEnd(roomCode)
@@ -1673,6 +1690,7 @@ io.on('connection', (socket: Socket) => {
         voiceMerged: false,
         pendingApproval: null,
         joinRequests: new Map(),
+        teamNames: { A: null, B: null },
       }
 
       rooms.set(roomCode, room)
@@ -2437,18 +2455,20 @@ io.on('connection', (socket: Socket) => {
 
       if (finishedTeamId === 'A' && !teamABeforeReady && finishedData.teamAReady) {
         // Team A just completed — emit cinematic notification
+        const teamAName = getTeamDisplayName(room, 'A')
         io.to(roomCode).emit('team-ready-state', {
           teamId: 'A',
-          teamName: 'الفريق الأحمر',
-          message: 'الفريق الأحمر جاهز! ⚔️',
+          teamName: teamAName,
+          message: `${teamAName} جاهز! ⚔️`,
           allTeamsReady: !!finishedData.teamBReady,
         })
       } else if (finishedTeamId === 'B' && !teamBBeforeReady && finishedData.teamBReady) {
         // Team B just completed — emit cinematic notification
+        const teamBName = getTeamDisplayName(room, 'B')
         io.to(roomCode).emit('team-ready-state', {
           teamId: 'B',
-          teamName: 'الفريق الأزرق',
-          message: 'الفريق الأزرق جاهز! ⚔️',
+          teamName: teamBName,
+          message: `${teamBName} جاهز! ⚔️`,
           allTeamsReady: !!finishedData.teamAReady,
         })
       }
@@ -2613,6 +2633,7 @@ io.on('connection', (socket: Socket) => {
       voiceMerged: false,
       pendingApproval: null,
       joinRequests: new Map(),
+      teamNames: { A: null, B: null },
     }
 
     rooms.set(newRoomCode, newRoom)
@@ -2978,7 +2999,7 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
         io.to(request.playerId).emit('join-request-approved', {
           requestId: request.id,
           teamId: request.targetTeamId,
-          teamName: request.targetTeamId === 'A' ? 'الفريق الأحمر' : 'الفريق الأزرق',
+          teamName: getTeamDisplayName(room, request.targetTeamId),
           captainName: player.name,
         })
         
@@ -3444,6 +3465,97 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
 
     // Mark player as disconnected (grace period applies - can rejoin)
     removePlayerFromRoom(socket.id, 'disconnect')
+  })
+
+  // ── rename-team ────────────────────────────────────────────────────────
+  // Captain renames their own team
+  socket.on('rename-team', (data: { teamId: TeamId; newName: string }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    
+    const room = rooms.get(roomCode)
+    if (!room || room.battleMode !== 'فرق') return
+    
+    const player = room.players.get(socket.id)
+    if (!player || !player.isCaptain) {
+      socket.emit('game-error', { message: 'فقط قائد الفريق يقدر يغيّر اسم الفريق' })
+      return
+    }
+    
+    // Captain can only rename their OWN team
+    if (player.teamId !== data.teamId) {
+      socket.emit('game-error', { message: 'تقدر تغيّر اسم فريقك بس' })
+      return
+    }
+    
+    // Validate name
+    const trimmed = (data.newName || '').trim()
+    
+    // Min 2 chars, max 20 chars
+    if (trimmed.length < 2) {
+      socket.emit('game-error', { message: 'اسم الفريق لازم يكون حرفين على الأقل' })
+      return
+    }
+    if (trimmed.length > 20) {
+      socket.emit('game-error', { message: 'اسم الفريق لازم يكون 20 حرف على الأكثر' })
+      return
+    }
+    
+    // No emoji-only names (must contain at least one letter)
+    const hasLetter = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FFa-zA-Z]/.test(trimmed)
+    if (!hasLetter) {
+      socket.emit('game-error', { message: 'اسم الفريق لازم يحتوي على حروف' })
+      return
+    }
+    
+    // Basic profanity filter (common Arabic profanity - add more as needed)
+    const profanityList = ['لعنة', 'حقير', 'غبي', 'حمار', 'كلب', 'قحبة', 'عرص', 'شرموطة', 'كس أمك', 'نك']
+    const lowerName = trimmed.toLowerCase()
+    const hasProfanity = profanityList.some(word => lowerName.includes(word))
+    if (hasProfanity) {
+      socket.emit('game-error', { message: 'اسم الفريق غير مناسب' })
+      return
+    }
+    
+    // Check if the other team already has this name (duplicate prevention)
+    const otherTeamId: TeamId = data.teamId === 'A' ? 'B' : 'A'
+    const otherTeamCustomName = room.teamNames?.[otherTeamId]
+    const otherTeamDefaultName = otherTeamId === 'A' ? 'الفريق الأحمر' : 'الفريق الأزرق'
+    const otherTeamDisplayName = otherTeamCustomName || otherTeamDefaultName
+    
+    if (trimmed === otherTeamDisplayName) {
+      socket.emit('game-error', { message: 'الفريق الآخر يستخدم هذا الاسم بالفعل' })
+      return
+    }
+    
+    // Also check against the other team's default name
+    if (trimmed === otherTeamDefaultName) {
+      socket.emit('game-error', { message: 'لا يمكنك استخدام الاسم الافتراضي للفريق الآخر' })
+      return
+    }
+    
+    // Apply the rename
+    if (!room.teamNames) room.teamNames = { A: null, B: null }
+    room.teamNames[data.teamId] = trimmed
+    
+    const teamsInfo = getTeamsInfo(room)
+    
+    // Broadcast team update to all players
+    io.to(roomCode).emit('team-update', {
+      teams: teamsInfo,
+      players: playersToArray(room.players),
+    })
+    
+    // Also emit a specific rename event for cinematic notification
+    const defaultName = data.teamId === 'A' ? 'الفريق الأحمر' : 'الفريق الأزرق'
+    io.to(roomCode).emit('team-renamed', {
+      teamId: data.teamId,
+      oldName: defaultName,
+      newName: trimmed,
+      captainName: player.name,
+    })
+    
+    console.log(`[rename-team] ${player.name} renamed team ${data.teamId} to "${trimmed}" in room ${roomCode}`)
   })
 
   socket.on('error', (error) => {

@@ -112,6 +112,7 @@ export interface FinishedStatus {
 export interface TeamInfo {
   id: TeamId
   name: string
+  customName: string | null  // captain-chosen name, null = use default
   color: string
   captainId: string | null
   captainName: string | null
