@@ -294,16 +294,7 @@ function ProgressDots({ currentStep, totalSteps }: { currentStep: number; totalS
 export function CinematicIntro({ onComplete, playerName }: CinematicIntroProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const completedRef = useRef(false)
-
-  // Clean up timers on unmount
-  useEffect(() => {
-    return () => {
-      timersRef.current.forEach((t) => clearTimeout(t))
-      timersRef.current = []
-    }
-  }, [])
 
   // Mark intro step in store
   useEffect(() => {
@@ -327,28 +318,15 @@ export function CinematicIntro({ onComplete, playerName }: CinematicIntroProps) 
     }, 500)
   }, [onComplete])
 
-  // Auto-advance through steps
-  useEffect(() => {
+  // Manual advance to next step (user must click)
+  const handleNext = useCallback(() => {
     if (isComplete) return
 
-    const step = STEPS[currentStep]
-    if (!step) return
-
-    const timer = setTimeout(() => {
-      if (currentStep < STEPS.length - 1) {
-        // Play transition sound on step change
-        audioEngine.transition('metallic')
-        setCurrentStep((prev) => prev + 1)
-      } else {
-        // Final step - complete the intro
-        handleComplete()
-      }
-    }, step.duration + (step.dramaticPause || 0))
-
-    timersRef.current.push(timer)
-
-    return () => {
-      clearTimeout(timer)
+    if (currentStep < STEPS.length - 1) {
+      audioEngine.transition('metallic')
+      setCurrentStep((prev) => prev + 1)
+    } else {
+      handleComplete()
     }
   }, [currentStep, isComplete, handleComplete])
 
@@ -438,8 +416,28 @@ export function CinematicIntro({ onComplete, playerName }: CinematicIntroProps) 
           {/* Progress dots - center */}
           <ProgressDots currentStep={currentStep} totalSteps={STEPS.length} />
 
-          {/* Spacer for balance */}
-          <div className="w-14" />
+          {/* Next / Start button */}
+          <motion.button
+            onClick={handleNext}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold transition-all"
+            style={{
+              background: currentStep === STEPS.length - 1
+                ? 'linear-gradient(135deg, rgba(220,38,38,0.7), rgba(245,158,11,0.7))'
+                : 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(220,38,38,0.15))',
+              border: `1px solid ${currentStep === STEPS.length - 1 ? 'rgba(245,158,11,0.5)' : 'rgba(245,158,11,0.3)'}`,
+              color: currentStep === STEPS.length - 1 ? '#fff' : '#F59E0B',
+            }}
+            whileHover={{
+              boxShadow: '0 0 16px rgba(245,158,11,0.3)',
+              scale: 1.03,
+            }}
+            whileTap={{ scale: 0.97 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8 }}
+          >
+            {currentStep === STEPS.length - 1 ? 'يلا نبدأ' : 'التالي'}
+          </motion.button>
         </div>
       </div>
 

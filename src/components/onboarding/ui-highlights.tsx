@@ -170,7 +170,6 @@ export function UIHighlights({ isActive, onComplete }: UIHighlightsProps) {
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number; arrowSide: ArrowSide }>({ top: 0, left: 0, arrowSide: 'top' })
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [overlayVisible, setOverlayVisible] = useState(false)
-  const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const updateBoundsRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const goToNextStepRef = useRef<() => void>(() => {})
   const handleCompleteRef = useRef<() => void>(() => {})
@@ -212,17 +211,8 @@ export function UIHighlights({ isActive, onComplete }: UIHighlightsProps) {
     }
   }, [isActive, updateBounds])
 
-  // ─── Clear auto-advance timer ───────────────────────────────────────────────
-  const clearAutoTimer = useCallback(() => {
-    if (autoTimerRef.current) {
-      clearTimeout(autoTimerRef.current)
-      autoTimerRef.current = null
-    }
-  }, [])
-
   // ─── Handle complete ────────────────────────────────────────────────────────
   const handleComplete = useCallback(() => {
-    clearAutoTimer()
     audioEngine.buttonClick()
     setOverlayVisible(false)
     useOnboardingStore.getState().completeUIHighlight()
@@ -230,16 +220,15 @@ export function UIHighlights({ isActive, onComplete }: UIHighlightsProps) {
     setTimeout(() => {
       onComplete()
     }, 400)
-  }, [onComplete, clearAutoTimer])
+  }, [onComplete])
 
   // Keep ref updated
   useEffect(() => {
     handleCompleteRef.current = handleComplete
   }, [handleComplete])
 
-  // ─── Go to next step ────────────────────────────────────────────────────────
+  // ─── Go to next step (manual only) ──────────────────────────────────────────
   const goToNextStep = useCallback(() => {
-    clearAutoTimer()
     if (isTransitioning) return
 
     // Check if we've reached the last step (read current value)
@@ -272,54 +261,27 @@ export function UIHighlights({ isActive, onComplete }: UIHighlightsProps) {
         }
       }, 100)
     }, 300)
-  }, [currentStep, isTransitioning, clearAutoTimer])
+  }, [currentStep, isTransitioning])
 
   // Keep ref updated
   useEffect(() => {
     goToNextStepRef.current = goToNextStep
   }, [goToNextStep])
 
-  // ─── Start auto-advance timer ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!isActive || !bounds) return
-
-    clearAutoTimer()
-    autoTimerRef.current = setTimeout(() => {
-      goToNextStepRef.current()
-    }, 4000)
-
-    return clearAutoTimer
-  }, [isActive, currentStep, bounds, clearAutoTimer])
-
   // ─── Handle skip ────────────────────────────────────────────────────────────
   const handleSkip = useCallback(() => {
-    clearAutoTimer()
     audioEngine.buttonClick()
     setOverlayVisible(false)
     useOnboardingStore.getState().completeUIHighlight()
     setTimeout(() => {
       onComplete()
     }, 400)
-  }, [onComplete, clearAutoTimer])
+  }, [onComplete])
 
   // ─── Handle manual next click ───────────────────────────────────────────────
   const handleNext = useCallback(() => {
-    clearAutoTimer()
     goToNextStepRef.current()
-  }, [clearAutoTimer])
-
-  // ─── Pause auto timer on hover ──────────────────────────────────────────────
-  const handleTooltipEnter = useCallback(() => {
-    clearAutoTimer()
-  }, [clearAutoTimer])
-
-  const handleTooltipLeave = useCallback(() => {
-    // Restart auto timer on leave
-    if (!isActive || !bounds) return
-    autoTimerRef.current = setTimeout(() => {
-      goToNextStepRef.current()
-    }, 4000)
-  }, [isActive, bounds, clearAutoTimer])
+  }, [])
 
   // ─── Don't render if not active ─────────────────────────────────────────────
   if (!isActive) return null
@@ -400,8 +362,6 @@ export function UIHighlights({ isActive, onComplete }: UIHighlightsProps) {
                   left: tooltipPos.left,
                   maxWidth: 280,
                 }}
-                onMouseEnter={handleTooltipEnter}
-                onMouseLeave={handleTooltipLeave}
               >
                 {/* Arrow pointing to the highlighted element */}
                 <div
