@@ -693,7 +693,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
               transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
               className="mb-8"
             >
-              <BattleLogo size="2xl" />
+              <BattleLogo size="2xl" className="w-20 h-20 sm:w-28 sm:h-28 md:w-[120px] md:h-[120px]" />
             </motion.div>
 
             {/* Tap prompt */}
@@ -870,7 +870,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
             initial={{ scale: 0, opacity: 0, filter: 'blur(20px)' }}
             animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
             transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }}
-            className="relative z-10 flex flex-col items-center justify-center"
+            className="relative z-10 flex flex-col items-center justify-center gap-6"
           >
             {/* Logo with pulsing glow */}
             <motion.div
@@ -882,48 +882,36 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
                 ],
               }}
               transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-              className="mx-auto mb-4"
+              className="mx-auto"
             >
-              <BattleLogo size="2xl" />
+              <BattleLogo size="2xl" className="w-20 h-20 sm:w-28 sm:h-28 md:w-[120px] md:h-[120px]" />
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
-      {/* ====== TITLE TEXT (below the logo) ====== */}
-      <AnimatePresence>
-        {(phase === 'title' || phase === 'subtitle') && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.5, y: -20, filter: 'blur(15px)' }}
-            animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
-            transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1] }}
-            className="absolute top-[55%] left-0 right-0 text-center z-20"
-          >
-            <motion.h1
-              className="text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-red-500 whitespace-nowrap py-2 px-4"
-              animate={{
-                backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
-              }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-              style={{ backgroundSize: '200% auto' }}
-            >
-              معركة الأسئلة
-            </motion.h1>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {/* Title text - appears after logo */}
+            {(phase === 'title' || phase === 'subtitle') && (
+              <motion.h1
+                initial={{ opacity: 0, scale: 0.5, y: -20, filter: 'blur(15px)' }}
+                animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)', backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+                transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1], backgroundPosition: { duration: 3, repeat: Infinity, ease: 'linear' } }}
+                className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-red-500 px-4"
+                style={{ backgroundSize: '200% auto' }}
+              >
+                معركة الأسئلة
+              </motion.h1>
+            )}
 
-      {/* ====== SUBTITLE (below the title) ====== */}
-      <AnimatePresence>
-        {phase === 'subtitle' && (
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            className="absolute top-[63%] left-0 right-0 text-center text-slate-400 text-lg sm:text-xl tracking-wide z-20"
-          >
-            ادخل الساحة ... واتحدى
-          </motion.p>
+            {/* Subtitle - appears after title */}
+            {phase === 'subtitle' && (
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
+                className="text-base sm:text-lg md:text-xl text-slate-400 tracking-wide px-6"
+              >
+                ادخل الساحة ... واتحدى
+              </motion.p>
+            )}
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -1094,13 +1082,13 @@ function HomeScreen() {
               transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
             />
             <motion.div whileHover={{ scale: 1.05 }} className="relative">
-              <BattleLogo size="2xl" />
+              <BattleLogo size="2xl" className="w-20 h-20 sm:w-28 sm:h-28 md:w-[120px] md:h-[120px]" />
             </motion.div>
           </motion.div>
 
           {/* Title with improved typography */}
           <motion.h1
-            className="text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-red-500 mb-3 whitespace-nowrap py-3 px-2"
+            className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-red-500 mb-3 py-3 px-2"
             animate={{
               backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
             }}

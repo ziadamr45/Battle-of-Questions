@@ -19,13 +19,15 @@ interface BattleLogoProps {
 
 export function BattleLogo({ size = 'md', className }: BattleLogoProps) {
   const px = sizeMap[size]
+  // If className includes width/height overrides (responsive), skip inline width/height
+  // so CSS classes take full control. Otherwise use the pixel value from sizeMap.
+  const hasCustomSize = className?.includes('w-') || className?.includes('h-')
 
   return (
     <svg
       viewBox="0 0 512 512"
       xmlns="http://www.w3.org/2000/svg"
-      width={px}
-      height={px}
+      {...(!hasCustomSize && { width: px, height: px })}
       className={cn('block mx-auto object-contain drop-shadow-[0_0_12px_rgba(220,38,38,0.4)]', className)}
       role="img"
       aria-label="معركة الأسئلة - Battle of Questions"
