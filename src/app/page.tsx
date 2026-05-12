@@ -3859,37 +3859,35 @@ function LobbyScreen() {
                               <VolumeX className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Host-only: Transfer host button */}
+                          {/* Host transfer button in solo mode */}
                           {isHost && !player.isHost && (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
+                                <button
+                                  className="w-6 h-6 rounded flex items-center justify-center text-violet-400/50 hover:text-violet-400 hover:bg-violet-500/20 transition-all"
                                   title="نوّل الإدارة"
                                 >
-                                  <Crown className="w-3.5 h-3.5" />
-                                </Button>
+                                  <Shield className="w-3 h-3" />
+                                </button>
                               </AlertDialogTrigger>
                               <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
                                 <AlertDialogHeader>
                                   <AlertDialogTitle className="text-white">نقل الإدارة لـ {player.name}؟</AlertDialogTitle>
                                   <AlertDialogDescription className="text-slate-400">
-                                    هتسيب منصب مضيف الساحة و {player.name} هيبقى المضيف الجديد. مش هتقدر تبدأ اللعبة أو تعدل الإعدادات بعد كده
+                                    هتسيب منصب مضيف الساحة و {player.name} هيبقى المضيف الجديد
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter className="flex gap-2">
                                   <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
                                   <AlertDialogAction
-                                    className="bg-amber-600 text-white hover:bg-amber-700"
+                                    className="bg-violet-600 text-white hover:bg-violet-700"
                                     onClick={() => {
                                       if (globalSocket) {
                                         globalSocket.emit('transfer-leadership', { targetPlayerId: player.id, type: 'host' })
                                       }
                                     }}
                                   >
-                                    <Crown className="w-3.5 h-3.5 ml-1" /> نوّل الإدارة
+                                    <Shield className="w-3.5 h-3.5 ml-1" /> نوّل الإدارة
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -4908,6 +4906,63 @@ function GameScreen() {
   // Split text into paragraphs for better rendering
   const textParagraphs = gameContent.text.split(/\n\n|\n/).filter(p => p.trim())
 
+  // Detect if this is a literary/poetic text (النصوص mode)
+  const isLiteraryMode = gameSettings.gameType === 'نصوص'
+
+  // Detect poetry: if many lines are short (likely verses) or contain traditional poetry markers
+  const isPoetry = isLiteraryMode && textParagraphs.some(p => {
+    const lines = p.split('\n')
+    return lines.some(line => line.trim().length > 0 && line.trim().length < 80) && lines.length >= 2
+  })
+
+  // Render a literary paragraph with poetry formatting if needed
+  const renderLiteraryParagraph = (paragraph: string, idx: number) => {
+    const lines = paragraph.split('\n').filter(l => l.trim())
+    
+    // Check if this block looks like poetry (short lines, multiple lines)
+    const looksLikePoetry = lines.length >= 2 && lines.every(l => l.trim().length > 0 && l.trim().length < 80)
+    
+    if (looksLikePoetry) {
+      // Render as poetry verses - centered, with special formatting
+      // Try to pair lines as verse hemistichs (شطر/عجز)
+      const versePairs: string[][] = []
+      for (let i = 0; i < lines.length; i += 2) {
+        const pair = [lines[i]]
+        if (i + 1 < lines.length) pair.push(lines[i + 1])
+        versePairs.push(pair)
+      }
+      
+      return (
+        <div key={idx} className="py-3 sm:py-4">
+          <div className="space-y-2 sm:space-y-3">
+            {versePairs.map((pair, vIdx) => (
+              <div key={vIdx} className="text-center leading-[2.4] sm:leading-[2.6]">
+                <span className="text-amber-200/90 text-[15px] sm:text-[18px] font-medium tracking-wide" style={{ fontFamily: "'Amiri', 'Noto Naskh Arabic', serif" }}>
+                  {pair[0]}
+                </span>
+                {pair[1] && (
+                  <>
+                    <span className="text-amber-500/40 mx-2 sm:mx-3 text-lg">⁂</span>
+                    <span className="text-amber-200/90 text-[15px] sm:text-[18px] font-medium tracking-wide" style={{ fontFamily: "'Amiri', 'Noto Naskh Arabic', serif" }}>
+                      {pair[1]}
+                    </span>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+    
+    // Regular literary prose paragraph - elegant styling
+    return (
+      <p key={idx} className="text-amber-100/90 leading-[2.3] text-[15px] sm:text-[17px] tracking-wide text-justify" style={{ fontFamily: "'Amiri', 'Noto Naskh Arabic', serif" }}>
+        {paragraph.trim()}
+      </p>
+    )
+  }
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       <BattleBackground />
@@ -4936,6 +4991,13 @@ function GameScreen() {
                 <Crosshair className="w-2.5 h-2.5 sm:w-3 sm:h-3 ml-0.5" />
                 السؤال {currentQuestionIndex + 1}/{questions.length}
               </Badge>
+              {/* Game type badge: differentiate النصوص vs القراءة المتحررة */}
+              {isLiteraryMode && (
+                <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/25 text-[10px] sm:text-xs px-1.5 sm:px-2.5 hidden sm:flex items-center">
+                  <ScrollText className="w-2.5 h-2.5 sm:w-3 sm:h-3 ml-0.5" />
+                  أدب وبلاغة
+                </Badge>
+              )}
               {/* Team indicator badge */}
               {battleMode === 'فرق' && myTeamId && (
                 <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${myTeamId === 'A' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'}`}>
@@ -4988,8 +5050,8 @@ function GameScreen() {
         {/* Text/Question toggle */}
         <div className="flex gap-2 mb-4 justify-center">
           <Button size="sm" onClick={() => setShowText(true)}
-            className={`rounded-lg ${showText ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}>
-            <BookOpen className="w-4 h-4 ml-1" />{gameSettings.gameType === 'قراءة متحررة' ? 'القطعة' : 'النص'}
+            className={`rounded-lg ${showText ? (isLiteraryMode ? 'bg-amber-700 text-white shadow-lg shadow-amber-500/20' : 'bg-red-600 text-white shadow-lg shadow-red-500/20') : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}>
+            {isLiteraryMode ? <ScrollText className="w-4 h-4 ml-1" /> : <BookOpen className="w-4 h-4 ml-1" />}{gameSettings.gameType === 'قراءة متحررة' ? 'القطعة' : 'النص'}
           </Button>
           <Button size="sm" onClick={() => setShowText(false)}
             className={`rounded-lg ${!showText ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-500/20' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}>
@@ -5004,22 +5066,39 @@ function GameScreen() {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
-              className="battle-card-glow rounded-2xl p-4 sm:p-6 max-h-[65vh] overflow-y-auto reading-scroll relative"
+              className={`${isLiteraryMode ? 'bg-gradient-to-b from-amber-950/20 via-[#12121F] to-[#12121F] border border-amber-500/20' : 'battle-card-glow'} rounded-2xl p-4 sm:p-6 max-h-[65vh] overflow-y-auto reading-scroll relative`}
               onScroll={handleTextScroll}
             >
-              <h3 className="text-xl sm:text-2xl font-bold mb-4 flex items-center gap-2 bg-gradient-to-l from-red-400 via-amber-300 to-red-400 bg-clip-text text-transparent">
-                <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 shrink-0" />
-                <span className="bg-gradient-to-l from-red-300 via-amber-200 to-red-300 bg-clip-text text-transparent">{gameContent.title}</span>
-              </h3>
-              <div className="space-y-5">
-                {textParagraphs.map((paragraph, idx) => (
-                  <p key={idx} className="text-slate-200 leading-[2.1] text-[15px] sm:text-[17px] tracking-wide text-justify">
-                    {paragraph.trim()}
-                  </p>
-                ))}
+              {isLiteraryMode ? (
+                /* النصوص mode: Literary header with elegant styling */
+                <h3 className="text-xl sm:text-2xl font-bold mb-4 flex items-center gap-2">
+                  <ScrollText className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 shrink-0" />
+                  <span className="bg-gradient-to-l from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent" style={{ fontFamily: "'Amiri', 'Noto Naskh Arabic', serif" }}>{gameContent.title}</span>
+                </h3>
+              ) : (
+                /* القراءة المتحررة mode: Standard header */
+                <h3 className="text-xl sm:text-2xl font-bold mb-4 flex items-center gap-2 bg-gradient-to-l from-red-400 via-amber-300 to-red-400 bg-clip-text text-transparent">
+                  <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 shrink-0" />
+                  <span className="bg-gradient-to-l from-red-300 via-amber-200 to-red-300 bg-clip-text text-transparent">{gameContent.title}</span>
+                </h3>
+              )}
+              <div className={`space-y-5 ${isLiteraryMode ? 'divide-y divide-amber-500/10' : ''}`}>
+                {isLiteraryMode ? (
+                  /* النصوص mode: Literary rendering with poetry formatting */
+                  textParagraphs.map((paragraph, idx) => renderLiteraryParagraph(paragraph, idx))
+                ) : (
+                  /* القراءة المتحررة mode: Standard rendering */
+                  textParagraphs.map((paragraph, idx) => (
+                    <p key={idx} className="text-slate-200 leading-[2.1] text-[15px] sm:text-[17px] tracking-wide text-justify">
+                      {paragraph.trim()}
+                    </p>
+                  ))
+                )}
               </div>
               {gameContent.source && (
-                <p className="text-xs text-slate-500 mt-4 pt-2 border-t border-white/5">المصدر: {gameContent.source}</p>
+                <p className={`text-xs mt-4 pt-2 border-t border-white/5 ${isLiteraryMode ? 'text-amber-500/50' : 'text-slate-500'}`}>
+                  {isLiteraryMode ? 'المنهل الأدبي: ' : 'المصدر: '}{gameContent.source}
+                </p>
               )}
 
               {/* Prompt to go to questions */}
