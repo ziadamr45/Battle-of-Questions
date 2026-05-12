@@ -289,3 +289,37 @@ Stage Summary:
 - Medium 2 FIXED: Tips interval no longer restarts on every tip change — uses ref for stable dependency
 - Medium 3 FIXED: GameScreen now keys on currentRound instead of gameContent.title
 - Medium 4 FIXED: Input/textarea/contenteditable elements now allow text selection for accessibility
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Fix 🔵 Small Issues from audit (5 items: #16-#20)
+
+Work Log:
+- Created `/src/lib/rate-limit.ts` — in-memory sliding-window rate limiter with auto-cleanup
+  - `checkRateLimit(ip, routePrefix, options)` returns allowed/retryAfter
+  - `getClientIp(req)` extracts client IP from x-forwarded-for / x-real-ip headers
+  - Configurable maxRequests and windowSeconds per route
+  - Auto-cleanup of expired entries every 60 seconds
+- #16: Applied rate limiting to `/api/guest/route.ts`
+  - GET: 30 requests/min per IP
+  - POST: 10 requests/min per IP (guest creation is more sensitive)
+  - PATCH: 15 requests/min per IP
+  - Returns 429 with Arabic error message + Retry-After header when limited
+- #17: Applied rate limiting + input validation to `/api/battle-history/route.ts`
+  - GET: 30 requests/min per IP
+  - POST: 5 requests/min per IP (battle saves are infrequent)
+  - Added playerName length validation (max 30 chars)
+  - Added participants array validation (must be array, 1-20 items)
+  - Added rounds array validation (must be array, 1-20 items)
+- #18: Deleted `/src/app/api/route.ts` — was returning "Hello, world!" with no purpose
+- #19: Updated `/src/lib/db.ts` — added graceful shutdown handlers (beforeExit, SIGINT, SIGTERM) to disconnect Prisma cleanly, preventing dangling connections in serverless environments. Noted that DATABASE_URL already uses Neon's `-pooler` endpoint (PgBouncer)
+- #20: Removed unused `Award` import from `page.tsx` line 49
+- Lint passes clean, dev server running fine
+
+Stage Summary:
+- #16 FIXED: Guest API now has per-IP rate limiting on all 3 endpoints
+- #17 FIXED: Battle-history API now has rate limiting + input validation
+- #18 FIXED: Useless Hello World API route deleted
+- #19 FIXED: Graceful Prisma shutdown + connection pool documentation added
+- #20 FIXED: Unused Award import removed from page.tsx
