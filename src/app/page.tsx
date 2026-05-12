@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType, type AnswerReviewItem, type FullAnswerReviewItem, type ReadyStatus } from '@/lib/game-store'
+import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType, type AnswerReviewItem, type FullAnswerReviewItem, type ReadyStatus, type FinishedStatus } from '@/lib/game-store'
 import { audioEngine } from '@/lib/audio-engine'
 import { useAudioStore } from '@/lib/audio-store'
 import { Button } from '@/components/ui/button'
@@ -278,6 +278,9 @@ function useGameSocket() {
       store.getState().setCurrentRound(data.roundNumber)
       store.getState().setTotalRounds(data.totalRounds)
       store.getState().setTimeLeft(data.timePerRound)
+      // Reset finished status for new round
+      store.getState().setFinishedStatus(null)
+      store.getState().setIsPlayerFinished(false)
       store.getState().setScreen('game')
       audioEngine.battleStart()
       showNarration('round_starting')
@@ -449,6 +452,10 @@ function useGameSocket() {
       // Show toast to host with unready player names
       const names = data.unreadyPlayers.join('، ')
       battleToast('warning', 'مش جاهزين بعد!', `${names} لسه مش جاهزين. استنى لما الكل يبقى جاهز.`)
+    })
+
+    socket.on('finished-status-update', (data: FinishedStatus) => {
+      store.getState().setFinishedStatus(data)
     })
 
     socket.on('answer-explanation', (data: { roundNumber: number; questionIndex: number; explanation: string }) => {
@@ -3502,17 +3509,38 @@ function GameScreen() {
   const totalRounds = useGameStore((s) => s.totalRounds)
   const gameSettings = useGameStore((s) => s.gameSettings)
   const roomCode = useGameStore((s) => s.roomCode)
+  const finishedStatus = useGameStore((s) => s.finishedStatus)
+  const isPlayerFinished = useGameStore((s) => s.isPlayerFinished)
+  const setIsPlayerFinished = useGameStore((s) => s.setIsPlayerFinished)
   const [showText, setShowText] = useState(true)
   const [showScrollHint, setShowScrollHint] = useState(true)
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set())
+
+  // Track round elapsed time for showing the "خلصت؟" button after 3 minutes
+  const roundStartTimeRef = useRef<number>(Date.now())
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const MINUTES_BEFORE_FINISH_BUTTON = 3 // Show "خلصت؟" after 3 minutes
 
   // Reset scroll hint when new content arrives
   useEffect(() => {
     queueMicrotask(() => {
       setShowScrollHint(true)
       setShowText(true)
+      roundStartTimeRef.current = Date.now()
+      setElapsedSeconds(0)
     })
   }, [gameContent])
+
+  // Track elapsed time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - roundStartTimeRef.current) / 1000)
+      setElapsedSeconds(elapsed)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const canShowFinishButton = elapsedSeconds >= MINUTES_BEFORE_FINISH_BUTTON * 60
 
   const [showSurrenderDialog, setShowSurrenderDialog] = useState(false)
   const { submitAnswer, surrender } = useGameSocket()
@@ -3575,7 +3603,6 @@ function GameScreen() {
   const seconds = timeLeft % 60
   const isUrgent = timeLeft <= 60
   const isLastQuestion = currentQuestionIndex === questions.length - 1
-  const allAnswered = Object.keys(answers).length >= questions.length
 
   const handleAnswer = (questionIndex: number, answerIndex: number) => {
     if (answeredQuestions.has(questionIndex)) return
@@ -3813,22 +3840,86 @@ function GameScreen() {
                 )}
               </div>
 
-              {/* Completion message when all questions answered */}
-              {allAnswered && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-center"
-                >
-                  <Check className="w-6 h-6 text-green-400 mx-auto mb-2" />
-                  <p className="text-green-400 font-bold text-sm">أجبت على جميع الأسئلة!</p>
-                  <p className="text-slate-400 text-xs mt-1">⏳ في انتظار اللاعب الآخر أو انتهاء الوقت...</p>
-                </motion.div>
-              )}
+              {/* Completion message when all questions answered - REMOVED: now using "خلصت؟" button */}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      {/* "خلصت؟" floating button - appears after 3 minutes, hidden if player already finished */}
+      {canShowFinishButton && !isPlayerFinished && (
+        <motion.div
+          initial={{ opacity: 0, y: 20, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+        >
+          <Button
+            onClick={() => {
+              if (globalSocket) {
+                globalSocket.emit('player-finished')
+                setIsPlayerFinished(true)
+              }
+            }}
+            className="btn-battle rounded-2xl gap-2 px-8 py-6 text-lg shadow-2xl shadow-red-500/30"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            خلصت؟
+          </Button>
+        </motion.div>
+      )}
+
+      {/* Waiting overlay - shown when player clicked "خلصت" but others haven't finished */}
+      <AnimatePresence>
+        {isPlayerFinished && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+              className="battle-card-glow rounded-2xl p-8 max-w-sm w-full text-center"
+            >
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                className="w-12 h-12 mx-auto mb-4 rounded-full border-2 border-cyan-400 border-t-transparent"
+              />
+              <h3 className="text-white font-bold text-lg mb-2">في انتظار باقي المقاتلين</h3>
+              <p className="text-slate-400 text-sm mb-4">
+                في انتظار انتهاء جميع اللاعبين من الإجابة أو انتهاء الوقت
+              </p>
+
+              {/* Show who hasn't finished */}
+              {finishedStatus?.unfinishedPlayerNames && finishedStatus.unfinishedPlayerNames.length > 0 && (
+                <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
+                  <p className="text-xs text-slate-500 mb-1">لسه بيحاربوا:</p>
+                  <p className="text-sm text-slate-300">{finishedStatus.unfinishedPlayerNames.join('، ')}</p>
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (globalSocket) {
+                    globalSocket.emit('player-unfinish')
+                    setIsPlayerFinished(false)
+                  }
+                }}
+                className="border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 rounded-xl gap-2"
+              >
+                <ArrowRight className="w-4 h-4 rotate-180" />
+                لا أنا عايز أراجع إجاباتي
+              </Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -83,6 +83,13 @@ export interface ReadyStatus {
   unreadyPlayerNames?: string[]
 }
 
+export interface FinishedStatus {
+  finishedPlayers: string[]
+  finishedCount: number
+  totalActive: number
+  unfinishedPlayerNames: string[]
+}
+
 // ─── Session Storage Helpers ──────────────────────────────────────────────────
 
 const SESSION_KEY = 'maaraka-session'
@@ -254,6 +261,12 @@ interface GameState {
   setReadyStatus: (status: ReadyStatus | null) => void
   isPlayerReady: boolean
   setIsPlayerReady: (ready: boolean) => void
+
+  // Finished status during round (player clicked "خلصت")
+  finishedStatus: FinishedStatus | null
+  setFinishedStatus: (status: FinishedStatus | null) => void
+  isPlayerFinished: boolean
+  setIsPlayerFinished: (finished: boolean) => void
 
   // AI answer explanations (keyed by "round-questionIndex")
   answerExplanations: Record<string, string>
@@ -484,6 +497,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   isPlayerReady: false,
   setIsPlayerReady: (ready) => set({ isPlayerReady: ready }),
 
+  finishedStatus: null,
+  setFinishedStatus: (status) => set({ finishedStatus: status }),
+  isPlayerFinished: false,
+  setIsPlayerFinished: (finished) => set({ isPlayerFinished: finished }),
+
   answerExplanations: {},
   setAnswerExplanation: (roundNumber, questionIndex, explanation) => set((state) => ({
     answerExplanations: { ...state.answerExplanations, [`${roundNumber}-${questionIndex}`]: explanation },
@@ -523,6 +541,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       playerAnswerReviews: {},
       readyStatus: null,
       isPlayerReady: false,
+      finishedStatus: null,
+      isPlayerFinished: false,
       answerExplanations: {},
       battleData: null,
     })

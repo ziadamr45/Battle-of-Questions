@@ -207,6 +207,7 @@ interface GameRoom {
   earlyEnding: boolean            // true if early-end-game processing has started (prevents duplicate requests)
   gameStartTime: number | null    // timestamp when the game first started (for accurate duration)
   readyPlayers: Set<string>       // player IDs who marked ready for next round
+  finishedPlayers: Set<string>    // player IDs who clicked "خلصت" in current round
 }
 
 // Info sent to clients about public rooms
@@ -1372,6 +1373,7 @@ io.on('connection', (socket: Socket) => {
         earlyEnding: false,
         gameStartTime: null,
         readyPlayers: new Set(),
+        finishedPlayers: new Set(),
       }
 
       rooms.set(roomCode, room)
@@ -1532,6 +1534,7 @@ io.on('connection', (socket: Socket) => {
       room.currentRound = 0
       room.roundEnding = false
       room.gameStartTime = Date.now()
+      room.finishedPlayers = new Set()
 
       // Reset all player scores and round wins for the new game
       // Also remove any lingering disconnected players
@@ -1872,10 +1875,9 @@ io.on('connection', (socket: Socket) => {
           return rAnswers.size >= totalQuestions
         })
 
-      if (allPlayersAnsweredAll) {
-        // All players finished this round
-        handleRoundEnd(roomCode)
-      }
+      // NOTE: We do NOT auto-end the round when all players answer.
+      // The round ends when: all players click "خلصت" OR time runs out.
+      // Players might want to review/change answers.
     }
   )
 
@@ -2007,6 +2009,76 @@ io.on('connection', (socket: Socket) => {
 
     // All players are ready — start the next round
     startNextRound(roomCode)
+  })
+
+  // ── player-finished ────────────────────────────────────────────────────
+  // Player clicks "خلصت" to indicate they're done with the round
+  socket.on('player-finished', () => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+
+    const room = rooms.get(roomCode)
+    if (!room || room.status !== 'playing') return
+
+    // Add this player to the finished set
+    room.finishedPlayers.add(socket.id)
+
+    // Broadcast finished status to all players
+    const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
+    const activePlayerCount = activePlayers.length
+    const finishedCount = [...room.finishedPlayers].filter(id => {
+      const p = room.players.get(id)
+      return p && !p.isDisconnected
+    }).length
+
+    // Build list of players who haven't finished yet (names)
+    const unfinishedPlayerNames = activePlayers
+      .filter(([id]) => !room.finishedPlayers.has(id))
+      .map(([, p]) => p.name)
+
+    io.to(roomCode).emit('finished-status-update', {
+      finishedPlayers: [...room.finishedPlayers],
+      finishedCount,
+      totalActive: activePlayerCount,
+      unfinishedPlayerNames,
+    })
+
+    // If all active players have finished, end the round
+    if (finishedCount >= activePlayerCount && activePlayerCount >= 2) {
+      handleRoundEnd(roomCode)
+    }
+  })
+
+  // ── player-unfinish ────────────────────────────────────────────────────
+  // Player clicks "لا أنا عايز أراجع إجاباتي" to go back to questions
+  socket.on('player-unfinish', () => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+
+    const room = rooms.get(roomCode)
+    if (!room || room.status !== 'playing') return
+
+    // Remove this player from the finished set
+    room.finishedPlayers.delete(socket.id)
+
+    // Broadcast updated finished status
+    const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
+    const activePlayerCount = activePlayers.length
+    const finishedCount = [...room.finishedPlayers].filter(id => {
+      const p = room.players.get(id)
+      return p && !p.isDisconnected
+    }).length
+
+    const unfinishedPlayerNames = activePlayers
+      .filter(([id]) => !room.finishedPlayers.has(id))
+      .map(([, p]) => p.name)
+
+    io.to(roomCode).emit('finished-status-update', {
+      finishedPlayers: [...room.finishedPlayers],
+      finishedCount,
+      totalActive: activePlayerCount,
+      unfinishedPlayerNames,
+    })
   })
 
   // ── explain-answer ─────────────────────────────────────────────────────
@@ -2360,6 +2432,7 @@ function handleRoundEnd(roomCode: string) {
   // Wait for all players to be ready instead of auto-advancing
   // Reset ready state for the new round transition
   room.readyPlayers = new Set()
+  room.finishedPlayers = new Set()
   room.roundEnding = false  // Allow the round-end processing to complete
   // Next round will be started by startNextRoundWhenReady when all players are ready
 }
@@ -2398,6 +2471,7 @@ function startNextRound(roomCode: string) {
         rr.roundTimerSeconds = rr.settings.timePerRound * 60
         rr.roundEnding = false
         rr.readyPlayers = new Set()
+        rr.finishedPlayers = new Set()
         io.to(roomCode).emit('round-start', {
           roundNumber: rr.currentRound,
           totalRounds: rr.settings.numberOfRounds,
@@ -2416,6 +2490,7 @@ function startNextRound(roomCode: string) {
   room.roundTimerSeconds = room.settings.timePerRound * 60
   room.roundEnding = false
   room.readyPlayers = new Set()
+  room.finishedPlayers = new Set()
 
   io.to(roomCode).emit('round-start', {
     roundNumber: room.currentRound,
