@@ -344,3 +344,31 @@ Stage Summary:
 - If host clicks and not all players ready → toast shows which players aren't ready
 - Each player sees "في انتظار: [names]" showing who isn't ready yet
 - Host sees "ابدأ المعركة" button only after they mark themselves as ready
+
+---
+Task ID: 2
+Agent: Main
+Task: Replace auto-finish with خلصت button + waiting overlay
+
+Work Log:
+- Read GameScreen code to understand current completion behavior
+- Server: Added finishedPlayers Set to Room type
+- Server: Added player-finished event (tracks who clicked خلصت)
+- Server: Added player-unfinish event (player goes back to review answers)
+- Server: Removed auto-end from submit-answer when all players answer all
+- Server: Round now ends only when all players click خلصت OR time runs out
+- Server: Reset finishedPlayers in all round-start paths
+- Client: Added FinishedStatus type to game-store
+- Client: Added finishedStatus + isPlayerFinished state
+- Client: Added finished-status-update socket listener
+- Client: Reset finished state on round-start
+- Client: Removed "أجبت على جميع الأسئلة!" auto completion message
+- Client: Added "خلصت؟" floating button appearing after 3 minutes
+- Client: Added waiting overlay with spinner, names of unfinished players
+- Client: Added "لا أنا عايز أراجع إجاباتي" button to go back to questions
+- Build succeeds, lint passes
+
+Stage Summary:
+- Players now control when they're done via "خلصت؟" button (after 3 min)
+- Waiting overlay shows who hasn't finished, with option to go back
+- Round ends when all players finish OR timer expires
