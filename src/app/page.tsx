@@ -540,9 +540,9 @@ const slideVariants = {
 }
 
 const battleTransition = {
-  initial: { opacity: 0, clipPath: 'inset(0 100% 0 0)' },
-  animate: { opacity: 1, clipPath: 'inset(0 0% 0 0)' },
-  exit: { opacity: 0, clipPath: 'inset(0 0 0 100%)' },
+  initial: { opacity: 0, y: 12, filter: 'blur(6px)' },
+  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+  exit: { opacity: 0, y: -8, filter: 'blur(4px)' },
 }
 
 // ============================================
@@ -3780,12 +3780,28 @@ export default function Home() {
     setShowUIHighlights(false)
   }, [])
 
-  // Play transition sound when screen changes
+  // ═══════════════════════════════════════════════════════════════
+  // SCROLL RESET + TRANSITION SOUND ON SCREEN CHANGE
+  // Every screen change resets scroll to top instantly — no stale
+  // scroll position carries over. Uses requestAnimationFrame to
+  // avoid conflicting with AnimatePresence exit animations.
+  // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
     if (prevScreenRef.current !== screen && !showSplash) {
       const from = prevScreenRef.current
       const to = screen
-      // Play appropriate transition sound based on screen change
+
+      // ── Reset scroll position instantly ──
+      // Use RAF to ensure it runs after React's render commit,
+      // preventing any visual conflict with exit animations.
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior })
+        // Also reset any scrollable containers that might hold stale position
+        document.documentElement.scrollTop = 0
+        document.body.scrollTop = 0
+      })
+
+      // ── Play appropriate transition sound ──
       if (to === 'loading') {
         audioEngine.transition('metallic')
       } else if (to === 'game') {
@@ -3894,8 +3910,9 @@ export default function Home() {
                 animate="animate"
                 exit="exit"
                 variants={battleTransition}
-                transition={{ duration: 0.4 }}
+                transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
                 className="flex-1 flex flex-col"
+                data-screen-transition=""
               >
                 {screen === 'home' && <HomeScreen />}
                 {screen === 'create' && <CreateGameScreen />}

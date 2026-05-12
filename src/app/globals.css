@@ -292,6 +292,22 @@
   border-color: inherit;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   SCREEN TRANSITION: Prevent scroll position carry-over
+   When transitioning between screens, we briefly lock scroll
+   to prevent the old scroll position from flashing during the
+   exit/enter animation window.
+   ═══════════════════════════════════════════════════════════════ */
+html {
+  scroll-behavior: instant;
+}
+
+/* Screen transition blur/fade should be GPU-accelerated */
+[data-screen-transition] {
+  will-change: opacity, filter, transform;
+  backface-visibility: hidden;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
