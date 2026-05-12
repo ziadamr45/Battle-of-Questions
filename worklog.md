@@ -271,3 +271,21 @@ Stage Summary:
   - Dramatic cinematic subtitles with amber glow, blur transitions, and whoosh sound
   - Queue system: max 2, one at a time, 2.5s duration
   - Provider at z-[85], positioned at bottom-32
+
+---
+Task ID: 9
+Agent: Main Agent
+Task: Fix 🟡 Medium Issues from audit (4 items)
+
+Work Log:
+- Fixed arena-tips.tsx: Replaced render-time setState (setCurrentIndex/setVisibleTip during render) with useEffect for context change detection
+- Fixed arena-tips.tsx: Moved currentIndex tracking to a ref (currentIndexRef) so the interval useEffect doesn't depend on currentIndex state — interval now stays stable and doesn't restart every 5 seconds on tip change
+- Fixed page.tsx line 3931: Changed `key={gameContent?.title || 'game'}` to `key={\`round-${currentRound}\`}` — ensures GameScreen properly remounts for each round, not based on passage title
+- Fixed globals.css: Added `user-select: text` exception for `input`, `textarea`, and `[contenteditable="true"]` elements so users can still select/copy text in input fields while the rest of the site remains unselectable
+- Lint passes clean, dev server running fine
+
+Stage Summary:
+- Medium 1 FIXED: No more setState during render in arena-tips — moved to useEffect
+- Medium 2 FIXED: Tips interval no longer restarts on every tip change — uses ref for stable dependency
+- Medium 3 FIXED: GameScreen now keys on currentRound instead of gameContent.title
+- Medium 4 FIXED: Input/textarea/contenteditable elements now allow text selection for accessibility

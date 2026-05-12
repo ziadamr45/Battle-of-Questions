@@ -78,7 +78,7 @@ function getContextTips(context: ArenaTipsProps['context']): ArenaTip[] {
 // ─── ArenaTips Component ──────────────────────────────────────────────────────
 
 export function ArenaTips({ context }: ArenaTipsProps) {
-  // Compute initial tip from context using useMemo (no setState in effect)
+  // Compute initial tip from context using useMemo
   const initialTip = useMemo(() => {
     const tips = getContextTips(context)
     const idx = Math.floor(Math.random() * tips.length)
@@ -89,38 +89,29 @@ export function ArenaTips({ context }: ArenaTipsProps) {
   const [visibleTip, setVisibleTip] = useState<ArenaTip | null>(initialTip.tip)
   const incrementCalledRef = useRef<Set<number>>(new Set(initialTip.tip ? [initialTip.index] : []))
 
-  // When context changes, pick a new initial tip via the useMemo recomputation
-  // We use a key-based approach: the parent should key ArenaTips on context to remount
-  // But we also handle context change gracefully:
+  // ─── FIX Medium 1: Use useEffect instead of setState during render ───
+  // When context changes, reset to a new random tip via useEffect (not during render)
   const prevContextRef = useRef(context)
-  if (prevContextRef.current !== context) {
-    prevContextRef.current = context
-    const tips = getContextTips(context)
-    const idx = Math.floor(Math.random() * tips.length)
-    const newTip = tips[idx] ?? null
-    // Direct state update during render (React 18 pattern for derived state)
-    setCurrentIndex(idx)
-    setVisibleTip(newTip)
-    incrementCalledRef.current = new Set(idx >= 0 ? [idx] : [])
-  }
-
-  // Select a random tip that's different from the current one
-  const selectNextTip = useCallback(() => {
-    const tips = getContextTips(context)
-    if (tips.length <= 1) {
-      setCurrentIndex(0)
-      return tips[0] ?? null
+  useEffect(() => {
+    if (prevContextRef.current !== context) {
+      prevContextRef.current = context
+      const tips = getContextTips(context)
+      const idx = Math.floor(Math.random() * tips.length)
+      const newTip = tips[idx] ?? null
+      setCurrentIndex(idx)
+      setVisibleTip(newTip)
+      incrementCalledRef.current = new Set(idx >= 0 ? [idx] : [])
     }
-    // Pick a random index different from current
-    let nextIdx: number
-    do {
-      nextIdx = Math.floor(Math.random() * tips.length)
-    } while (nextIdx === currentIndex && tips.length > 1)
-    setCurrentIndex(nextIdx)
-    return tips[nextIdx] ?? null
-  }, [context, currentIndex])
+  }, [context])
 
-  // Rotate tips every 5 seconds
+  // ─── FIX Medium 2: Use ref for currentIndex so interval stays stable ───
+  // Track currentIndex in a ref so the interval doesn't restart on every tip change
+  const currentIndexRef = useRef(currentIndex)
+  useEffect(() => {
+    currentIndexRef.current = currentIndex
+  }, [currentIndex])
+
+  // Rotate tips every 5 seconds — interval is stable (no currentIndex dependency)
   useEffect(() => {
     const interval = setInterval(() => {
       const tips = getContextTips(context)
@@ -130,7 +121,7 @@ export function ArenaTips({ context }: ArenaTipsProps) {
       } else {
         do {
           nextIdx = Math.floor(Math.random() * tips.length)
-        } while (nextIdx === currentIndex && tips.length > 1)
+        } while (nextIdx === currentIndexRef.current && tips.length > 1)
       }
       const nextTip = tips[nextIdx] ?? null
       if (nextTip) {
@@ -140,7 +131,7 @@ export function ArenaTips({ context }: ArenaTipsProps) {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [context, currentIndex])
+  }, [context]) // Only restart when context changes, not on every tip change
 
   // Increment tips seen counter in onboarding store
   useEffect(() => {

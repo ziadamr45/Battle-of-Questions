@@ -305,6 +305,15 @@ html {
   user-select: none;
 }
 
+/* Allow text selection in inputs, textareas, and contenteditable elements for accessibility */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+}
+
 /* Screen transition blur/fade should be GPU-accelerated */
 [data-screen-transition] {
   will-change: opacity, filter, transform;

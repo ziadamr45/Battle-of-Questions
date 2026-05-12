@@ -3928,7 +3928,7 @@ export default function Home() {
                 {screen === 'join' && <JoinGameScreen />}
                 {screen === 'lobby' && <LobbyScreen />}
                 {screen === 'loading' && <LoadingScreen />}
-                {screen === 'game' && <GameScreen key={gameContent?.title || 'game'} />}
+                {screen === 'game' && <GameScreen key={`round-${currentRound}`} />}
                 {screen === 'round-transition' && <RoundTransitionScreen />}
                 {screen === 'history' && <HistoryScreenWrapper />}
                 {screen === 'about' && <AboutPage onBack={() => setScreen('home')} />}
