@@ -1452,7 +1452,7 @@ function CreateGameScreen() {
   }
 
   const gameTypes: { value: GameType; label: string; icon: typeof BookOpen; desc: string }[] = [
-    { value: 'قراءة متحررة', label: 'قراءة متحررة', icon: BookOpen, desc: 'نصوص أدبية مع أسئلة فهم واستنتاج' },
+    { value: 'قراءة متحررة', label: 'قراءة متحررة', icon: BookOpen, desc: 'موضوعات متنوعة مع أسئلة فهم واستنتاج تحليلي' },
     { value: 'نصوص', label: 'نصوص', icon: BookMarked, desc: 'نصوص أدبية مع أسئلة بلاغة وتذوق' },
   ]
 
