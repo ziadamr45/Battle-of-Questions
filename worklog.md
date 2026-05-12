@@ -402,3 +402,33 @@ Stage Summary:
 - Smooth 0.4s fade animation preserves immersion
 - No breakage to cinematic sounds, voice chat, or moderation systems
 - Pure UX separation: outside arena = atmosphere controls, inside arena = battle communication controls
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Refine Ready System UX - captain monitors instead of readying up
+
+Work Log:
+- Analyzed full ready system across backend (game-service/index.ts), frontend (page.tsx), and store (game-store.ts)
+- Updated backend player-ready handler to silently ignore leaders (hosts/captains)
+- Updated backend host-start-round to only check non-leader fighters
+- Added initial ready-status-update emit on round end for instant captain panel display
+- Added new ReadyStatus fields: totalFighters, readyPlayerNames, allFightersReady
+- Added isDisconnected field to frontend Player type
+- Completely redesigned RoundTransitionScreen ready section:
+  - Captain: monitoring panel with progress bar, per-fighter status list, disconnected warnings, dynamic start button
+  - Normal fighters: same ready button flow but with fighter-only counts
+- Created unified isLeader variable to simplify captain/host condition checks
+- Updated host-start-rejected toast message
+- Removed setReadyStatus(null) from round-end handler to prevent flash
+- Edge case: captain alone (0 fighters) → allFightersReady defaults to true → start button active immediately
+- All lint checks pass, dev server and game service running
+- Committed and pushed to GitHub
+
+Stage Summary:
+- Captains no longer have a ready state — they monitor and command
+- Captain sees: arena status, progress bar, fighter readiness list, disconnected warnings
+- Start button disabled until all fighters ready, shows pending info
+- Normal fighters still press "جاهز" as before
+- Works with both solo mode (host = leader) and team mode (captains = leaders)
+- UX philosophy: fighters prepare, captains command, rounds begin only when arena is truly ready
