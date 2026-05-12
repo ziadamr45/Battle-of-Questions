@@ -60,6 +60,7 @@ import {
   ScrollText,
   UserX,
   MicOff,
+  Settings,
 } from 'lucide-react'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
@@ -587,55 +588,173 @@ function AudioControls() {
   const toggleMute = useAudioStore((s) => s.toggleMute)
   const setMasterVolume = useAudioStore((s) => s.setMasterVolume)
   const [showSlider, setShowSlider] = useState(false)
-
-  const handleInteract = () => {
-    initAudio()
-    setShowSlider(!showSlider)
-  }
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const VolumeIcon = settings.isMuted || settings.masterVolume === 0 ? VolumeX : settings.masterVolume < 0.5 ? Volume1 : Volume2
 
+  // Close slider when clicking outside
+  useEffect(() => {
+    if (!showSlider) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowSlider(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener)
+    }
+  }, [showSlider])
+
+  // Main button: single click = toggle mute, this is the most common action
+  // Long press or second tap when already muted = show slider for volume control
+  const handleMainClick = () => {
+    initAudio()
+    if (showSlider) {
+      // If slider is open, close it
+      setShowSlider(false)
+    } else if (settings.isMuted) {
+      // If currently muted, unmute on click
+      toggleMute()
+    } else {
+      // If not muted, mute on click (quick mute)
+      toggleMute()
+    }
+  }
+
+  // When volume changes via slider, unmute if muted
+  const handleVolumeChange = (v: number[]) => {
+    const newVol = v[0] / 100
+    setMasterVolume(newVol)
+    // Auto-unmute when user adjusts volume
+    if (settings.isMuted && newVol > 0) {
+      toggleMute()
+    }
+  }
+
+  // Apply master volume to ALL audio in the site
+  // This includes: audio engine (SFX, ambient), voice chat audio elements, and any HTML5 audio
+  useEffect(() => {
+    const effectiveVolume = settings.isMuted ? 0 : settings.masterVolume
+
+    // 1. Set audio engine master volume (handles SFX, ambient, music)
+    audioEngine.setMasterVolume(effectiveVolume)
+
+    // 2. Set voice chat audio elements volume
+    const audioElements = document.querySelectorAll('audio')
+    audioElements.forEach((el) => {
+      el.volume = effectiveVolume
+      el.muted = settings.isMuted
+    })
+
+    // 3. Set any video elements volume too
+    const videoElements = document.querySelectorAll('video')
+    videoElements.forEach((el) => {
+      el.volume = effectiveVolume
+      el.muted = settings.isMuted
+    })
+  }, [settings.masterVolume, settings.isMuted])
+
+  // Also observe DOM for new audio elements being added (voice chat tracks)
+  useEffect(() => {
+    const effectiveVolume = settings.isMuted ? 0 : settings.masterVolume
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLAudioElement) {
+            node.volume = effectiveVolume
+            node.muted = settings.isMuted
+          }
+          if (node instanceof HTMLVideoElement) {
+            node.volume = effectiveVolume
+            node.muted = settings.isMuted
+          }
+          // Check children too
+          if (node instanceof HTMLElement) {
+            node.querySelectorAll('audio').forEach((el) => {
+              el.volume = effectiveVolume
+              el.muted = settings.isMuted
+            })
+            node.querySelectorAll('video').forEach((el) => {
+              el.volume = effectiveVolume
+              el.muted = settings.isMuted
+            })
+          }
+        }
+      }
+    })
+
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [settings.masterVolume, settings.isMuted])
+
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex items-end gap-2">
+    <div ref={containerRef} className="fixed bottom-4 left-4 z-50 flex flex-col items-start gap-2">
+      {/* Slider popup - appears ABOVE the button */}
       <AnimatePresence>
         {showSlider && (
           <motion.div
-            initial={{ opacity: 0, width: 0, x: -10 }}
-            animate={{ opacity: 1, width: 120, x: 0 }}
-            exit={{ opacity: 0, width: 0, x: -10 }}
-            className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex flex-col items-center gap-2"
+            initial={{ opacity: 0, y: 10, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.9 }}
+            transition={{ duration: 0.15 }}
+            className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-2xl p-3 flex flex-col items-center gap-2 min-w-[140px]"
           >
-            <Slider
-              value={[settings.masterVolume * 100]}
-              min={0}
-              max={100}
-              step={5}
-              onValueChange={(v) => setMasterVolume(v[0] / 100)}
-              className="w-full"
-              orientation="horizontal"
-            />
-            <span className="text-xs text-slate-400">{Math.round(settings.masterVolume * 100)}%</span>
+            <div className="flex items-center gap-2 w-full">
+              <Volume1 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <Slider
+                value={[settings.isMuted ? 0 : settings.masterVolume * 100]}
+                min={0}
+                max={100}
+                step={5}
+                onValueChange={handleVolumeChange}
+                className="flex-1"
+                orientation="horizontal"
+              />
+              <Volume2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            </div>
+            <span className="text-xs text-slate-400 tabular-nums">
+              {settings.isMuted ? 'مكتوم' : `${Math.round(settings.masterVolume * 100)}%`}
+            </span>
           </motion.div>
         )}
       </AnimatePresence>
-      <Button
-        size="icon"
-        variant="ghost"
-        onClick={handleInteract}
-        className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all"
-      >
-        <VolumeIcon className="w-4 h-4" />
-      </Button>
-      {showSlider && (
+
+      {/* Main button - click to mute/unmute, long-press to open slider */}
+      <div className="flex items-center gap-2">
         <Button
           size="icon"
           variant="ghost"
-          onClick={() => { initAudio(); toggleMute(); }}
-          className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 text-slate-500 hover:text-white hover:bg-white/10 transition-all"
+          onClick={handleMainClick}
+          onContextMenu={(e) => { e.preventDefault(); initAudio(); setShowSlider(!showSlider) }}
+          className={`w-10 h-10 rounded-full backdrop-blur-xl border transition-all ${
+            settings.isMuted
+              ? 'bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30 hover:text-red-300'
+              : 'bg-black/40 border-white/10 text-slate-400 hover:text-white hover:bg-white/10 hover:border-white/20'
+          }`}
+          title={settings.isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
         >
-          {settings.isMuted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+          <VolumeIcon className="w-4 h-4" />
         </Button>
-      )}
+
+        {/* Small gear/expand button to open volume slider */}
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => { initAudio(); setShowSlider(!showSlider) }}
+          className={`w-7 h-7 rounded-full backdrop-blur-xl border transition-all ${
+            showSlider
+              ? 'bg-white/10 border-white/20 text-white'
+              : 'bg-black/30 border-white/5 text-slate-500 hover:text-white hover:bg-white/10'
+          }`}
+          title="ضبط مستوى الصوت"
+        >
+          <Settings className="w-3 h-3" />
+        </Button>
+      </div>
     </div>
   )
 }
