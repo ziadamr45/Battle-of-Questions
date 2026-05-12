@@ -181,21 +181,11 @@ export function NameEntryModal() {
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={suggestedNames}
-                  className="battle-input rounded-xl text-right text-xl h-14 pr-4 pl-14 font-bold"
+                  className="battle-input rounded-xl text-right text-xl h-14 pr-4 pl-4 font-bold"
                   maxLength={20}
                   autoFocus
                   dir="rtl"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleRandomName}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 transition-all"
-                  title="اسم عشوائي"
-                >
-                  <Dice5 className="w-5 h-5" />
-                </Button>
               </div>
 
               {/* Random name button */}
