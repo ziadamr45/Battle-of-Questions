@@ -347,11 +347,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   answers: {},
-  setAnswer: (questionIndex, answerIndex) =>
+  setAnswer: (questionIndex, answerIndex) => {
     set((state) => ({
       answers: { ...state.answers, [questionIndex]: answerIndex },
-    })),
-  resetAnswers: () => set({ answers: {} }),
+    }))
+    setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
+  },
+  resetAnswers: () => {
+    set({ answers: {} })
+    setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
+  },
 
   timeLeft: 900, // Default 15 minutes in seconds
   setTimeLeft: (time) => set({ timeLeft: time }),

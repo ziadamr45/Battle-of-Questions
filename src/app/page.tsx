@@ -531,7 +531,7 @@ function useGameSocket() {
     if (globalSocket) {
       store.getState().setAnswer(questionIndex, answerIndex)
       const s = store.getState()
-      globalSocket.emit('submit-answer', { roomCode: s.roomCode, roundNumber: s.currentRound, questionIndex, answerIndex, timeTaken: s.gameSettings.timePerRound * 60 - s.timeLeft })
+      globalSocket.emit('submit-answer', { roomCode: s.roomCode, roundNumber: s.currentRound, questionIndex, answerIndex, timeLeft: s.timeLeft })
       // First battle gameplay hints after answering
       if (shouldShowGameplayHints()) {
         if (questionIndex === 0) {

@@ -1732,9 +1732,10 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
-      // 8. If timePerRound changed during a game, update roundTimerSeconds for next round
+      // 8. If timePerRound changed during a game, store pending change for next round
+      // (Don't update roundTimerSeconds mid-round — that would break score calculations)
       if (isPlaying && changes.includes('timePerRound')) {
-        room.roundTimerSeconds = room.settings.timePerRound * 60
+        // roundTimerSeconds will be refreshed at the start of the next round
       }
 
       // 9. If numberOfRounds reduced during a game, ensure currentRound < new numberOfRounds
@@ -1784,9 +1785,11 @@ io.on('connection', (socket: Socket) => {
       roundNumber: number
       questionIndex: number
       answerIndex: number
-      timeTaken: number
+      timeLeft: number
     }) => {
-      const { roomCode, roundNumber, questionIndex, answerIndex, timeTaken } = data
+      const { roomCode, roundNumber, questionIndex, answerIndex, timeLeft } = data
+      // Calculate timeTaken server-side using the authoritative round timer
+      const timeTaken = Math.max(0, room.roundTimerSeconds - (timeLeft || 0))
       const room = rooms.get(roomCode?.toUpperCase())
 
       if (!room) {
@@ -2220,8 +2223,8 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
   room.status = 'finished'
 
   // Determine overall winner by round wins (not cumulative score)
-  // Include only non-disconnected players in final results
-  const finalResults = playersToArray(room.players)
+  // Include ALL players (even disconnected ones who participated in earlier rounds)
+  const finalResults = playersToArrayAll(room.players)
     .sort((a, b) => b.roundWins - a.roundWins)
 
   // The "score" field now represents roundWins for the final results
