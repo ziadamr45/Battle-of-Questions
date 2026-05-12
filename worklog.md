@@ -380,3 +380,25 @@ Stage Summary:
 - Team mode compatible: captain sees team-specific actions, host sees global actions
 - Mobile-friendly with touch-optimized targets
 - All changes pushed to GitHub
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Refine audio control UX - hide cinematic audio button inside arena systems
+
+Work Log:
+- Analyzed current AudioControls component (fixed position, bottom-left, always visible)
+- Identified arena screens (lobby, loading, game, round-transition) vs non-arena screens (home, create, join, results, history, about)
+- Added ARENA_SCREENS Set to determine visibility
+- Modified AudioControls to use useGameStore to read current screen
+- Wrapped AudioControls in AnimatePresence with smooth fade in/out animation (0.4s ease)
+- Button fades out when entering arena, fades back in when leaving
+- Removed slider reset useEffect (lint violation) - handled by AnimatePresence unmount instead
+- Verified lint passes, dev server runs correctly
+- Committed and pushed to GitHub
+
+Stage Summary:
+- Global cinematic audio toggle now only shows outside arena systems
+- Smooth 0.4s fade animation preserves immersion
+- No breakage to cinematic sounds, voice chat, or moderation systems
+- Pure UX separation: outside arena = atmosphere controls, inside arena = battle communication controls
