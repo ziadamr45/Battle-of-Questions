@@ -920,14 +920,23 @@ function getTeamDisplayName(team: TeamInfo): string {
 
 // ============================================
 // AUDIO CONTROLS (Fixed position)
+// Only visible outside arena screens (home, create, join, results, history, about)
+// Hidden inside arena screens (lobby, loading, game, round-transition)
+// where gameplay voice systems handle audio instead
 // ============================================
+const ARENA_SCREENS: Set<Screen> = new Set(['lobby', 'loading', 'game', 'round-transition'])
+
 function AudioControls() {
+  const screen = useGameStore((s) => s.screen)
   const settings = useAudioStore((s) => s.settings)
   const initAudio = useAudioStore((s) => s.initAudio)
   const toggleMute = useAudioStore((s) => s.toggleMute)
   const setMasterVolume = useAudioStore((s) => s.setMasterVolume)
   const [showSlider, setShowSlider] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Determine if we're inside an arena system
+  const isInArena = ARENA_SCREENS.has(screen)
 
   const VolumeIcon = settings.isMuted || settings.masterVolume === 0 ? VolumeX : settings.masterVolume < 0.5 ? Volume1 : Volume2
 
@@ -1015,52 +1024,63 @@ function AudioControls() {
   }, [settings.masterVolume, settings.isMuted])
 
   return (
-    <div ref={containerRef} className="fixed bottom-4 left-4 z-50">
-      {/* Slider popup - absolutely positioned above the button so it doesn't shift */}
-      <AnimatePresence>
-        {showSlider && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.9 }}
-            transition={{ duration: 0.15 }}
-            className="absolute bottom-14 left-0 bg-black/70 backdrop-blur-xl border border-white/10 rounded-2xl p-3 flex flex-col items-center gap-2 min-w-[140px]"
-          >
-            <div dir="ltr" className="flex items-center gap-2 w-full">
-              <Volume1 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <Slider
-                value={[settings.isMuted ? 0 : settings.masterVolume * 100]}
-                min={0}
-                max={100}
-                step={5}
-                onValueChange={handleVolumeChange}
-                className="flex-1"
-                orientation="horizontal"
-              />
-              <Volume2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            </div>
-            <span className="text-xs text-slate-400 tabular-nums">
-              {settings.isMuted ? 'مكتوم' : `${Math.round(settings.masterVolume * 100)}%`}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <AnimatePresence>
+      {!isInArena && (
+        <motion.div
+          ref={containerRef}
+          className="fixed bottom-4 left-4 z-50"
+          initial={{ opacity: 0, scale: 0.8, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.8, y: 10 }}
+          transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
+        >
+          {/* Slider popup - absolutely positioned above the button so it doesn't shift */}
+          <AnimatePresence>
+            {showSlider && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                transition={{ duration: 0.15 }}
+                className="absolute bottom-14 left-0 bg-black/70 backdrop-blur-xl border border-white/10 rounded-2xl p-3 flex flex-col items-center gap-2 min-w-[140px]"
+              >
+                <div dir="ltr" className="flex items-center gap-2 w-full">
+                  <Volume1 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <Slider
+                    value={[settings.isMuted ? 0 : settings.masterVolume * 100]}
+                    min={0}
+                    max={100}
+                    step={5}
+                    onValueChange={handleVolumeChange}
+                    className="flex-1"
+                    orientation="horizontal"
+                  />
+                  <Volume2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                </div>
+                <span className="text-xs text-slate-400 tabular-nums">
+                  {settings.isMuted ? 'مكتوم' : `${Math.round(settings.masterVolume * 100)}%`}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-      {/* Single button - stays fixed in place */}
-      <Button
-        size="icon"
-        variant="ghost"
-        onClick={() => { initAudio(); setShowSlider(!showSlider) }}
-        className={`w-10 h-10 rounded-full backdrop-blur-xl border transition-all ${
-          settings.isMuted
-            ? 'bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30 hover:text-red-300'
-            : 'bg-black/40 border-white/10 text-slate-400 hover:text-white hover:bg-white/10 hover:border-white/20'
-        }`}
-        title={settings.isMuted ? 'إلغاء كتم الصوت' : 'التحكم في الصوت'}
-      >
-        <VolumeIcon className="w-4 h-4" />
-      </Button>
-    </div>
+          {/* Single button - stays fixed in place */}
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => { initAudio(); setShowSlider(!showSlider) }}
+            className={`w-10 h-10 rounded-full backdrop-blur-xl border transition-all ${
+              settings.isMuted
+                ? 'bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30 hover:text-red-300'
+                : 'bg-black/40 border-white/10 text-slate-400 hover:text-white hover:bg-white/10 hover:border-white/20'
+            }`}
+            title={settings.isMuted ? 'إلغاء كتم الصوت' : 'التحكم في الصوت'}
+          >
+            <VolumeIcon className="w-4 h-4" />
+          </Button>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 
