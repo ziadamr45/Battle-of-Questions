@@ -432,3 +432,37 @@ Stage Summary:
 - Normal fighters still press "جاهز" as before
 - Works with both solo mode (host = leader) and team mode (captains = leaders)
 - UX philosophy: fighters prepare, captains command, rounds begin only when arena is truly ready
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Add Random Team Name Generator feature for team mode
+
+Work Log:
+- Analyzed existing team rename UI (captain-only, PenTool icon button, inline input)
+- Analyzed existing fighter name generator pattern (Dice5 icon, generateRandomArabicName)
+- Created large Arabic battle-style team name pool in arababic-names.ts:
+  - 100+ single power names (الصقور، الذئاب، العاصفة، النخبة، الظلال...)
+  - 15 team prefixes (أبناء، فرسان، حراس، سادة، أمراء...)
+  - 30 team suffixes (النار، الحرب، المعركة، الظلام، الجحيم...)
+  - 10 power nouns for definite article style
+  - 15 tactical code names (فالكون، كوبرا، فينيكس، سبارتان...)
+- Implemented generateRandomTeamName() with 4 generation styles:
+  - 45% single power names (punchiest)
+  - 35% prefix+suffix combos (فرسان النار)
+  - 15% definite article power (العاصفة)
+  - 5% tactical code names (فالكون)
+- Added non-repetitive selection with recentTeamNames tracker (last 20)
+- Added resetTeamNameTracker() for room transitions
+- Added Shuffle icon button to both Team A and Team B rename inputs
+- Button has: amber color, hover glow, active:scale-90 micro-animation
+- Audio feedback on press (audioEngine.buttonClick())
+- Captain can still manually type any custom name
+- All lint checks pass, pushed to GitHub
+
+Stage Summary:
+- Random team name generator with 100+ battle-oriented Arabic names
+- Shuffle icon button in team rename input for both teams
+- Non-repetitive logic, audio feedback, micro-animations
+- Names feel: powerful, competitive, cinematic, modern Arabic battle factions
+- Optional convenience — captain retains full manual naming freedom
