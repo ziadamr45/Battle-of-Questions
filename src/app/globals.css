@@ -300,6 +300,9 @@
    ═══════════════════════════════════════════════════════════════ */
 html {
   scroll-behavior: instant;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
 }
 
 /* Screen transition blur/fade should be GPU-accelerated */
