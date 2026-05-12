@@ -1,559 +1,78 @@
-# Worklog
+# Bug Fix Worklog — Arabic Multiplayer Quiz Game
+
+## Date: 2026-03-04
+
+### FIX 1: Fix audioEngine.error() used for non-error events
+**Problem:** The harsh error sound (`audioEngine.error()`) was used for join request notifications and captain approval events — creating negative associations for non-error events.
+
+**Solution:**
+- Added a new `playNotification()` function in `/home/z/my-project/src/lib/audio-engine.ts` that plays a gentle ascending chime (C5→E5→G5) instead of the harsh descending square wave of the error sound.
+- Exported it as `notification: playNotification` in the audioEngine API.
+- Replaced two misuse sites in `/home/z/my-project/src/app/page.tsx`:
+  - Line ~638: `join-request-received` handler — changed `audioEngine.error()` → `audioEngine.notification()`
+  - Line ~705: `approval-requested` handler — changed `audioEngine.error()` → `audioEngine.notification()`
+- Kept legitimate `audioEngine.error()` calls at lines 372 (game-error) and 433 (early-end-rejected) and 682 (join-request-rejected) since those are actual errors.
+
+### FIX 2: Add minimal audio control in arena screens
+**Problem:** Audio controls were completely hidden during arena screens (lobby, loading, game, round-transition). Players had no way to mute without leaving the game.
+
+**Solution:**
+- Added a new `ArenaMuteButton` component in `page.tsx` — a small floating mute/unmute icon button (8×8 rounded, subtle backdrop-blur) in the top-right corner.
+- Only visible when screen is in `ARENA_SCREENS` set (lobby, loading, game, round-transition).
+- Toggles mute on click via `useAudioStore`'s `toggleMute()`.
+- Placed in the main layout alongside the existing `<AudioControls />`.
+
+### FIX 3: Fix "عنّا" button using Sparkles icon
+**Problem:** The "عنّا" (About) button used `Sparkles` icon which doesn't fit the battle theme.
+
+**Solution:**
+- Replaced `<Sparkles className="w-5 h-5 ml-2" />` with `<Shield className="w-5 h-5 ml-2" />` in the About button at line ~1670. Shield is already imported and fits the battle/arena theme.
+
+### FIX 4: Fix chat messages double-filtered
+**Problem:** `chatMessages.filter(m => ...)` was called twice in the lobby chat — once for the empty check, once for rendering — causing redundant computation on every render.
+
+**Solution:**
+- Added a `useMemo`-based `filteredMessages` variable in the `LobbyScreen` component:
+  ```typescript
+  const filteredMessages = useMemo(() =>
+    chatMessages.filter(m => chatMode === 'global' ? m.mode === 'global' : m.mode === 'team' && m.teamId === myTeamId),
+    [chatMessages, chatMode, myTeamId]
+  )
+  ```
+- Replaced the two `.filter()` calls with `filteredMessages.length === 0` (empty check) and `filteredMessages.map(...)` (rendering).
+
+### FIX 5: Fix Podium hidden for 2-player games
+**Problem:** The podium visualization was only shown when `scores.length >= 3`, making 1v1 games have no podium at all.
+
+**Solution:**
+- Kept the existing 3-podium layout for `scores.length >= 3`.
+- Added a new 2-podium "duel face-off" layout for `scores.length === 2`:
+  - Winner (left) with Crown icon, gold styling, and "بطل المعركة!" label
+  - Center VS divider with Swords icon
+  - Runner-up (right) with silver styling and "الوصيف" label
+  - Uses `items-stretch` for equal height columns and slide-in animations (x: ±30)
+
+### FIX 6: Auto-submit room code on 6 characters
+**Problem:** When joining by code, the user had to type 6 characters and then manually click the join button.
+
+**Solution:**
+- Added `handleCodeChange` callback in `JoinGameScreen`:
+  - Converts input to uppercase (also handles FIX 7)
+  - When input length reaches 6 and a name is entered, auto-triggers `joinGame()` after a 150ms delay to allow the last character to register.
+- Updated the Input's `onChange` to use `handleCodeChange` instead of inline `setCode(e.target.value.toUpperCase())`.
+
+### FIX 7: Add room code auto-uppercase
+**Problem:** Room codes are uppercase but the input didn't enforce this.
+
+**Solution:**
+- Already handled as part of FIX 6: `handleCodeChange` converts the value to uppercase before setting state. The previous inline `.toUpperCase()` in the onChange was replaced by the same logic inside `handleCodeChange`.
 
 ---
-Task ID: 0
-Agent: Main Coordinator
-Task: Initialize worklog and plan implementation
 
-Work Log:
-- Read and analyzed game-service/index.ts (Socket.IO server, team logic, AI content generation)
-- Read and analyzed src/app/page.tsx (main game page with all screens)
-- Read and analyzed src/lib/game-store.ts (Zustand store)
-- Read and analyzed src/app/api/generate-content/route.ts (API route for content generation)
-- Identified team bug: when joining team mode, players start unassigned and must manually request to join a team. The auto-assign only works if the empty team has NO members at all - but the UX requires clicking a button which may not be intuitive
-- Identified النصوص mode issue: the AI prompt only slightly differentiates from القراءة المتحررة (just a typeFocus line about rhetoric), still generates reading comprehension passages instead of literary/poetic content
-- Leader transfer already exists for team mode (captain transfer) and host transfer, but solo mode needs visible transfer UI
+## Files Modified
+1. `/home/z/my-project/src/lib/audio-engine.ts` — Added `playNotification()` function and `notification` export
+2. `/home/z/my-project/src/app/page.tsx` — All 7 fixes applied (audio misuses, ArenaMuteButton, icon swap, useMemo filter, duel podium, auto-submit, auto-uppercase)
 
-Stage Summary:
-- Team bug: Need auto-assign on join for empty teams + better UX
-- النصوص mode: Complete prompt overhaul needed for literary/poetic/rhetorical content
-- Leader transfer: Need UI addition in solo mode
-
----
-Task ID: 1
-Agent: Backend Team Fix Agent
-Task: Fix team auto-assign on join + verify leader transfer in solo mode
-
-Work Log:
-- Read worklog.md and game-service/index.ts
-- **Bug Fix: Auto-assign to empty team on join (lines 1784-1797)**
-  - When a player joins a team mode room (battleMode === 'فرق'), the code now checks if Team A or Team B is empty
-  - If Team A is empty → auto-assign player to Team A as captain
-  - If Team B is empty → auto-assign player to Team B as captain
-  - If both teams have members → player stays unassigned (existing behavior)
-  - This happens BEFORE room.players.set() so the player object is already in the correct state
-- **Bug Fix: Emit team events when auto-assigned (lines 1828-1854)**
-  - After the joiner receives game-joined and others receive player-joined, if the player was auto-assigned:
-    - Emit 'team-update' to the whole room (so UI shows correct team assignments)
-    - Emit 'join-request-approved' to the auto-assigned player (so they see they're on a team)
-    - Emit 'team-captain-changed' to the whole room (so UI shows them as captain)
-- **Verification: transfer-leadership in solo mode**
-  - Reviewed the transfer-leadership handler (lines 3641-3745)
-  - The host type transfer already works for both solo and team modes - no battleMode guard exists
-  - The comment already says "or a host to transfer host role to another player (both solo and team modes)"
-  - No code changes needed for this feature
-- Restarted game service, verified health endpoint returns OK
-
-Stage Summary:
-- Team auto-assign bug: FIXED - players are now automatically assigned to empty teams on join
-- Leader transfer in solo mode: VERIFIED WORKING - no code changes needed, backend already supports it
-- The UI side for solo mode leader transfer is handled by the frontend team
-
----
-Task ID: 2
-Agent: Frontend Leader Transfer Agent
-Task: Add Leader Transfer UI in Solo Mode
-
-Work Log:
-- Read worklog.md to understand prior work context
-- Located solo mode player list in LobbyScreen (line ~3752, "Original solo player list" section)
-- Found existing host transfer button at line ~3862 that used Crown icon with amber styling
-- This was inconsistent with team mode's Shield icon with violet styling for host transfer
-- Replaced the existing Crown/amber host transfer button with Shield/violet styled button matching team mode pattern
-- Changes made to `/home/z/my-project/src/app/page.tsx`:
-  - Changed trigger button from `<Button size="icon" variant="ghost">` with Crown/amber to `<button>` with Shield/violet-400 styling
-  - Changed AlertDialogAction from amber-600 to violet-600 background
-  - Changed action button icon from Crown to Shield
-  - Updated description text to match team mode pattern (removed extra sentence about not being able to start game)
-  - Comment updated from "Host-only: Transfer host button" to "Host transfer button in solo mode"
-- Lint check passed with no errors
-
-Stage Summary:
-- Solo mode host transfer UI: UPDATED - now uses Shield icon with violet color scheme, consistent with team mode host transfer button
-- The button emits `transfer-leadership` with `type: 'host'` which the backend already supports
-- The button is only visible when: current user is host AND the target player is not host AND it's not the current user (already wrapped in !isMe check)
-
----
-Task ID: 3
-Agent: النصوص Prompt Overhaul Agent (Game Service)
-Task: Overhaul النصوص Mode AI Prompts to be fundamentally different from القراءة المتحررة
-
-Work Log:
-- Read worklog.md and game-service/index.ts to understand current state
-- Identified the core problem: النصوص mode used the same prompt structure as القراءة المتحررة, with only one different line (`typeFocus`)
-- **Change 1: Expanded searchQueriesPool['نصوص']** (lines ~604-694)
-  - Expanded from 28 entries to 60+ entries
-  - Added organized sections: Classical Poetry, Classical Prose, مدرسة الإحياء والبعث, مدرسة الديوان, مدرسة أبوللو, أدب المهجر, الرومانسية, الواقعية, الشعر الحر, الأدب الحديث, بلاغة عربية, محسنات بديعية, أساليب إنشائية, نقد أدبي, موسيقى شعرية, وصف وأدب مكاني, بلاغة قرآنية, فلسفة وتأمل
-  - Covers all specified literary schools, poets, and rhetorical topics
-- **Change 2: Replaced topicSeeds['نصوص']** (lines ~729-768)
-  - Replaced 15 generic seeds with 35+ literary-focused seeds
-  - Organized into sections: شعر (poetry prompts), نثر أدبي (literary prose), مقاطع بلاغية (rhetorical passages), نصوص بمدرسة أدبية محددة (specific school prompts), تأملات فلسفية أدبية (philosophical literary)
-  - Each seed now specifies literary devices/styles to use (e.g., "باستعارات مكنية", "بتشبيهات مركبة", "بمجاز مرسل وتورية")
-- **Change 3: Completely rewrote buildPrompt function** (lines ~803-1080)
-  - Added النصوص-specific constants before the function: literaryTypes, literarySchools, nosousWordCounts, nosousQuestionFocus, nosousDifficultyInstructions
-  - Function now branches completely for النصوص mode: `if (gameType === 'نصوص') { return ... }`
-  - النصوص prompt uses completely different:
-    - System identity: "أديب وناقد عربي متمكن" instead of "معلم خبير"
-    - Word counts: literary-focused (250-400, 400-650, 600-900)
-    - Question focus: exclusively rhetoric/literary (بلاغة، صور بيانية، محسنات بديعية، etc.)
-    - Difficulty instructions: literary difficulty scaling (direct → analytical → critical)
-    - Text structure instructions: poetry formatting, prose rhythm, literary parts
-    - Random literary type and school injection per generation
-    - JSON source field: "المدرسة الأدبية أو الشاعر المستلهم منه"
-  - القراءة المتحررة mode: UNCHANGED from original code
-- **Change 4: Updated LLM system message in fetchGameContent** (lines ~1165-1168)
-  - النصوص: "أنت أديب وناقد عربي متمكن، متخصص في الأدب العربي وبلاغته ونقده. تكتب نصوصاً أدبية أصيلة وتُعدّ أسئلة بلاغية وتذوق أدبي."
-  - القراءة متحررة: "أنت معلم خبير في اللغة العربية متخصص في إعداد امتحانات القراءة المتحررة والنصوص." (unchanged)
-- Game service restarted, health endpoint verified OK
-- Lint check passed with no errors
-
-Stage Summary:
-- النصوص mode prompt: COMPLETELY OVERHAULED - now generates literary/artistic content (poetry, prose, rhetoric) with rhetoric/literary questions
-- The two modes now feel FUNDAMENTALLY DIFFERENT: القراءة المتحررة = comprehension battle, النصوص = literary and rhetorical battle
-- Search queries and topic seeds expanded significantly for literary diversity
-- No changes to القراءة المتحررة mode
-
----
-Task ID: 4
-Agent: النصوص Prompt Overhaul Agent (API Route)
-Task: Apply the same النصوص prompt overhaul to the API route file as was done in the game service
-
-Work Log:
-- Read worklog.md and game-service/index.ts to understand the النصوص changes made in Task 3
-- Read src/app/api/generate-content/route.ts to understand current state
-- Identified the core problem: API route's النصوص mode used the same unified prompt as القراءة المتحررة, with only a `typeFocus` line differentiating
-- **Change 1: Expanded searchQueriesPool['نصوص']** (lines ~90-180)
-  - Expanded from ~43 entries to 75+ entries
-  - Added organized sections matching game service: Classical Poetry, Classical Prose, مدرسة الإحياء والبعث, مدرسة الديوان, مدرسة أبوللو, أدب المهجر, الرومانسية, الواقعية, الشعر الحر, الأدب الحديث, بلاغة عربية, محسنات بديعية, أساليب إنشائية, نقد أدبي, موسيقى شعرية, وصف وأدب مكاني, بلاغة قرآنية, فلسفة وتأمل
-  - Covers all specified literary schools, poets, and rhetorical topics as game service
-- **Change 2: Replaced topicSeeds['نصوص']** (lines ~204-243)
-  - Replaced 15 generic seeds with 35+ literary-focused seeds
-  - Organized into sections: شعر (poetry prompts), نثر أدبي (literary prose), مقاطع بلاغية (rhetorical passages), نصوص بمدرسة أدبية محددة (specific school prompts), تأملات فلسفية أدبية (philosophical literary)
-  - Each seed now specifies literary devices/styles (e.g., "باستعارات مكنية", "بتشبيهات مركبة", "بمجاز مرسل وتورية")
-- **Change 3: Added النصوص-specific constants** (lines ~283-352)
-  - literaryTypes: 10 literary type options (poetry, prose, rhetorical, etc.)
-  - literarySchools: 10 literary school options (الإحياء, الديوان, أبوللو, المهجر, etc.)
-  - nosousWordCounts: literary-focused word counts (250-400, 400-650, 600-900)
-  - nosousQuestionFocus: exclusively rhetoric/literary question types
-  - nosousDifficultyInstructions: literary difficulty scaling (direct → analytical → critical)
-- **Change 4: Completely rewrote buildPrompt for النصوص mode** (lines ~387-462)
-  - Added early branch: `if (gameType === 'نصوص') { return ... }`
-  - النصوص prompt uses completely different:
-    - System identity: "أديب وناقد عربي متمكن" instead of "كاتب ومفكر"
-    - Word counts: literary-focused via nosousWordCounts
-    - Question focus: exclusively rhetoric/literary via nosousQuestionFocus
-    - Difficulty instructions: literary via nosousDifficultyInstructions
-    - Random literary type and school injection per generation
-    - Poetry/prose/rhetorical-specific structure instructions
-    - JSON source field: "المدرسة الأدبية أو الشاعر المستلهم منه"
-    - No mention of reading comprehension at all
-  - القراءة المتحررة mode: UNCHANGED from original code
-- **Change 5: Updated system message in generateWithRetry** (lines ~648-651)
-  - النصوص: "أنت أديب وناقد عربي متمكن، متخصص في الأدب العربي وبلاغته ونقده. تكتب نصوصاً أدبية أصيلة وتُعدّ أسئلة بلاغية وتذوق أدبي."
-  - القراءة متحررة: unchanged (generic writer persona)
-- Lint check passed with no errors
-
-Stage Summary:
-- API route النصوص mode: COMPLETELY OVERHAULED - matches game service philosophy
-- Both code paths (game service + API route) now generate literary/artistic content for النصوص mode
-- The two modes feel FUNDAMENTALLY DIFFERENT in both paths: القراءة المتحررة = comprehension battle, النصوص = literary and rhetorical battle
-- Search queries and topic seeds expanded significantly for literary diversity
-- No changes to القراءة المتحررة mode
-
----
-Task ID: 5
-Agent: Main Coordinator (Direct)
-Task: Add literary presentation UX for النصوص mode
-
-Work Log:
-- Added `isLiteraryMode` flag detection in GameScreen based on `gameSettings.gameType === 'نصوص'`
-- Added `isPoetry` detection to identify poetic text (short lines, multiple lines)
-- Created `renderLiteraryParagraph` function that:
-  - Detects if a paragraph block looks like poetry (short lines, >=2 lines)
-  - Renders poetry verses with centered layout, paired hemistichs (شطر/عجز) with ⁂ separator
-  - Uses Amiri/Noto Naskh Arabic serif font for literary text
-  - Uses warm amber color scheme (amber-200/90 for text) instead of slate for النصوص
-  - Renders prose paragraphs with larger line-height (2.3) and amber color
-- Updated text container styling:
-  - النصوص mode: `bg-gradient-to-b from-amber-950/20` with amber border instead of `battle-card-glow`
-  - Added `divide-y divide-amber-500/10` dividers for literary sections
-- Updated text header:
-  - النصوص mode: ScrollText icon with amber/gold gradient title using Amiri font
-  - القراءة المتحررة: unchanged (BookOpen icon with red gradient)
-- Updated source label:
-  - النصوص mode: "المنهل الأدبي:" in amber-500/50 instead of "المصدر:"
-- Updated text/question toggle button:
-  - النصوص mode: ScrollText icon with amber-700 active color
-  - القراءة المتحررة: unchanged (BookOpen icon with red-600)
-- Added game type badge in HUD:
-  - النصوص mode: "أدب وبلاغة" badge with ScrollText icon in amber
-  - Hidden on mobile (hidden sm:flex) to save space
-- Lint check: PASSED
-
-Stage Summary:
-- النصوص mode now has distinct literary presentation: poetry formatting, verse spacing, elegant typography, amber color scheme
-- Players will instantly FEEL the difference between modes visually
-- القراءة المتحررة mode: UNCHANGED
-
----
-Task ID: 6
-Agent: Terminology Unification Agent (page.tsx)
-Task: Unify battle-themed terminology in page.tsx
-
-Work Log:
-- Read worklog.md to understand prior work context
-- Searched entire page.tsx for all instances of لاعب, مضيف, لعبة/اللعبة, غرفة/الغرفة
-- Verified that all occurrences are in user-facing Arabic text strings only (not in code identifiers, CSS class names, or socket event names)
-- **Used replace_all for efficiency and completeness:**
-  - `لاعب` → `مقاتل` (replace_all) — handles all forms: لاعب→مقاتل, اللاعب→المقاتل, لاعبين→مقاتلين, اللاعبين→المقاتلين
-  - `مضيف` → `قائد` (replace_all) — handles all forms: مضيف→قائد, المضيف→القائد
-  - `نوع اللعبة` → `نوع المعركة` (replace_all) — 3 occurrences in settings changeLabels
-  - `غرفة جديدة` → `ساحة جديدة` — 1 occurrence in rematch dialog
-- **لاعب replacements (19 instances):**
-  - 'تم كتم اللاعب' → 'تم كتم المقاتل'
-  - 'تم قبول اللاعب ✅' → 'تم قبول المقاتل ✅'
-  - 'بعدد اللاعبين' → 'بعدد المقاتلين'
-  - 'لاعبين ما يلعبوش جولتين' → 'مقاتلين ما يلعبوش جولتين' (2x)
-  - 'ثلاث لاعبين ما يلعبوش ثلاث جولات' → 'ثلاث مقاتلين ما يلعبوش ثلاث جولات' (2x)
-  - 'لاعب غير مصنف' → 'مقاتل غير مصنف'
-  - 'لازم يكون لاعبين' → 'لازم يكون مقاتلين'
-  - 'عدد اللاعبين' → 'عدد المقاتلين' (3x in changeLabels)
-  - '} لاعب' → '} مقاتل' (badge count)
-  - 'لا يوجد لاعبين غير مصنفين' → 'لا يوجد مقاتلين غير مصنفين'
-  - title="طرد اللاعب" → title="طرد المقاتل" (2x)
-  - 'اللاعب المش هيقدر' → 'المقاتل مش هيقدر'
-  - 'لاعبين داخل المعركة' → 'مقاتلين داخل المعركة'
-  - 'لاعبين في المعركة' → 'مقاتلين في المعركة'
-  - 'جميع اللاعبين' → 'جميع المقاتلين'
-- **مضيف replacements (10+ instances):**
-  - 'أنت المضيف الجديد!' → 'أنت القائد الجديد!' (2x, with/without emoji)
-  - 'بقيت المضيف' → 'بقيت القائد'
-  - 'مضيف جديد' → 'قائد جديد'
-  - 'بقى مضيف الساحة' → 'بقى قائد الساحة' (2x)
-  - Badge "مضيف" → "قائد" (2x in host-badge)
-  - "· مضيف" → "· قائد" (2x)
-  - "مضيف الفريق" → "قائد الفريق" (2x in captain transfer dialogs)
-  - "منصب مضيف الساحة" → "منصب قائد الساحة" (3x)
-  - "المضيف الجديد" → "القائد الجديد" (3x)
-  - "المضيف يحدد وقت البداية" → "القائد يحدد وقت البداية"
-- **لعبة replacements (3 instances):**
-  - 'نوع اللعبة' → 'نوع المعركة' (3x in changeLabels)
-- **غرفة replacements (1 instance):**
-  - 'غرفة جديدة' → 'ساحة جديدة'
-- **Preserved unchanged:**
-  - All code identifiers: isHost, hostId, hostName, gameType, etc.
-  - All CSS class names: host-badge
-  - All socket event names: host-changed, player-joined, etc.
-  - Game type names: نصوص, قراءة متحررة
-- Post-replacement verification: searched entire file for remaining لاعب, مضيف, لعبة/اللعبة, غرفة/الغرفة — zero results
-- Lint check passed with no errors
-
-Stage Summary:
-- ALL generic Arabic terminology replaced with battle-themed equivalents in page.tsx
-- لاعب→مقاتل, مضيف→قائد, نوع اللعبة→نوع المعركة, غرفة جديدة→ساحة جديدة
-- No code identifiers, CSS classes, or socket event names were modified
-- Zero remaining instances of the old terminology
-
----
-Task ID: 7
-Agent: Terminology Unification Agent (game-service)
-Task: Unify battle-themed terminology in game-service/index.ts
-
-Work Log:
-- Read worklog.md to understand prior work context (Task 6 already handled page.tsx)
-- Searched entire game-service/index.ts for all instances of لاعب, مضيف, لعبة/اللعبة, غرفة/الغرفة
-- Found 23 لاعب instances, 9 لعبة/اللعبة instances, 12 غرفة/الغرفة instances, 3 مضيف/المضيف instances
-- All occurrences confirmed to be in user-facing Arabic text strings only (error messages, event data, AI prompt instructions, display labels)
-- **Used MultiEdit with 28 targeted replacements for precision and completeness:**
-
-- **لاعب replacements (23 instances):**
-  - 'السابق للاعبين' → 'السابق للمقاتلين' (1x, content-progress)
-  - 'لاعبين ما يلعبوش جولتين' → 'مقاتلين ما يلعبوش جولتين' (4x: early-end + start-game + update-settings x2)
-  - 'ثلاث لاعبين ما يلعبوش ثلاث جولات' → 'ثلاث مقاتلين ما يلعبوش ثلاث جولات' (4x: same locations)
-  - 'اسم اللاعب' → 'اسم المقاتل' (3x: create-game, join-game x2)
-  - 'عدد اللاعبين' → 'عدد المقاتلين' (4x: create-game, changeLabels, update-settings ternary, update-settings validation)
-  - 'عند 2 أو 3 لاعبين' → 'عند 2 أو 3 مقاتلين' (2x: create-game, update-settings)
-  - 'وضع اللاعبين' → 'وضع المقاتلين' (1x: update-settings ternary)
-  - 'لاعبان نشطان' → 'مقاتلان نشطان' (1x: start-game minimum check)
-  - 'اللاعبون التالية أسماؤهم' → 'المقاتلون التالية أسماؤهم' (1x: start-game unassigned check)
-  - 'فقط القائد يقدر يطرد لاعب' → 'فقط القائد يقدر يطرد مقاتل' (1x: kick-player)
-  - 'اللاعب مش موجود في الساحة' → 'المقاتل مش موجود في الساحة' (2x: kick-player, mute-player)
-  - 'فقط القائد يقدر يكتم لاعب' → 'فقط القائد يقدر يكتم مقاتل' (1x: mute-player)
-  - 'اللاعب المحدد غير موجود' → 'المقاتل المحدد غير موجود' (1x: transfer-leadership)
-
-- **لعبة/اللعبة replacements (9 instances):**
-  - 'نوع اللعبة' → 'نوع المعركة' (4x: AI prompt نصوص, AI prompt قراءة متحررة, changeLabels, update-settings ternary)
-  - 'محتوى اللعبة' → 'محتوى المعركة' (1x: content generation failure)
-  - 'اللعبة قد بدأت بالفعل' → 'المعركة بدأت بالفعل' (2x: join-game, start-game)
-  - 'اللعبة ليست قيد التشغيل' → 'المعركة مش شغالة' (1x: submit-answer)
-  - 'فقط المضيف يمكنه بدء اللعبة' → 'فقط القائد يقدر يبدأ المعركة' (1x: start-game — also replaces المضيف)
-
-- **غرفة/الغرفة replacements (12 instances):**
-  - 'الغرفة غير موجودة أو تم حذفها' → 'الساحة غير موجودة أو تم حذفها' (2x: join-game)
-  - 'الغرفة غير موجودة' → 'الساحة غير موجودة' (3x: start-game, update-settings, submit-answer)
-  - 'الغرفة لم تعد موجودة' → 'الساحة لم تعد موجودة' (1x: rejoin)
-  - 'أنت لست في هذه الغرفة' → 'أنت مش في الساحة دي' (2x: rejoin, submit-answer)
-  - 'الغرفة مش موجودة' → 'الساحة مش موجودة' (1x: early-end-game)
-  - 'الغرفة ممتلئة' → 'الساحة ممتلئة' (1x: join-game)
-  - 'رمز الغرفة' → 'رمز الساحة' (1x: join-game validation)
-  - 'في هذه الغرفة' → 'في الساحة دي' (1x: join-game name-taken)
-
-- **المضيف replacements (3 instances):**
-  - 'فقط المضيف يمكنه بدء اللعبة' → 'فقط القائد يقدر يبدأ المعركة' (1x: start-game — also replaces اللعبة)
-  - 'فقط المضيف يمكنه تعديل الإعدادات' → 'فقط القائد يقدر يعدّل الإعدادات' (1x: update-settings)
-  - 'فقط المضيف يقدر ينقل الإدارة' → 'فقط القائد يقدر ينقل القيادة' (1x: transfer-leadership)
-
-- **Preserved unchanged:**
-  - All code identifiers: isHost, hostId, hostName, gameType, roomCode, playerToKick, etc.
-  - All TypeScript type names: Player, GameRoom, etc.
-  - All Map keys and socket event names: player-joined, host-changed, kick-player, etc.
-  - Code comments describing logic (e.g., "// Validate sender is the host")
-- Post-replacement verification: searched entire file for remaining لاعب, لعبة/اللعبة, غرفة/الغرفة, مضيف/المضيف — ZERO results
-- Game service restarted and health endpoint verified OK
-
-Stage Summary:
-- ALL 47 instances of generic Arabic terminology replaced with battle-themed equivalents in game-service/index.ts
-- لاعب→مقاتل (23 instances), لعبة/اللعبة→معركة/المعركة (9 instances), غرفة/الغرفة→ساحة/الساحة (12 instances), مضيف/المضيف→قائد/القائد (3 instances)
-- No code identifiers, type names, or socket event names were modified
-- Zero remaining instances of the old terminology
-- Game service runs correctly with battle-themed terminology
-
----
-Task ID: 5
-Agent: Main Coordinator (Direct)
-Task: Unify terminology in components, API routes, and remaining files
-
-Work Log:
-- Fixed battle-history.tsx: "غرفة" → "ساحة", "نوع اللعبة" → "نوع المعركة", "عدد اللاعبين" → "عدد المقاتلين"
-- Fixed about-page.tsx: "لعبة أسئلة" → "معركة أسئلة", "رؤية متعددة اللاعبين" → "قتال جماعي"
-- Fixed invite-generator.ts: "لاعب واحد" → "مقاتل واحد" (2 instances), "اللعبة بدأت" → "المعركة بدأت"
-- Fixed layout.tsx: "لعبة مسابقات" → "معركة مسابقات" in description, "لعبة تعليمية" → "معركة تعليمية" in keywords
-- Fixed api/generate-content/route.ts: "نوع اللعبة" → "نوع المعركة" (2 instances in AI prompts)
-- Final verification scan: ZERO remaining instances of لاعب, لعبة, غرفة, مضيف across entire codebase
-
-Stage Summary:
-- All component files unified
-- All API routes unified
-- Layout metadata unified
-- Invite generator unified
-- Zero remaining generic terminology instances
-
----
-Task ID: 8
-Agent: Main Coordinator (Direct)
-Task: Redesign and simplify Captain Moderation Controls
-
-Work Log:
-- Analyzed current moderation UI: multiple separate buttons per player (local mute, global mute, kick, transfer host, transfer captain) creating cluttered, confusing UX
-- Created new `FighterActionMenu` component at `src/components/fighter-action-menu.tsx`
-  - ONE unified trigger button (MoreVertical/⋮ icon) per fighter
-  - Compact action menu popup with smooth Framer Motion animation
-  - Context-aware menu items based on role (host/captain/player)
-  - Player name header in menu for clarity
-  - Confirmation dialogs for destructive actions (kick, transfer)
-  - Mobile-friendly with active:scale feedback
-  - Optimistic local mute updates for instant visual feedback
-  - Auto-close on scroll, resize, Escape, outside click
-- Replaced all multi-button layouts across the app:
-  - Solo lobby player list (was 4 separate buttons → 1 menu)
-  - Team lobby Team A players (was 2 separate buttons → 1 menu)
-  - Team lobby Team B players (was 2 separate buttons → 1 menu)
-  - Team lobby unassigned players (added menu where none existed)
-  - Game screen results sidebar (was 3 separate buttons → 1 menu)
-- Menu items per role:
-  - All players: "كتم لدي فقط" (local mute) / "إلغاء الكتم لدي فقط"
-  - Host only: "كتم لدى الجميع" (global mute), "طرد من الساحة" (kick), "نوّل الإدارة" (transfer host)
-  - Captain only: "نوّل القيادة" (transfer captain, same team only)
-- Performance improvements:
-  - Lightweight popup with no heavy dropdown libraries
-  - Optimistic local mute for instant UI response
-  - Close on scroll/resize to prevent detached menus
-  - Active state transitions for tactile feedback
-- Lint check: PASSED
-- Dev server: RUNNING (no compilation errors)
-- Pushed to GitHub successfully
-
-Stage Summary:
-- Captain moderation controls completely redesigned: from cluttered multi-button to clean unified action menu
-- ONE interaction point per fighter instead of many scattered buttons
-- Feels like "quick tactical arena controls" instead of "admin panel management"
-- Team mode compatible: captain sees team-specific actions, host sees global actions
-- Mobile-friendly with touch-optimized targets
-- All changes pushed to GitHub
-
----
-Task ID: 1
-Agent: Main Agent
-Task: Refine audio control UX - hide cinematic audio button inside arena systems
-
-Work Log:
-- Analyzed current AudioControls component (fixed position, bottom-left, always visible)
-- Identified arena screens (lobby, loading, game, round-transition) vs non-arena screens (home, create, join, results, history, about)
-- Added ARENA_SCREENS Set to determine visibility
-- Modified AudioControls to use useGameStore to read current screen
-- Wrapped AudioControls in AnimatePresence with smooth fade in/out animation (0.4s ease)
-- Button fades out when entering arena, fades back in when leaving
-- Removed slider reset useEffect (lint violation) - handled by AnimatePresence unmount instead
-- Verified lint passes, dev server runs correctly
-- Committed and pushed to GitHub
-
-Stage Summary:
-- Global cinematic audio toggle now only shows outside arena systems
-- Smooth 0.4s fade animation preserves immersion
-- No breakage to cinematic sounds, voice chat, or moderation systems
-- Pure UX separation: outside arena = atmosphere controls, inside arena = battle communication controls
-
----
-Task ID: 2
-Agent: Main Agent
-Task: Refine Ready System UX - captain monitors instead of readying up
-
-Work Log:
-- Analyzed full ready system across backend (game-service/index.ts), frontend (page.tsx), and store (game-store.ts)
-- Updated backend player-ready handler to silently ignore leaders (hosts/captains)
-- Updated backend host-start-round to only check non-leader fighters
-- Added initial ready-status-update emit on round end for instant captain panel display
-- Added new ReadyStatus fields: totalFighters, readyPlayerNames, allFightersReady
-- Added isDisconnected field to frontend Player type
-- Completely redesigned RoundTransitionScreen ready section:
-  - Captain: monitoring panel with progress bar, per-fighter status list, disconnected warnings, dynamic start button
-  - Normal fighters: same ready button flow but with fighter-only counts
-- Created unified isLeader variable to simplify captain/host condition checks
-- Updated host-start-rejected toast message
-- Removed setReadyStatus(null) from round-end handler to prevent flash
-- Edge case: captain alone (0 fighters) → allFightersReady defaults to true → start button active immediately
-- All lint checks pass, dev server and game service running
-- Committed and pushed to GitHub
-
-Stage Summary:
-- Captains no longer have a ready state — they monitor and command
-- Captain sees: arena status, progress bar, fighter readiness list, disconnected warnings
-- Start button disabled until all fighters ready, shows pending info
-- Normal fighters still press "جاهز" as before
-- Works with both solo mode (host = leader) and team mode (captains = leaders)
-- UX philosophy: fighters prepare, captains command, rounds begin only when arena is truly ready
-
----
-Task ID: 3
-Agent: Main Agent
-Task: Add Random Team Name Generator feature for team mode
-
-Work Log:
-- Analyzed existing team rename UI (captain-only, PenTool icon button, inline input)
-- Analyzed existing fighter name generator pattern (Dice5 icon, generateRandomArabicName)
-- Created large Arabic battle-style team name pool in arababic-names.ts:
-  - 100+ single power names (الصقور، الذئاب، العاصفة، النخبة، الظلال...)
-  - 15 team prefixes (أبناء، فرسان، حراس، سادة، أمراء...)
-  - 30 team suffixes (النار، الحرب، المعركة، الظلام، الجحيم...)
-  - 10 power nouns for definite article style
-  - 15 tactical code names (فالكون، كوبرا، فينيكس، سبارتان...)
-- Implemented generateRandomTeamName() with 4 generation styles:
-  - 45% single power names (punchiest)
-  - 35% prefix+suffix combos (فرسان النار)
-  - 15% definite article power (العاصفة)
-  - 5% tactical code names (فالكون)
-- Added non-repetitive selection with recentTeamNames tracker (last 20)
-- Added resetTeamNameTracker() for room transitions
-- Added Shuffle icon button to both Team A and Team B rename inputs
-- Button has: amber color, hover glow, active:scale-90 micro-animation
-- Audio feedback on press (audioEngine.buttonClick())
-- Captain can still manually type any custom name
-- All lint checks pass, pushed to GitHub
-
-Stage Summary:
-- Random team name generator with 100+ battle-oriented Arabic names
-- Shuffle icon button in team rename input for both teams
-- Non-repetitive logic, audio feedback, micro-animations
-- Names feel: powerful, competitive, cinematic, modern Arabic battle factions
-- Optional convenience — captain retains full manual naming freedom
-
----
-Task ID: 9
-Agent: Main Coordinator (Direct)
-Task: Comprehensive Onboarding/Tutorial System Update
-
-Work Log:
-- Analyzed existing onboarding system (6 files: onboarding-store, cinematic-intro, ui-highlights, gameplay-hints, arena-tips, arena-narrator)
-- Identified gaps: team system, captain role, chat modes, voice chat, ready system changes, approval system not covered
-- Designed comprehensive update with 8 modified/created files
-
-**1. Updated onboarding-store.ts:**
-- Added 4 new GameplayHintTypes: captainMonitor, teamChat, teamScore, joinRequest
-- Added 9 ContextualTutorialTypes: teamMode, becameCaptain, captainApproval, joinRequestSent, voiceChatAvailable, chatModes, teamSwitch, settingsEdit, teamRename
-- Added contextual tutorial tracking fields (9 booleans, one per tutorial type)
-- Added feature discovery tracking (teamModeUsed, chatUsed, voiceChatUsed)
-- Added markContextualTutorialShown(), shouldShowContextualTutorial(), markFeatureDiscovered()
-- Added shouldShowContextualTutorial() and markContextualTutorial() helper functions
-
-**2. Updated cinematic-intro.tsx:**
-- Added 2 new steps (total now 6): step 4 (team mode & captain) and step 5 (chat & coordination)
-- Step 4: Shield icon, green accent, "في وضع الفرق… القائد يوجّه والفريق يقاتل"
-- Step 5: Users icon, violet accent, "تواصل مع فريقك… التنسق سلاحك"
-- Maintained same cinematic style (word reveal, glow pulse, floating embers)
-
-**3. Updated ui-highlights.tsx:**
-- Kept 3 home screen steps (create-room, join-room, battle-history)
-- Updated descriptions to mention team mode capabilities
-- Removed non-existent element steps (auto-skip was too complex and had flashing issues)
-- Team/captain/chat guidance handled by contextual tutorials instead
-
-**4. Updated gameplay-hints.tsx:**
-- Added 4 new hint types: captainMonitor, teamChat, teamScore, joinRequest
-- Each with appropriate duration, text, and dramatic/regular styling
-- captainMonitor: emerald glow, "أنت القائد… راقب استعداد فريقك"
-- teamChat: violet glow, "الدردشة متاحة… تواصل مع فريقك"
-- teamScore: amber glow, "نتيجة فريقك تظهر هنا"
-- joinRequest: cyan glow, "للانضمام لفريق… اضغط على الفريق وأرسل طلب"
-
-**5. Expanded arena-tips.tsx:**
-- Grew from 20 tips to 55+ tips across all contexts
-- Added mode-aware filtering (solo/team/any) via `mode` field
-- New categories: Team System (11 tips), Captain-Specific (4), Chat & Communication (5), Voice Chat (3), Ready System (4), Settings & Approval (3), Battle History (2), Core Philosophy (4)
-- ArenaTips component now accepts optional battleMode prop
-- Team tips only show in team mode, solo tips only in solo mode
-- Context-aware rotation with battleMode dependency
-
-**6. Updated arena-narrator.tsx:**
-- Added 6 new NarrationEvents: team_formed, captain_takeover, join_request_arrived, team_ready, all_fighters_ready, voice_merged, settings_change
-- Each with 1-2 atmospheric Arabic narration texts
-- All maintain the cinematic narrator style
-
-**7. Created contextual-tutorial.tsx (NEW):**
-- New ContextualTutorialProvider component wrapping the app
-- 9 tutorial configurations with unique icons, colors, descriptions
-- Each tutorial: auto-dismiss with progress bar, hover-pause, dismiss button
-- Cinematic design: gradient backgrounds, glow effects, accent colors per tutorial
-- Position: top-center, z-[85], doesn't overlap gameplay
-- showContextualTutorial() imperative API for triggering from socket events
-- First-time-only: each tutorial shows once per user (tracked in localStorage)
-- Queue system: max 2 tutorials, deduplication, graceful ordering
-
-**8. Updated page.tsx integration:**
-- Imported ContextualTutorialProvider and showContextualTutorial
-- Added ContextualTutorialProvider wrapping ArenaNarratorProvider
-- Added battleMode to main component scope for ArenaTips
-- Passed battleMode prop to all ArenaTips instances
-- Added contextual tutorial triggers at key events:
-  - game-created with teams → teamMode + becameCaptain tutorials
-  - game-joined with teams → teamMode tutorial (+ becameCaptain if captain)
-  - team-captain-changed → becameCaptain tutorial
-  - leadership-received → becameCaptain tutorial
-  - approval-requested → captainApproval tutorial
-  - join-request-sent → joinRequestSent tutorial
-- Added team gameplay hints in round-start handler:
-  - teamChat hint at 9s delay
-  - captainMonitor hint at 4s delay (captain only)
-- Added teamScore hint in round-end handler (team mode + teamRoundScores)
-- Added voice_merged narration when voice channels merge
-
-Stage Summary:
-- Complete onboarding overhaul covering all new systems
-- Cinematic intro expanded from 4→6 steps (team + coordination)
-- 55+ context-aware tips (up from 20) with team mode filtering
-- 10 gameplay hints (up from 6) covering captain, chat, team score
-- 13 narration events (up from 8) covering team milestones
-- NEW contextual tutorial system: 9 first-time tutorials triggered at key moments
-- All tutorials are: light, interactive, cinematic, fast, game-like, non-intrusive
-- Player learns through experience, not through reading manuals
-- First-time detection prevents annoyance for returning users
-- All changes lint-clean, dev server running without errors
+## Verification
+- `bun run lint` — passes with no errors
+- Dev server compiles and serves successfully

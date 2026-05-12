@@ -266,6 +266,7 @@ function useGameSocket() {
     })
 
     socket.on('surrender-confirmed', () => {
+      disconnectLiveKit()
       audioEngine.surrender()
       store.getState().resetGame()
       clearSessionStorage()
@@ -634,7 +635,7 @@ function useGameSocket() {
         currentTeamId: data.currentTeamId,
         expiresAt: data.expiresAt,
       })
-      audioEngine.error() // Attention-grabbing notification
+      audioEngine.notification()
       if (data.type === 'join') {
         battleToast('join_request', 'طلب انضمام جديد! 📩', `${data.playerName} يريد الانضمام ل${data.targetTeamId === 'A' ? 'لفريق الأحمر' : 'لفريق الأزرق'}`)
       } else {
@@ -701,7 +702,7 @@ function useGameSocket() {
 
     socket.on('approval-requested', (data: ApprovalRequestState) => {
       store.getState().setPendingApproval(data)
-      audioEngine.error() // Use error sound as attention-grabbing notification
+      audioEngine.notification()
       // Contextual tutorial: first time receiving approval request
       setTimeout(() => showContextualTutorial('captainApproval'), 500)
     })
@@ -1118,6 +1119,41 @@ function AudioControls() {
 }
 
 // ============================================
+// ARENA MUTE BUTTON (Minimal audio control in arena)
+// Small floating mute/unmute icon in top-right corner during arena screens
+// so players can quickly mute without leaving gameplay
+// ============================================
+function ArenaMuteButton() {
+  const screen = useGameStore((s) => s.screen)
+  const settings = useAudioStore((s) => s.settings)
+  const initAudio = useAudioStore((s) => s.initAudio)
+  const toggleMute = useAudioStore((s) => s.toggleMute)
+
+  const isInArena = ARENA_SCREENS.has(screen)
+
+  if (!isInArena) return null
+
+  const VolumeIcon = settings.isMuted || settings.masterVolume === 0 ? VolumeX : Volume2
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.8 }}
+      onClick={() => { initAudio(); toggleMute() }}
+      className={`fixed top-3 right-3 z-50 w-8 h-8 rounded-full backdrop-blur-xl border flex items-center justify-center transition-all ${
+        settings.isMuted
+          ? 'bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30'
+          : 'bg-black/30 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
+      }`}
+      title={settings.isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
+    >
+      <VolumeIcon className="w-3.5 h-3.5" />
+    </motion.button>
+  )
+}
+
+// ============================================
 // SPLASH SCREEN - EPIC CINEMATIC ANIMATION
 // ============================================
 function SplashScreen({ onComplete }: { onComplete: () => void }) {
@@ -1139,6 +1175,16 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
       y: Math.sin((i / 12) * Math.PI * 2 + 0.3) * (70 + Math.random() * 70),
     })),
   }), [])
+
+  // Pre-compute floating ember positions once (avoids Math.random() recalculation on every render)
+  const splashEmberPositions = useMemo(() =>
+    [...Array(8)].map(() => ({
+      initialX: (Math.random() - 0.5) * 400,
+      animateX: (Math.random() - 0.5) * 500,
+      duration: 3 + Math.random() * 2,
+      delayOffset: Math.random() * 0.5,
+    }))
+  , [])
 
   const startAnimation = useCallback(() => {
     // Initialize audio FIRST — this unlocks AudioContext via user gesture
@@ -1445,19 +1491,19 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
           key={`ember-${i}`}
           initial={{
             opacity: 0,
-            x: (Math.random() - 0.5) * 400,
+            x: splashEmberPositions[i].initialX,
             y: 300,
             scale: 0,
           }}
           animate={{
             opacity: [0, 0.8, 0.6, 0],
             y: -300,
-            x: (Math.random() - 0.5) * 500,
+            x: splashEmberPositions[i].animateX,
             scale: [0, 1, 0.5],
           }}
           transition={{
-            duration: 3 + Math.random() * 2,
-            delay: i * 0.4 + Math.random() * 0.5,
+            duration: splashEmberPositions[i].duration,
+            delay: i * 0.4 + splashEmberPositions[i].delayOffset,
             repeat: Infinity,
             ease: 'easeOut',
           }}
@@ -1518,52 +1564,12 @@ function BattleBackground() {
 function HomeScreen() {
   const setScreen = useGameStore((s) => s.setScreen)
   
-  // Mock live arena data with animated counters
-  const [arenaStats, setArenaStats] = useState({
-    activeBattles: 12,
-    onlineWarriors: 84,
-    roomsFighting: 7,
-    latestWinner: 'فارس الكلمة',
-  })
-  
-  // Live battle feed - mock data that rotates
-  const battleFeedItems = [
-    { text: 'ساحة ABC بدأت المعركة', time: 'الآن', type: 'battle' as const },
-    { text: 'فارس الكلمة فاز بالجولة 3', time: '12 ثانية', type: 'win' as const },
-    { text: 'محارب جديد دخل الساحة', time: '25 ثانية', type: 'join' as const },
-    { text: 'ساحة XYZ انتهت المعركة', time: '40 ثانية', type: 'end' as const },
-    { text: 'أسد البيان حقق فوز ساحق', time: '55 ثانية', type: 'win' as const },
-    { text: '6 مقاتلين يتنافسون الآن', time: '1 دقيقة', type: 'battle' as const },
+  // Feature highlights - honest static data about what the game offers
+  const features = [
+    { icon: BookOpen, title: 'نصوص متنوعة', desc: 'قراءة متحررة ونصوص أدبية', color: 'text-red-400' },
+    { icon: Users, title: 'معارك جماعية', desc: 'فردي أو فرقي حتى 20 مقاتل', color: 'text-amber-400' },
+    { icon: Brain, title: 'ذكاء اصطناعي', desc: 'أسئلة ومحتوى مولّد بالـ AI', color: 'text-cyan-400' },
   ]
-  
-  // Top warriors - mock data
-  const topWarriors = [
-    { name: 'فارس الكلمة', wins: 47, streak: 5, color: '#F59E0B' },
-    { name: 'أسد البيان', wins: 38, streak: 3, color: '#DC2626' },
-    { name: 'نبع الحكمة', wins: 31, streak: 2, color: '#06B6D4' },
-  ]
-  
-  // Animate arena stats periodically
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setArenaStats(prev => ({
-        activeBattles: Math.max(5, prev.activeBattles + (Math.random() > 0.5 ? 1 : -1) * Math.floor(Math.random() * 3)),
-        onlineWarriors: Math.max(40, prev.onlineWarriors + (Math.random() > 0.5 ? 1 : -1) * Math.floor(Math.random() * 8)),
-        roomsFighting: Math.max(3, prev.roomsFighting + (Math.random() > 0.5 ? 1 : -1) * Math.floor(Math.random() * 2)),
-        latestWinner: ['فارس الكلمة', 'أسد البيان', 'نبع الحكمة', 'سيف العقل', 'درع المعرفة'][Math.floor(Math.random() * 5)],
-      }))
-    }, 4000)
-    return () => clearInterval(interval)
-  }, [])
-  
-  // Rotating feed index
-  const [feedIndex, setFeedIndex] = useState(0)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setFeedIndex(prev => (prev + 1) % battleFeedItems.length)
-    }, 3500)
-    return () => clearInterval(interval)
-  }, [battleFeedItems.length])
 
   return (
     <div className="min-h-screen flex flex-col items-center p-4 relative overflow-hidden">
@@ -1634,7 +1640,7 @@ function HomeScreen() {
         </div>
 
         {/* ═══════════════════════════════════ */}
-        {/* LIVE ARENA STATS - Replaces feature cards */}
+        {/* FEATURE HIGHLIGHTS - What the game offers */}
         {/* ═══════════════════════════════════ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1642,41 +1648,17 @@ function HomeScreen() {
           transition={{ delay: 0.3 }}
           className="grid grid-cols-3 gap-3 mb-6"
         >
-          {/* Active Battles */}
-          <div className="arena-stat-card rounded-xl p-3 sm:p-4 text-center">
-            <div className="flex items-center justify-center gap-1.5 mb-1">
-              <div className="w-2 h-2 rounded-full bg-red-500 live-pulse-dot" />
-              <Flame className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
+          {features.map((feature, i) => (
+            <div key={i} className="arena-stat-card rounded-xl p-3 sm:p-4 text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <feature.icon className={`w-4 h-4 sm:w-5 sm:h-5 ${feature.color}`} />
+              </div>
+              <div className="text-sm sm:text-base font-bold text-white">
+                {feature.title}
+              </div>
+              <div className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">{feature.desc}</div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-white count-up">
-              {arenaStats.activeBattles}
-            </div>
-            <div className="text-xs sm:text-sm text-slate-400 font-medium">ساحة مشتعلة</div>
-          </div>
-
-          {/* Online Warriors */}
-          <div className="arena-stat-card rounded-xl p-3 sm:p-4 text-center">
-            <div className="flex items-center justify-center gap-1.5 mb-1">
-              <div className="w-2 h-2 rounded-full bg-amber-500 live-pulse-dot" style={{ animationDelay: '0.5s' }} />
-              <Users className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-white count-up">
-              {arenaStats.onlineWarriors}
-            </div>
-            <div className="text-xs sm:text-sm text-slate-400 font-medium">مقاتل بالساحة</div>
-          </div>
-
-          {/* Rooms Fighting */}
-          <div className="arena-stat-card rounded-xl p-3 sm:p-4 text-center">
-            <div className="flex items-center justify-center gap-1.5 mb-1">
-              <div className="w-2 h-2 rounded-full bg-cyan-500 live-pulse-dot" style={{ animationDelay: '1s' }} />
-              <Swords className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-white count-up">
-              {arenaStats.roomsFighting}
-            </div>
-            <div className="text-xs sm:text-sm text-slate-400 font-medium">معركة جارية</div>
-          </div>
+          ))}
         </motion.div>
 
         {/* ═══════════════════════════════════ */}
@@ -1720,13 +1702,13 @@ function HomeScreen() {
             className="text-lg px-6 py-7 bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white hover:border-white/20 rounded-xl transition-all"
             onClick={() => setScreen('about')}
           >
-            <Sparkles className="w-5 h-5 ml-2" />
+            <Shield className="w-5 h-5 ml-2" />
             عنّا
           </Button>
         </motion.div>
 
         {/* ═══════════════════════════════════ */}
-        {/* LIVE BATTLE FEED - Scrolling events */}
+        {/* HOW TO PLAY - Quick guide */}
         {/* ═══════════════════════════════════ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1734,72 +1716,25 @@ function HomeScreen() {
           transition={{ delay: 0.7 }}
           className="mb-6"
         >
-          <div className="arena-stat-card rounded-xl p-4 overflow-hidden">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-red-500 live-pulse-dot" />
-                <span className="text-sm font-bold text-slate-300">أحداث الساحة</span>
+          <div className="arena-stat-card rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span className="text-sm font-bold text-slate-300">كيف تلعب؟</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-slate-400">
+                <span className="text-amber-400 font-bold">١</span>
+                <span>أنشئ ساحة أو انضم لساحة موجودة</span>
               </div>
-              <span className="text-xs text-slate-500">مباشر</span>
+              <div className="flex items-center gap-2 text-sm text-slate-400">
+                <span className="text-amber-400 font-bold">٢</span>
+                <span>اقرأ النص وجاوب الأسئلة بأسرع وقت</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-slate-400">
+                <span className="text-amber-400 font-bold">٣</span>
+                <span>تنافس مع أصدقائك واجمع أكبر عدد من النقاط</span>
+              </div>
             </div>
-            <div className="relative h-8 overflow-hidden">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={feedIndex}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  transition={{ duration: 0.4 }}
-                  className="flex items-center gap-2"
-                >
-                  {battleFeedItems[feedIndex].type === 'win' && <Trophy className="w-4 h-4 text-amber-400 shrink-0" />}
-                  {battleFeedItems[feedIndex].type === 'battle' && <Flame className="w-4 h-4 text-red-400 shrink-0" />}
-                  {battleFeedItems[feedIndex].type === 'join' && <Users className="w-4 h-4 text-cyan-400 shrink-0" />}
-                  {battleFeedItems[feedIndex].type === 'end' && <Swords className="w-4 h-4 text-slate-400 shrink-0" />}
-                  <span className="text-sm text-slate-300 truncate">{battleFeedItems[feedIndex].text}</span>
-                  <span className="text-xs text-slate-500 mr-auto whitespace-nowrap">{battleFeedItems[feedIndex].time}</span>
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ═══════════════════════════════════ */}
-        {/* TOP WARRIORS - Champions section */}
-        {/* ═══════════════════════════════════ */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.9 }}
-          className="mb-8"
-        >
-          <div className="flex items-center gap-2 mb-3 justify-center">
-            <Crown className="w-5 h-5 text-amber-400" />
-            <span className="text-sm font-bold text-slate-300">أبطال الساحة</span>
-          </div>
-          <div className="flex gap-3 justify-center">
-            {topWarriors.map((warrior, i) => (
-              <motion.div
-                key={warrior.name}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 1.0 + i * 0.1 }}
-                className="champion-card rounded-xl p-3 sm:p-4 text-center min-w-[100px] sm:min-w-[120px]"
-              >
-                <div
-                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-full mx-auto mb-2 flex items-center justify-center text-white font-black text-lg"
-                  style={{ backgroundColor: warrior.color + '30', border: `2px solid ${warrior.color}50` }}
-                >
-                  {warrior.name.charAt(0)}
-                </div>
-                <div className="text-sm font-bold text-white truncate">{warrior.name}</div>
-                <div className="flex items-center justify-center gap-1 mt-1">
-                  <Trophy className="w-3 h-3 text-amber-400" />
-                  <span className="text-xs text-amber-400 font-semibold">{warrior.wins}</span>
-                </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">سلسلة {warrior.streak} انتصارات</div>
-              </motion.div>
-            ))}
           </div>
         </motion.div>
 
@@ -2193,6 +2128,17 @@ function JoinGameScreen() {
     joinGame(code.trim(), effectiveJoinName.trim())
   }
 
+  // Auto-submit when room code reaches 6 characters
+  const handleCodeChange = useCallback((value: string) => {
+    const upper = value.toUpperCase()
+    setCode(upper)
+    if (upper.length === 6 && effectiveJoinName.trim()) {
+      setTimeout(() => {
+        joinGame(upper.trim(), effectiveJoinName.trim())
+      }, 150)
+    }
+  }, [effectiveJoinName, joinGame])
+
   const handleJoinFromList = (room: RoomInfo) => {
     if (!effectiveJoinName.trim()) return
     if (room.hasPassword) {
@@ -2311,7 +2257,7 @@ function JoinGameScreen() {
               <TabsContent value="code" className="mt-4 space-y-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold text-slate-300">كود الساحة</Label>
-                  <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="مثال: ABC123" className="battle-input rounded-xl text-center text-2xl font-mono tracking-widest h-14" maxLength={6} />
+                  <Input value={code} onChange={(e) => handleCodeChange(e.target.value)} placeholder="مثال: ABC123" className="battle-input rounded-xl text-center text-2xl font-mono tracking-widest h-14" maxLength={6} />
                 </div>
 
                 <Button size="lg" className="w-full text-lg py-7 btn-battle rounded-xl"
@@ -2608,6 +2554,14 @@ function EarlyEndConfirmModal({
   const [phase, setPhase] = useState<'idle' | 'warning' | 'ready'>('idle')
   const [shakeCount, setShakeCount] = useState(0)
 
+  // Pre-compute ember positions once (avoids Math.random() recalculation on every render)
+  const emberPositions = useMemo(() =>
+    [...Array(6)].map(() => ({
+      left: `${20 + Math.random() * 60}%`,
+      top: `${20 + Math.random() * 60}%`,
+    }))
+  , [])
+
   useEffect(() => {
     if (open) {
       setPhase('idle')
@@ -2661,8 +2615,8 @@ function EarlyEndConfirmModal({
             className="absolute w-1 h-1 rounded-full bg-red-500"
             style={{
               boxShadow: '0 0 6px rgba(220,38,38,0.8), 0 0 12px rgba(220,38,38,0.4)',
-              left: `${20 + Math.random() * 60}%`,
-              top: `${20 + Math.random() * 60}%`,
+              left: emberPositions[i].left,
+              top: emberPositions[i].top,
             }}
             animate={{
               y: [0, -40, -80],
@@ -2951,8 +2905,15 @@ function LobbyScreen() {
   const myJoinRequest = useGameStore((s) => s.myJoinRequest)
   const { startGame, leaveAndDisconnect } = useGameSocket()
   const resetGame = useGameStore((s) => s.resetGame)
+  const mutedPlayers = usePlayerMuteStore((s) => s.locallyMutedPlayers)
+  const hostMutedPlayers = usePlayerMuteStore((s) => s.hostMutedPlayers)
   const [renamingTeam, setRenamingTeam] = useState<TeamId | null>(null)
   const [renameInput, setRenameInput] = useState('')
+
+  const filteredMessages = useMemo(() =>
+    chatMessages.filter(m => chatMode === 'global' ? m.mode === 'global' : m.mode === 'team' && m.teamId === myTeamId),
+    [chatMessages, chatMode, myTeamId]
+  )
 
   const handleRenameTeam = useCallback((teamId: TeamId) => {
     if (!globalSocket || !renameInput.trim()) return
@@ -2976,7 +2937,7 @@ function LobbyScreen() {
   const isOpen = playerMode === 'open' || maxPlayers === 0
 
   // Validation for start button (round-player conflict)
-  const activePlayers = players.length
+  const activePlayers = players.filter(p => !p.isDisconnected).length
 
   // Dynamic invite system: can invite if room is not full
   // Open rooms: always can invite (no capacity limit)
@@ -3084,28 +3045,8 @@ function LobbyScreen() {
     globalSocket.emit('update-settings', { settings: newSettings, roomCode })
   }, [isHost, isCaptain, battleMode, roomCode])
 
-  // Listen for settings-updated from server
-  useEffect(() => {
-    if (!globalSocket) return
-    const handler = (data: { settings: typeof gameSettings; updatedBy: string; changes: string[] }) => {
-      setGameSettings(data.settings)
-      if (data.changes.length > 0) {
-        const changeLabels: Record<string, string> = {
-          gameType: 'نوع المعركة',
-          difficulty: 'الصعوبة',
-          timePerRound: 'وقت الجولة',
-          numberOfRounds: 'عدد الجولات',
-          maxPlayers: 'عدد المقاتلين',
-          playerMode: 'نوع الساحة',
-          passageType: 'نوع القطعة',
-        }
-        const labels = data.changes.map(c => changeLabels[c] || c).join('، ')
-        battleToast('settings_updated', 'تم تحديث الإعدادات', `${data.updatedBy} غيّر: ${labels}`)
-      }
-    }
-    globalSocket.on('settings-updated', handler)
-    return () => { globalSocket?.off('settings-updated', handler) }
-  }, [setGameSettings])
+  // Settings changes are handled by the global socket listener in setupSocketListeners
+  // which already updates the game store. The LobbyScreen just reacts to store changes.
 
   // Listen for LiveKit speaking state changes
   useEffect(() => {
@@ -3375,9 +3316,24 @@ function LobbyScreen() {
                     {myTeamId !== 'A' && myTeamId !== null && (
                       <div className="p-2 border-t border-red-500/10">
                         {myJoinRequest && myJoinRequest.targetTeamId === 'A' ? (
-                          <div className="text-center py-1.5 text-[11px] text-amber-400/80 animate-pulse">
-                            <Hourglass className="w-3 h-3 inline ml-1" />
-                            طلبك قيد المراجعة...
+                          <div className="flex items-center justify-center gap-2 py-1.5">
+                            <div className="text-[11px] text-amber-400/80 animate-pulse">
+                              <Hourglass className="w-3 h-3 inline ml-1" />
+                              طلبك قيد المراجعة...
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                              onClick={() => {
+                                if (globalSocket) {
+                                  globalSocket.emit('cancel-join-request', { requestId: myJoinRequest.requestId })
+                                  useGameStore.getState().setMyJoinRequest(null)
+                                }
+                              }}
+                            >
+                              إلغاء
+                            </Button>
                           </div>
                         ) : myJoinRequest ? (
                           <Button size="sm" variant="ghost" className="w-full text-red-400/40 hover:text-red-400/40 hover:bg-transparent text-xs cursor-not-allowed" disabled>
@@ -3493,9 +3449,24 @@ function LobbyScreen() {
                     {myTeamId !== 'B' && myTeamId !== null && (
                       <div className="p-2 border-t border-sky-500/10">
                         {myJoinRequest && myJoinRequest.targetTeamId === 'B' ? (
-                          <div className="text-center py-1.5 text-[11px] text-amber-400/80 animate-pulse">
-                            <Hourglass className="w-3 h-3 inline ml-1" />
-                            طلبك قيد المراجعة...
+                          <div className="flex items-center justify-center gap-2 py-1.5">
+                            <div className="text-[11px] text-amber-400/80 animate-pulse">
+                              <Hourglass className="w-3 h-3 inline ml-1" />
+                              طلبك قيد المراجعة...
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                              onClick={() => {
+                                if (globalSocket) {
+                                  globalSocket.emit('cancel-join-request', { requestId: myJoinRequest.requestId })
+                                  useGameStore.getState().setMyJoinRequest(null)
+                                }
+                              }}
+                            >
+                              إلغاء
+                            </Button>
                           </div>
                         ) : myJoinRequest ? (
                           <Button size="sm" variant="ghost" className="w-full text-sky-400/40 hover:text-sky-400/40 hover:bg-transparent text-xs cursor-not-allowed" disabled>
@@ -3572,9 +3543,24 @@ function LobbyScreen() {
                     {myTeamId === null && (
                       <div className="p-2 border-t border-slate-500/10">
                         {myJoinRequest ? (
-                          <div className="text-center py-2 text-[11px] sm:text-xs text-amber-400/80 animate-pulse">
-                            <Hourglass className="w-3 h-3 sm:w-3.5 sm:h-3.5 inline ml-1" />
-                            طلبك قيد المراجعة... (في انتظار موافقة {myJoinRequest.captainName})
+                          <div className="flex items-center justify-center gap-2 py-2">
+                            <div className="text-[11px] sm:text-xs text-amber-400/80 animate-pulse">
+                              <Hourglass className="w-3 h-3 sm:w-3.5 sm:h-3.5 inline ml-1" />
+                              طلبك قيد المراجعة... (في انتظار موافقة {myJoinRequest.captainName})
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-[10px] sm:text-[11px] text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                              onClick={() => {
+                                if (globalSocket) {
+                                  globalSocket.emit('cancel-join-request', { requestId: myJoinRequest.requestId })
+                                  useGameStore.getState().setMyJoinRequest(null)
+                                }
+                              }}
+                            >
+                              إلغاء
+                            </Button>
                           </div>
                         ) : (
                           <div className="flex gap-2">
@@ -3669,13 +3655,10 @@ function LobbyScreen() {
                   </div>
                   {/* Chat messages */}
                   <div className="h-28 sm:h-32 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
-                    {chatMessages
-                      .filter(m => chatMode === 'global' ? m.mode === 'global' : m.mode === 'team' && m.teamId === myTeamId)
-                      .length === 0 && (
+                    {filteredMessages.length === 0 && (
                       <p className="text-center text-slate-500 text-xs py-4">لا توجد رسائل بعد...</p>
                     )}
-                    {chatMessages
-                      .filter(m => chatMode === 'global' ? m.mode === 'global' : m.mode === 'team' && m.teamId === myTeamId)
+                    {filteredMessages
                       .map(msg => {
                         const isMe = msg.senderId === globalSocket?.id
                         return (
@@ -3749,7 +3732,7 @@ function LobbyScreen() {
                   {players.map((player, i) => {
                     const playerIdentity = player.name.replace(/\s+/g, '_')
                     const isSpeaking = speakingParticipants.includes(playerIdentity) || speakingParticipants.includes(player.name)
-                    const isMuted = usePlayerMuteStore.getState().isPlayerMuted(player.id)
+                    const isMuted = mutedPlayers.has(player.id) || hostMutedPlayers.has(player.id)
                     const mySocketId = globalSocket?.id
                     const isMe = player.id === mySocketId
                     return (
@@ -4318,22 +4301,8 @@ function RoundTransitionScreen() {
     globalSocket.emit('update-settings', { settings: newSettings, roomCode })
   }, [isHost, isCaptain, battleMode, roomCode])
 
-  // Listen for settings-updated from server
-  useEffect(() => {
-    if (!globalSocket) return
-    const handler = (data: { settings: typeof gameSettings; updatedBy: string; changes: string[] }) => {
-      setGameSettings(data.settings)
-      if (data.changes.length > 0) {
-        const changeLabels: Record<string, string> = {
-          difficulty: 'الصعوبة', timePerRound: 'وقت الجولة', numberOfRounds: 'عدد الجولات', passageType: 'نوع القطعة',
-        }
-        const labels = data.changes.map(c => changeLabels[c] || c).join('، ')
-        battleToast('settings_updated', 'تم تحديث الإعدادات', `${data.updatedBy} غيّر: ${labels}`)
-      }
-    }
-    globalSocket.on('settings-updated', handler)
-    return () => { globalSocket?.off('settings-updated', handler) }
-  }, [setGameSettings])
+  // Settings changes are handled by the global socket listener in setupSocketListeners
+  // which already updates the game store. The RoundTransitionScreen just reacts to store changes.
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -4393,7 +4362,7 @@ function RoundTransitionScreen() {
             <Medal className="w-4 h-4 text-amber-400" />ترتيب الجولة
           </h3>
           <div className="space-y-2">
-            {lastRoundScores.sort((a, b) => b.score - a.score).map((score, i) => (
+            {[...lastRoundScores].sort((a, b) => b.score - a.score).map((score, i) => (
               <motion.div
                 key={score.playerId}
                 initial={{ opacity: 0, x: 20 }}
@@ -4835,11 +4804,14 @@ function GameScreen() {
     return () => clearInterval(interval)
   }, [])
 
-  const canShowFinishButton = elapsedSeconds >= MINUTES_BEFORE_FINISH_BUTTON * 60
+  const totalQuestions = gameContent?.questions?.length || 0
+  const allQuestionsAnswered = totalQuestions > 0 && answeredQuestions.size >= totalQuestions
+  const canShowFinishButton = allQuestionsAnswered || elapsedSeconds >= MINUTES_BEFORE_FINISH_BUTTON * 60
 
   const [showSurrenderDialog, setShowSurrenderDialog] = useState(false)
   const { submitAnswer, surrender } = useGameSocket()
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const roundTimeUpEmittedRef = useRef(false)
 
   // Timer
   useEffect(() => {
@@ -4857,7 +4829,8 @@ function GameScreen() {
 
   // Auto time-up
   useEffect(() => {
-    if (timeLeft <= 0 && timerRef.current) {
+    if (timeLeft <= 0 && timerRef.current && !roundTimeUpEmittedRef.current) {
+      roundTimeUpEmittedRef.current = true
       clearInterval(timerRef.current)
       timerRef.current = null
       audioEngine.timeUp()
@@ -4867,6 +4840,11 @@ function GameScreen() {
       }
     }
   }, [timeLeft, roomCode, currentRound])
+
+  // Reset round-time-up guard when round changes
+  useEffect(() => {
+    roundTimeUpEmittedRef.current = false
+  }, [currentRound])
 
   // Heartbeat when time is running low
   useEffect(() => {
@@ -5229,7 +5207,7 @@ function GameScreen() {
         </AnimatePresence>
       </div>
 
-      {/* "خلصت؟" floating button - appears after 3 minutes, hidden if player already finished */}
+      {/* "خلصت؟" floating button - appears when all questions answered OR after 3 minutes, hidden if player already finished */}
       {canShowFinishButton && !isPlayerFinished && (
         <motion.div
           initial={{ opacity: 0, y: 20, scale: 0.9 }}
@@ -5509,6 +5487,8 @@ function ResultsScreen() {
   const teams = useGameStore((s) => s.teams)
   const myTeamId = useGameStore((s) => s.myTeamId)
   const players = useGameStore((s) => s.players)
+  const mutedPlayers = usePlayerMuteStore((s) => s.locallyMutedPlayers)
+  const hostMutedPlayers = usePlayerMuteStore((s) => s.hostMutedPlayers)
 
   const handlePlayAgain = () => { leaveAndDisconnect(); resetGame() }
 
@@ -5677,7 +5657,7 @@ function ResultsScreen() {
                           <span className="font-bold text-red-400">{teams?.teamA.customName || 'الفريق الأحمر'}</span>
                         </div>
                         <div className="text-3xl font-black text-white">{teamATotal}</div>
-                        <div className="text-xs text-slate-400 mt-1">انتصارات</div>
+                        <div className="text-xs text-slate-400 mt-1">نقاط</div>
                         {/* Team A players */}
                         <div className="mt-3 space-y-1">
                           {teams.teamA.playerIds.map(pid => {
@@ -5701,7 +5681,7 @@ function ResultsScreen() {
                           <span className="font-bold text-sky-400">{teams?.teamB.customName || 'الفريق الأزرق'}</span>
                         </div>
                         <div className="text-3xl font-black text-white">{teamBTotal}</div>
-                        <div className="text-xs text-slate-400 mt-1">انتصارات</div>
+                        <div className="text-xs text-slate-400 mt-1">نقاط</div>
                         {/* Team B players */}
                         <div className="mt-3 space-y-1">
                           {teams.teamB.playerIds.map(pid => {
@@ -5743,7 +5723,7 @@ function ResultsScreen() {
                             </div>
                             <p className="text-white font-bold mt-1">{mvp.name}</p>
                             <p className="text-xs text-slate-400">
-                              {mvp.teamId === 'A' ? (teams?.teamA.customName || 'الفريق الأحمر') : (teams?.teamB.customName || 'الفريق الأزرق')} — {mvp.score} انتصار
+                              {mvp.teamId === 'A' ? (teams?.teamA.customName || 'الفريق الأحمر') : (teams?.teamB.customName || 'الفريق الأزرق')} — {mvp.score} نقطة
                             </p>
                           </motion.div>
                         )
@@ -5821,6 +5801,67 @@ function ResultsScreen() {
           </motion.div>
         )}
 
+        {/* Duel Podium - 2-player face-off layout */}
+        {scores.length === 2 && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="flex items-stretch justify-center gap-4 mb-8 px-4"
+          >
+            {/* Winner */}
+            <motion.div
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.5 }}
+              className={`text-center p-5 rounded-2xl ${getMedalClass(0)} w-1/2`}
+            >
+              <motion.div
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <Crown className="w-8 h-8 mx-auto mb-2 text-amber-400" />
+              </motion.div>
+              <div className={`w-16 h-16 mx-auto rounded-full bg-gradient-to-br ${getMedalColor(0)} flex items-center justify-center text-white font-bold text-xl mb-2 glow-gold`}>
+                {scores[0].name.charAt(0)}
+              </div>
+              <p className="font-bold text-white truncate">{scores[0].name}</p>
+              <p className="text-xs text-amber-400">{scores[0].roundWins || 0} جولات</p>
+              <p className="text-2xl font-black text-amber-400 text-glow-gold">{scores[0].score}</p>
+              <div className="mt-1 text-xs text-amber-400/80">بطل المعركة!</div>
+            </motion.div>
+
+            {/* VS Divider */}
+            <div className="flex items-center">
+              <motion.div
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.6, type: 'spring' }}
+                className="flex flex-col items-center gap-1"
+              >
+                <Swords className="w-5 h-5 text-red-400" />
+                <span className="text-xs font-black text-red-400">VS</span>
+              </motion.div>
+            </div>
+
+            {/* Runner-up */}
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.5 }}
+              className={`text-center p-5 rounded-2xl ${getMedalClass(1)} w-1/2`}
+            >
+              <div className={`w-14 h-14 mx-auto rounded-full bg-gradient-to-br ${getMedalColor(1)} flex items-center justify-center text-white font-bold text-lg mb-2`}>
+                {scores[1].name.charAt(0)}
+              </div>
+              <p className="font-bold text-white truncate">{scores[1].name}</p>
+              <p className="text-xs text-slate-400">{scores[1].roundWins || 0} جولات</p>
+              <p className="text-lg font-black text-slate-300">{scores[1].score}</p>
+              <div className="mt-1 text-xs text-slate-500">الوصيف</div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {/* Full leaderboard */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -5833,7 +5874,7 @@ function ResultsScreen() {
           </h3>
           <div className="space-y-2">
             {scores.map((player, i) => {
-              const isMuted = usePlayerMuteStore.getState().isPlayerMuted(player.id)
+              const isMuted = mutedPlayers.has(player.id) || hostMutedPlayers.has(player.id)
               const mySocketId = globalSocket?.id
               const isMe = player.id === mySocketId
               const isHostPlayer = useGameStore.getState().isHost
@@ -6387,8 +6428,10 @@ export default function Home() {
     <ArenaNarratorProvider>
       <GameplayHintsProvider>
         <main className="min-h-screen flex flex-col">
-          {/* Audio Controls - always visible */}
+          {/* Audio Controls - always visible outside arena */}
           <AudioControls />
+          {/* Arena Mute Button - minimal audio control inside arena screens */}
+          <ArenaMuteButton />
 
           {/* Guest Identity Modals */}
           <AnimatePresence>

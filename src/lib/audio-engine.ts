@@ -653,6 +653,16 @@ function playError() {
 }
 
 // ============================================
+// SOUND: Gentle Notification (attention-grabbing but not negative)
+// ============================================
+function playNotification() {
+  // Two gentle ascending chimes — pleasant and noticeable without harshness
+  playTone(523, 0.12, 'sine', 0.18)  // C5
+  setTimeout(() => playTone(659, 0.18, 'sine', 0.14), 100)  // E5
+  setTimeout(() => playTone(784, 0.14, 'sine', 0.10), 200)  // G5
+}
+
+// ============================================
 // SOUND: Loading Progress Step
 // ============================================
 function playProgressStep() {
@@ -730,6 +740,7 @@ export const audioEngine = {
   buttonClick: playButtonClick,
   surrender: playSurrender,
   error: playError,
+  notification: playNotification,
   progressStep: playProgressStep,
   earlyEndHorn: playEarlyEndHorn,
   earlyEndConfirmed: playEarlyEndConfirmed,

@@ -209,6 +209,7 @@ interface GameRoom {
   roundResults: Map<number, RoundScore[]>  // roundIndex -> scores for that round
   roundWinners: Map<number, string>  // roundIndex -> playerId of winner
   roundEnding: boolean            // true if round-end processing has started (prevents double calls)
+  roundTimer: NodeJS.Timeout | null  // server-side round timer as authoritative backup
   earlyEnding: boolean            // true if early-end-game processing has started (prevents duplicate requests)
   gameStartTime: number | null    // timestamp when the game first started (for accurate duration)
   readyPlayers: Set<string>       // player IDs who marked ready for next round
@@ -1259,6 +1260,12 @@ function deleteRoom(roomCode: string) {
   const room = rooms.get(roomCode)
   if (!room) return
 
+  // Clear the server-side round timer
+  if (room.roundTimer) {
+    clearTimeout(room.roundTimer)
+    room.roundTimer = null
+  }
+
   // Clean up socketRoomMap entries pointing to this room
   for (const [socketId, code] of socketRoomMap.entries()) {
     if (code === roomCode) {
@@ -1468,33 +1475,62 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
     }
 
     // Team mode: check if all players from one team disconnected during gameplay
+    // Instead of ending the round immediately, start a 30-second grace period
+    const TEAM_DISCONNECT_GRACE_PERIOD = 30000 // 30 seconds
     if (room.status === 'playing' && room.battleMode === 'فرق') {
       const teamAActive = activePlayers.filter(p => p.teamId === 'A')
       const teamBActive = activePlayers.filter(p => p.teamId === 'B')
       
       if (teamAActive.length === 0 && teamBActive.length > 0) {
-        // Team A has no active players - Team B wins by default
+        // Team A has no active players - start grace period
         const teamBName = getTeamDisplayName(room, 'B')
         const teamAName = getTeamDisplayName(room, 'A')
         io.to(roomCode).emit('team-ready-state', {
           teamId: 'B',
           teamName: teamBName,
-          message: `${teamAName} غادر الساحة! ${teamBName} يفوز! 🌊`,
-          allTeamsReady: true,
+          message: `${teamAName} انقطعوا! انتظار ${TEAM_DISCONNECT_GRACE_PERIOD / 1000} ثانية للعودة... ⏳`,
+          allTeamsReady: false,
         })
-        // End the round/game - Team B wins
-        handleRoundEnd(roomCode)
+        console.log(`[disconnect] Team A all disconnected in room ${roomCode}. Starting ${TEAM_DISCONNECT_GRACE_PERIOD / 1000}s grace period...`)
+        // Grace period timer: if no one from Team A reconnects, end the round
+        setTimeout(() => {
+          const currentActive = Array.from(room.players.values()).filter(p => !p.isDisconnected)
+          const currentTeamA = currentActive.filter(p => p.teamId === 'A')
+          if (room.status === 'playing' && currentTeamA.length === 0) {
+            io.to(roomCode).emit('team-ready-state', {
+              teamId: 'B',
+              teamName: teamBName,
+              message: `${teamAName} غادر الساحة! ${teamBName} يفوز! 🌊`,
+              allTeamsReady: true,
+            })
+            handleRoundEnd(roomCode)
+          }
+        }, TEAM_DISCONNECT_GRACE_PERIOD)
       } else if (teamBActive.length === 0 && teamAActive.length > 0) {
-        // Team B has no active players - Team A wins by default
+        // Team B has no active players - start grace period
         const teamAName = getTeamDisplayName(room, 'A')
         const teamBName = getTeamDisplayName(room, 'B')
         io.to(roomCode).emit('team-ready-state', {
           teamId: 'A',
           teamName: teamAName,
-          message: `${teamBName} غادر الساحة! ${teamAName} يفوز! 🔥`,
-          allTeamsReady: true,
+          message: `${teamBName} انقطعوا! انتظار ${TEAM_DISCONNECT_GRACE_PERIOD / 1000} ثانية للعودة... ⏳`,
+          allTeamsReady: false,
         })
-        handleRoundEnd(roomCode)
+        console.log(`[disconnect] Team B all disconnected in room ${roomCode}. Starting ${TEAM_DISCONNECT_GRACE_PERIOD / 1000}s grace period...`)
+        // Grace period timer: if no one from Team B reconnects, end the round
+        setTimeout(() => {
+          const currentActive = Array.from(room.players.values()).filter(p => !p.isDisconnected)
+          const currentTeamB = currentActive.filter(p => p.teamId === 'B')
+          if (room.status === 'playing' && currentTeamB.length === 0) {
+            io.to(roomCode).emit('team-ready-state', {
+              teamId: 'A',
+              teamName: teamAName,
+              message: `${teamBName} غادر الساحة! ${teamAName} يفوز! 🔥`,
+              allTeamsReady: true,
+            })
+            handleRoundEnd(roomCode)
+          }
+        }, TEAM_DISCONNECT_GRACE_PERIOD)
       }
     }
 
@@ -1631,6 +1667,16 @@ io.on('connection', (socket: Socket) => {
       if (oldAnswers) {
         room.playerAnswers.delete(oldId)
         room.playerAnswers.set(socket.id, oldAnswers)
+      }
+
+      // Migrate readyPlayers and finishedPlayers from old ID to new ID
+      if (room.readyPlayers.has(oldId)) {
+        room.readyPlayers.delete(oldId)
+        room.readyPlayers.add(socket.id)
+      }
+      if (room.finishedPlayers.has(oldId)) {
+        room.finishedPlayers.delete(oldId)
+        room.finishedPlayers.add(socket.id)
       }
 
       // Update host ID if needed
@@ -1923,6 +1969,7 @@ io.on('connection', (socket: Socket) => {
         roundResults: new Map(),
         roundWinners: new Map(),
         roundEnding: false,
+        roundTimer: null,
         earlyEnding: false,
         gameStartTime: null,
         readyPlayers: new Set(),
@@ -2022,19 +2069,20 @@ io.on('connection', (socket: Socket) => {
         isCaptain: false,
       }
 
-      // Auto-assign to empty team in team mode
+      // Auto-assign team in team mode
       if (room.battleMode === 'فرق') {
         const teamAPlayers = getTeamPlayers(room, 'A')
         const teamBPlayers = getTeamPlayers(room, 'B')
+        const teamACaptain = teamAPlayers.find(p => p.isCaptain)
+        const teamBCaptain = teamBPlayers.find(p => p.isCaptain)
 
-        if (teamAPlayers.length === 0) {
+        if (teamAPlayers.length <= teamBPlayers.length) {
           player.teamId = 'A'
-          player.isCaptain = true
-        } else if (teamBPlayers.length === 0) {
+          player.isCaptain = !teamACaptain // Captain only if no captain exists
+        } else {
           player.teamId = 'B'
-          player.isCaptain = true
+          player.isCaptain = !teamBCaptain // Captain only if no captain exists
         }
-        // else: both teams have members, stay unassigned
       }
 
       room.players.set(socket.id, player)
@@ -2228,6 +2276,16 @@ io.on('connection', (socket: Socket) => {
           content: firstRoundContent,
           timePerRound: room.roundTimerSeconds,
         })
+
+        // Server-side round timer as authoritative backup
+        if (room.roundTimer) clearTimeout(room.roundTimer)
+        room.roundTimer = setTimeout(() => {
+          const rr = rooms.get(roomCode)
+          if (rr && rr.status === 'playing' && !rr.roundEnding) {
+            console.log(`[timer] Server-side timer expired for room ${roomCode}`)
+            handleRoundEnd(roomCode)
+          }
+        }, room.roundTimerSeconds * 1000 + 2000) // 2s grace for network
 
         console.log(`[start-game] Round 1 content sent to room ${roomCode}. Timer: ${room.roundTimerSeconds}s`)
 
@@ -2485,7 +2543,9 @@ io.on('connection', (socket: Socket) => {
       const { roomCode, roundNumber, questionIndex, answerIndex, timeLeft } = data
       const room = rooms.get(roomCode?.toUpperCase())
       // Calculate timeTaken server-side using the authoritative round timer
-      const timeTaken = room ? Math.max(0, room.roundTimerSeconds - (timeLeft || 0)) : 0
+      const timeTaken = room?.roundStartTime
+        ? Math.min(room.roundTimerSeconds, Math.floor((Date.now() - room.roundStartTime) / 1000))
+        : 0
 
       if (!room) {
         socket.emit('game-error', { message: 'الساحة غير موجودة' })
@@ -2609,18 +2669,19 @@ io.on('connection', (socket: Socket) => {
     // Notify the player that they successfully surrendered
     socket.emit('surrender-confirmed', { roomCode })
 
-    // If game is playing and only 1 player left, auto-end the game
+    // If game is playing and only 1 active player left, auto-end the game
     const updatedRoom = rooms.get(roomCode)
-    if (updatedRoom && updatedRoom.status === 'playing' && updatedRoom.players.size === 1) {
+    const activePlayers = Array.from(updatedRoom?.players.values() || []).filter(p => !p.isDisconnected)
+    if (updatedRoom && updatedRoom.status === 'playing' && activePlayers.length === 1) {
       // Notify the remaining player that they won because the opponent left
-      const remainingPlayer = Array.from(updatedRoom.players.values())[0]
+      const remainingPlayer = activePlayers[0]
       io.to(roomCode).emit('opponent-left-game', {
         leftPlayerName: playerName,
         winnerName: remainingPlayer?.name,
       })
       // End the game immediately
       handleGameEnd(roomCode)
-    } else if (updatedRoom && updatedRoom.status === 'playing' && updatedRoom.players.size === 0) {
+    } else if (updatedRoom && updatedRoom.status === 'playing' && activePlayers.length === 0) {
       deleteRoom(roomCode)
     }
   })
@@ -2932,6 +2993,7 @@ io.on('connection', (socket: Socket) => {
       roundResults: new Map(),
       roundWinners: new Map(),
       roundEnding: false,
+      roundTimer: null,
       earlyEnding: false,
       gameStartTime: null,
       readyPlayers: new Set(),
@@ -3008,36 +3070,16 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
 
 ⚠️ اكتب بالعربية الفصحى البسيطة. كن مختصراً ودوداً.`
 
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://maaraka.app',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.0-flash-001',
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 300,
-          temperature: 0.7,
-        }),
-      })
+      const explanation = await callOpenRouterLLM(
+        [{ role: 'user', content: prompt }],
+        { temperature: 0.7, maxTokens: 300, timeoutMs: 15000 }
+      )
 
-      if (response.ok) {
-        const result = await response.json()
-        const explanation = result.choices?.[0]?.message?.content?.trim() || 'لم أستطع توليد تفسير.'
-        socket.emit('answer-explanation', {
-          roundNumber,
-          questionIndex,
-          explanation,
-        })
-      } else {
-        socket.emit('answer-explanation', {
-          roundNumber,
-          questionIndex,
-          explanation: 'حدث خطأ في توليد التفسير.',
-        })
-      }
+      socket.emit('answer-explanation', {
+        roundNumber,
+        questionIndex,
+        explanation: explanation || 'لم أستطع توليد تفسير.',
+      })
     } catch {
       socket.emit('answer-explanation', {
         roundNumber,
@@ -3460,6 +3502,37 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     }, 41000)
   })
 
+  // ── cancel-join-request ──────────────────────────────────────────────
+  // Player cancels their own pending join/switch request
+  socket.on('cancel-join-request', (data: { requestId: string }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+
+    const room = rooms.get(roomCode)
+    if (!room) return
+
+    const request = room.joinRequests.get(data.requestId)
+    if (!request || request.status !== 'pending') return
+
+    // Only the requester can cancel
+    if (request.playerId !== socket.id) {
+      socket.emit('game-error', { message: 'فقط صاحب الطلب يقدر يلغيه' })
+      return
+    }
+
+    // Mark as expired and remove
+    request.status = 'expired'
+    room.joinRequests.delete(data.requestId)
+
+    // Notify the target team's captain
+    const targetCaptain = getTeamPlayers(room, request.targetTeamId).find(p => p.isCaptain)
+    if (targetCaptain) {
+      io.to(targetCaptain.id).emit('join-request-expired', { requestId: data.requestId })
+    }
+
+    console.log(`[cancel-join-request] ${request.playerName} cancelled their join request (${data.requestId})`)
+  })
+
   // ── captain-approval-request ──────────────────────────────────────────
   socket.on('captain-approval-request', (data: { type: string; description: string; data: any }) => {
     const roomCode = socketRoomMap.get(socket.id)
@@ -3474,10 +3547,22 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
       return
     }
     
-    // Can't have multiple pending approvals
+    // If there's already a pending approval, auto-reject it to prevent deadlock
     if (room.pendingApproval && room.pendingApproval.status === 'pending') {
-      socket.emit('game-error', { message: 'يوجد طلب موافقة معلق بالفعل' })
-      return
+      const oldApproval = room.pendingApproval
+      oldApproval.status = 'rejected'
+      // Notify the original requester that their approval was superseded
+      io.to(oldApproval.requestedBy).emit('approval-resolved', {
+        approvalId: oldApproval.id,
+        approved: false,
+        rejectedByName: 'النظام',
+        type: oldApproval.type,
+      })
+      // Notify the target captain that the old request is no longer valid
+      io.to(oldApproval.targetCaptainId).emit('approval-expired', {
+        approvalId: oldApproval.id,
+      })
+      room.pendingApproval = null
     }
     
     // Find the other team's captain
@@ -4052,6 +4137,12 @@ function handleRoundEnd(roomCode: string) {
   }
   room.roundEnding = true
 
+  // Clear the server-side round timer since the round is ending
+  if (room.roundTimer) {
+    clearTimeout(room.roundTimer)
+    room.roundTimer = null
+  }
+
   const currentRound = room.currentRound
   const totalRounds = room.settings.numberOfRounds
 
@@ -4293,6 +4384,16 @@ function startNextRound(roomCode: string) {
           timePerRound: rr.roundTimerSeconds,
         })
         console.log(`[startNextRound] Delayed round ${rr.currentRound + 1} started in room ${roomCode}`)
+
+        // Server-side round timer as authoritative backup
+        if (rr.roundTimer) clearTimeout(rr.roundTimer)
+        rr.roundTimer = setTimeout(() => {
+          const rrr = rooms.get(roomCode)
+          if (rrr && rrr.status === 'playing' && !rrr.roundEnding) {
+            console.log(`[timer] Server-side timer expired for room ${roomCode}`)
+            handleRoundEnd(roomCode)
+          }
+        }, rr.roundTimerSeconds * 1000 + 2000) // 2s grace for network
       }
     }, 2000)
 
@@ -4313,6 +4414,16 @@ function startNextRound(roomCode: string) {
     timePerRound: room.roundTimerSeconds,
   })
 
+  // Server-side round timer as authoritative backup
+  if (room.roundTimer) clearTimeout(room.roundTimer)
+  room.roundTimer = setTimeout(() => {
+    const rr = rooms.get(roomCode)
+    if (rr && rr.status === 'playing' && !rr.roundEnding) {
+      console.log(`[timer] Server-side timer expired for room ${roomCode}`)
+      handleRoundEnd(roomCode)
+    }
+  }, room.roundTimerSeconds * 1000 + 2000) // 2s grace for network
+
   console.log(`[startNextRound] Round ${room.currentRound + 1} started in room ${roomCode}. Timer: ${room.roundTimerSeconds}s`)
 }
 
@@ -4321,6 +4432,12 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
   if (!room) return
 
   room.status = 'finished'
+
+  // Clear the server-side round timer since the game is ending
+  if (room.roundTimer) {
+    clearTimeout(room.roundTimer)
+    room.roundTimer = null
+  }
 
   // ─── Track rematch eligibility: store old room's player list + settings ───
   const rematchPlayers = new Map<string, { name: string; oldSocketId: string }>()
