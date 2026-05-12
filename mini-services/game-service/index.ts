@@ -205,6 +205,7 @@ interface GameRoom {
   roundWinners: Map<number, string>  // roundIndex -> playerId of winner
   roundEnding: boolean            // true if round-end processing has started (prevents double calls)
   earlyEnding: boolean            // true if early-end-game processing has started (prevents duplicate requests)
+  gameStartTime: number | null    // timestamp when the game first started (for accurate duration)
 }
 
 // Info sent to clients about public rooms
@@ -1368,6 +1369,7 @@ io.on('connection', (socket: Socket) => {
         roundWinners: new Map(),
         roundEnding: false,
         earlyEnding: false,
+        gameStartTime: null,
       }
 
       rooms.set(roomCode, room)
@@ -1500,11 +1502,6 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
-      if (room.players.size < 2) {
-        socket.emit('game-error', { message: 'يجب أن يكون هناك لاعبان على الأقل' })
-        return
-      }
-
       // Count only active (non-disconnected) players
       const activePlayerCount = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
       if (activePlayerCount < 2) {
@@ -1532,6 +1529,7 @@ io.on('connection', (socket: Socket) => {
       room.status = 'playing'
       room.currentRound = 0
       room.roundEnding = false
+      room.gameStartTime = Date.now()
 
       // Reset all player scores and round wins for the new game
       // Also remove any lingering disconnected players
@@ -2225,7 +2223,7 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
   // Determine overall winner by round wins (not cumulative score)
   // Include ALL players (even disconnected ones who participated in earlier rounds)
   const finalResults = playersToArrayAll(room.players)
-    .sort((a, b) => b.roundWins - a.roundWins)
+    .sort((a, b) => b.roundWins - a.roundWins || b.score - a.score)
 
   // The "score" field now represents roundWins for the final results
   const scoresWithWins = finalResults.map(p => ({
@@ -2236,10 +2234,8 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
   const completedRounds = room.roundResults.size
 
   // ─── Build full battle data for history saving ───
-  // Calculate approximate battle start time from first round
-  const battleStartedAt = room.rounds.length > 0 && room.roundStartTime
-    ? Date.now() - (completedRounds * room.roundTimerSeconds * 1000)
-    : Date.now() - (completedRounds * room.settings.timePerRound * 60 * 1000)
+  // Use the actual game start time for accurate duration
+  const battleStartedAt = room.gameStartTime || Date.now()
 
   const battleParticipants = finalResults.map((p, index) => {
     // Build answer review for this player
@@ -2313,7 +2309,7 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
     passageType: room.settings.passageType,
     totalRounds: room.settings.numberOfRounds,
     completedRounds,
-    totalDuration: completedRounds * room.roundTimerSeconds,
+    totalDuration: room.gameStartTime ? Math.floor((Date.now() - room.gameStartTime) / 1000) : completedRounds * room.roundTimerSeconds,
     hostName: room.hostName,
     wasEarlyEnd,
     startedAt: battleStartedAt,
