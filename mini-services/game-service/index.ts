@@ -708,6 +708,12 @@ async function fetchGameContent(
   previousTopics?: string[],
   passageType?: PassageType
 ): Promise<GameContent> {
+  // Enforce overall timeout so content generation doesn't hang forever
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('انتهت مهلة توليد المحتوى')), CONTENT_TIMEOUT_MS)
+  )
+
+  const generatePromise = async (): Promise<GameContent> => {
   // Step 1: Emit "checking"
   io.to(roomCode).emit('content-progress', { step: 'checking', text: 'جاري فحص المحتوى السابق للاعبين...' })
   await new Promise(r => setTimeout(r, 300))
@@ -852,6 +858,9 @@ async function fetchGameContent(
     throw new Error('مفتاح OpenRouter API غير موجود! يرجى إضافة OPENROUTER_API_KEY في متغيرات البيئة على Railway.')
   }
   throw new Error('فشل في توليد المحتوى بعد محاولات متعددة. يرجى المحاولة مرة أخرى.')
+  }
+
+  return Promise.race([generatePromise(), timeoutPromise])
 }
 
 // Broadcast updated public rooms list to all connected sockets

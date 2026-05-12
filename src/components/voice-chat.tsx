@@ -74,18 +74,9 @@ function attachAudioTrack(track: RemoteAudioTrack, participantIdentity: string) 
     audioEl.id = `audio-${key}`
     audioElements.set(key, audioEl)
   }
-  // Check if this player is muted (locally or by host) when attaching
+  // Check if this player is muted (locally or by host) using exact name matching
   const muteStore = usePlayerMuteStore.getState()
-  // Extract socket ID from identity (LiveKit identity = playerName with _ for spaces)
-  // We check against all muted player IDs
-  let shouldMute = false
-  const mutedIds = [...muteStore.locallyMutedPlayers, ...muteStore.hostMutedPlayers]
-  for (const mutedId of mutedIds) {
-    if (participantIdentity.includes(mutedId) || mutedId.includes(participantIdentity)) {
-      shouldMute = true
-      break
-    }
-  }
+  const shouldMute = muteStore.isLiveKitIdentityMuted(participantIdentity)
   track.attach(audioEl)
   // Apply mute state after attaching
   if (shouldMute) {
@@ -165,11 +156,11 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
     const handleMuteChange = (e: Event) => {
       const detail = (e as CustomEvent).detail
       if (!detail?.playerId) return
+      // Convert player name to LiveKit identity format for matching audio elements
+      const liveKitIdentity = detail.playerName ? detail.playerName.replace(/\s+/g, '_') : detail.playerId
       // Mute/unmute the audio element for this specific player
-      const participantIdentity = detail.playerId
-      // Try to find audio elements by participant identity
       audioElements.forEach((audioEl, key) => {
-        if (key.includes(participantIdentity) || key.startsWith(participantIdentity)) {
+        if (key.startsWith(liveKitIdentity + '-') || key.includes(liveKitIdentity)) {
           audioEl.muted = detail.isMuted || isSpeakerMuted
         }
       })

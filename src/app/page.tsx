@@ -414,7 +414,7 @@ function useGameSocket() {
 
     socket.on('player-audio-muted', (data: { playerId: string; playerName: string }) => {
       // A player was host-muted — mute their audio for everyone
-      usePlayerMuteStore.getState().addHostMuted(data.playerId)
+      usePlayerMuteStore.getState().addHostMuted(data.playerId, data.playerName)
       battleToast('player_audio_muted', 'تم كتم اللاعب', `${data.playerName} تم كتم صوته بواسطة القائد`)
     })
 
@@ -2718,7 +2718,7 @@ function LobbyScreen() {
                             size="icon"
                             variant="ghost"
                             className="w-7 h-7 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
-                            onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id)}
+                            onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id, player.name)}
                             title={isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
                           >
                             {isMuted ? <Volume1 className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
@@ -3693,7 +3693,7 @@ function ResultsScreen() {
                       size="icon"
                       variant="ghost"
                       className="w-6 h-6 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
-                      onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id)}
+                      onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id, player.name)}
                       title={isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
                     >
                       {isMuted ? <Volume1 className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
