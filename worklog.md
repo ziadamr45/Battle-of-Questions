@@ -770,3 +770,37 @@ Stage Summary:
 - Real-time sync: all players instantly see name changes via team-update + team-renamed events
 - Default names preserved as fallback when customName is null
 - Solo mode completely unaffected
+
+---
+Task ID: 14
+Agent: Main Agent
+Task: Fix Team B deadlock (no one can join empty team) + Add voluntary leadership transfer
+
+Work Log:
+- **Bug Fix**: Team B deadlock — when a room is created in team mode, the creator is Team A captain. Other players join as unassigned. When they try to request-join-team for Team B, the server returns "لا يوجد قائد لهذا الفريق بعد" because Team B has no captain and no members. This creates a deadlock: no one can join Team B because there's no captain to approve requests.
+- **Solution**: Modified `request-join-team` handler in game-service to auto-assign the player as captain when the target team is completely empty (0 members). Skip the approval flow entirely — the first person to request joining an empty team automatically becomes its captain.
+- **Feature**: Added voluntary leadership transfer system
+  - Server: Added `transfer-leadership` socket event with two types: 'captain' and 'host'
+  - Captain transfer: only current captain can transfer, target must be in same team
+  - Host transfer: only current host can transfer, target can be any player
+  - Both emit `leadership-received` (to new leader) and `leadership-transferred` (to old leader) events
+  - Also emit existing `host-changed`/`team-captain-changed` for state sync
+- **Client**: Added socket listeners for `leadership-received` and `leadership-transferred` events
+  - `lastLeadershipTransferTime` flag prevents duplicate toasts from both voluntary transfer events AND auto-transfer events
+  - `team-captain-changed` and `host-changed` handlers skip toasts if voluntary transfer happened within 3 seconds
+- **UI**: Added transfer leadership buttons
+  - Team mode: Crown icon button on non-captain team members (visible to captain only) → confirmation dialog "نقل القيادة لـ X?"
+  - Team mode: Shield icon button on non-host players (visible to host only) → confirmation dialog "نقل الإدارة لـ X?"
+  - Solo mode: Crown icon button on non-host players (visible to host only) → confirmation dialog "نقل الإدارة لـ X?"
+  - Host badge now visible in team mode player items (Shield + "مضيف" for non-captain hosts, "· مضيف" suffix for captain-hosts)
+- **Auto-assign toast**: Updated `join-request-approved` handler to show different toast for auto-assign (requestId='auto') vs normal approval
+- Created .env file for game-service with OpenRouter API key
+- Lint passes clean, dev server running, game service restarted
+
+Stage Summary:
+- Team B deadlock FIXED: first unassigned player to request an empty team auto-becomes captain
+- Voluntary captain transfer: captain can transfer to any team member via Crown button
+- Voluntary host transfer: host can transfer to any player via Shield/Crown button
+- Host badge now visible in team mode player list
+- Duplicate toast prevention via timestamp-based deduplication
+- Auto-assign toast shows "أنت قائد الفريق! 👑" instead of "تم قبولك في الفريق"

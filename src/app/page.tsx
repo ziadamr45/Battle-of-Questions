@@ -103,6 +103,7 @@ import { ArenaNarratorProvider, showNarration } from '@/components/onboarding/ar
 let globalSocket: Socket | null = null
 let globalSocketListenersSetup = false
 let pendingAction: ((socket: Socket) => void) | null = null
+let lastLeadershipTransferTime = 0 // timestamp of last voluntary leadership transfer (to avoid duplicate toasts)
 
 function getOrCreateSocket(setupListeners: (socket: Socket) => void): Socket {
   if (globalSocket?.connected) return globalSocket
@@ -427,11 +428,14 @@ function useGameSocket() {
       store.getState().setPlayers(data.players)
       if (globalSocket && globalSocket.id === data.newHostId) {
         store.getState().setIsHost(true)
-        battleToast('host_changed_self', 'أنت القائد الجديد!', `${data.oldHostName} غادر وأنت الأقدم فبقيت القائد`)
+        // leadership-received event handles the toast for voluntary transfer
+        // This handler covers auto-transfer on disconnect/leave
+        if (lastLeadershipTransferTime > Date.now() - 3000) return // skip if voluntary transfer happened recently
+        battleToast('host_changed_self', 'أنت المضيف الجديد!', `${data.oldHostName} غادر وأنت الأقدم فبقيت المضيف`)
       } else {
-        battleToast('host_changed_other', 'قائد جديد', `${data.oldHostName} غادر و${data.newHostName} بقى القائد`)
+        if (lastLeadershipTransferTime > Date.now() - 3000) return // skip if voluntary transfer happened recently
+        battleToast('host_changed_other', 'مضيف جديد', `${data.newHostName} بقى مضيف الساحة`)
       }
-      showNarration('new_host')
     })
 
     socket.on('public-rooms-update', (data: { rooms: RoomInfo[] }) => { store.getState().setPublicRooms(data.rooms) })
@@ -566,12 +570,37 @@ function useGameSocket() {
 
     socket.on('team-captain-changed', (data: { teamId: TeamId; newCaptainId: string; newCaptainName: string; teams: TeamsState }) => {
       store.getState().setTeams(data.teams)
+      // Skip toast if voluntary transfer happened recently (leadership-received/transferred handles that)
+      if (lastLeadershipTransferTime > Date.now() - 3000) return
       const teamName = data.teamId === 'A' ? (data.teams.teamA.customName || 'الفريق الأحمر') : (data.teams.teamB.customName || 'الفريق الأزرق')
       if (data.newCaptainId === socket.id) {
         store.getState().setIsCaptain(true)
         battleToast('captain_promoted', 'أنت القائد الجديد!', `بقيت قائد ${teamName}`)
       } else {
         battleToast('captain_changed', 'قائد جديد', `${data.newCaptainName} بقى قائد ${teamName}`)
+      }
+    })
+
+    // Leadership transferred voluntarily (captain or host)
+    socket.on('leadership-received', (data: { type: 'captain' | 'host'; teamId?: TeamId; teamName?: string; transferredByName: string }) => {
+      lastLeadershipTransferTime = Date.now()
+      if (data.type === 'captain') {
+        store.getState().setIsCaptain(true)
+        battleToast('captain_received', 'أنت القائد الجديد! 👑', `${data.transferredByName} غيّرلك القيادة${data.teamName ? ` في ${data.teamName}` : ''}`)
+      } else {
+        store.getState().setIsHost(true)
+        battleToast('host_received', 'أنت المضيف الجديد! 🏠', `${data.transferredByName} غيّرلك إدارة الساحة`)
+      }
+    })
+
+    socket.on('leadership-transferred', (data: { type: 'captain' | 'host'; teamId?: TeamId; newLeaderName: string }) => {
+      lastLeadershipTransferTime = Date.now()
+      if (data.type === 'captain') {
+        store.getState().setIsCaptain(false)
+        battleToast('captain_transferred', 'تم نقل القيادة', `${data.newLeaderName} بقى قائد الفريق`)
+      } else {
+        store.getState().setIsHost(false)
+        battleToast('host_transferred', 'تم نقل الإدارة', `${data.newLeaderName} بقى مضيف الساحة`)
       }
     })
 
@@ -617,7 +646,12 @@ function useGameSocket() {
         store.getState().setIsCaptain(isNowCaptain)
       }
       audioEngine.progressStep()
-      battleToast('join_approved', 'تم قبولك في الفريق! ✅', `${data.captainName} وافق على انضمامك ل${data.teamName}`)
+      // Handle auto-assign (empty team) vs normal approval
+      if (data.requestId === 'auto') {
+        battleToast('join_auto', 'أنت قائد الفريق! 👑', `بقيت قائد ${data.teamName} - أول واحد ينضم لفريق فاضي بقى قائد`)
+      } else {
+        battleToast('join_approved', 'تم قبولك في الفريق! ✅', `${data.captainName} وافق على انضمامك ل${data.teamName}`)
+      }
     })
 
     // Join request rejected
@@ -3237,10 +3271,84 @@ function LobbyScreen() {
                                 {isTeamCaptain && <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />}
                                 <span className="text-xs sm:text-sm text-white truncate">{p.name}</span>
                                 {isMe && <span className="text-[9px] sm:text-[10px] text-red-400">(أنت)</span>}
+                                {p.isHost && !isTeamCaptain && <Badge className="host-badge text-white border-0 text-[8px] sm:text-[9px] shrink-0 py-0 px-1"><Shield className="w-2 h-2 ml-0.5" />مضيف</Badge>}
                               </div>
-                              {isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-amber-400/80">قائد الفريق</span>}
+                              <div className="flex items-center gap-1">
+                                {isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-amber-400/80">قائد الفريق</span>}
+                                {p.isHost && isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-violet-400/80">· مضيف</span>}
+                              </div>
                             </div>
-                            {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
+                              {/* Transfer captain button: visible to captain of this team on non-captain members */}
+                              {isCaptain && myTeamId === 'A' && !isTeamCaptain && !isMe && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button
+                                      className="w-6 h-6 rounded flex items-center justify-center text-amber-400/50 hover:text-amber-400 hover:bg-amber-500/20 transition-all"
+                                      title="نوّل القيادة"
+                                    >
+                                      <Crown className="w-3 h-3" />
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle className="text-white">نقل القيادة لـ {p.name}؟</AlertDialogTitle>
+                                      <AlertDialogDescription className="text-slate-400">
+                                        هتسيب منصب قائد الفريق و {p.name} هيبقى القائد الجديد
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter className="flex gap-2">
+                                      <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-amber-600 text-white hover:bg-amber-700"
+                                        onClick={() => {
+                                          if (globalSocket) {
+                                            globalSocket.emit('transfer-leadership', { targetPlayerId: p.id, type: 'captain' })
+                                          }
+                                        }}
+                                      >
+                                        <Crown className="w-3.5 h-3.5 ml-1" /> نوّل القيادة
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                              {/* Host transfer button: visible to host on non-host players (team mode) */}
+                              {isHost && !p.isHost && !isMe && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button
+                                      className="w-6 h-6 rounded flex items-center justify-center text-violet-400/50 hover:text-violet-400 hover:bg-violet-500/20 transition-all"
+                                      title="نوّل الإدارة"
+                                    >
+                                      <Shield className="w-3 h-3" />
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle className="text-white">نقل الإدارة لـ {p.name}؟</AlertDialogTitle>
+                                      <AlertDialogDescription className="text-slate-400">
+                                        هتسيب منصب مضيف الساحة و {p.name} هيبقى المضيف الجديد
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter className="flex gap-2">
+                                      <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-violet-600 text-white hover:bg-violet-700"
+                                        onClick={() => {
+                                          if (globalSocket) {
+                                            globalSocket.emit('transfer-leadership', { targetPlayerId: p.id, type: 'host' })
+                                          }
+                                        }}
+                                      >
+                                        <Shield className="w-3.5 h-3.5 ml-1" /> نوّل الإدارة
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
@@ -3325,10 +3433,84 @@ function LobbyScreen() {
                                 {isTeamCaptain && <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />}
                                 <span className="text-xs sm:text-sm text-white truncate">{p.name}</span>
                                 {isMe && <span className="text-[9px] sm:text-[10px] text-sky-400">(أنت)</span>}
+                                {p.isHost && !isTeamCaptain && <Badge className="host-badge text-white border-0 text-[8px] sm:text-[9px] shrink-0 py-0 px-1"><Shield className="w-2 h-2 ml-0.5" />مضيف</Badge>}
                               </div>
-                              {isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-amber-400/80">قائد الفريق</span>}
+                              <div className="flex items-center gap-1">
+                                {isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-amber-400/80">قائد الفريق</span>}
+                                {p.isHost && isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-violet-400/80">· مضيف</span>}
+                              </div>
                             </div>
-                            {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
+                              {/* Transfer captain button: visible to captain of this team on non-captain members */}
+                              {isCaptain && myTeamId === 'B' && !isTeamCaptain && !isMe && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button
+                                      className="w-6 h-6 rounded flex items-center justify-center text-amber-400/50 hover:text-amber-400 hover:bg-amber-500/20 transition-all"
+                                      title="نوّل القيادة"
+                                    >
+                                      <Crown className="w-3 h-3" />
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle className="text-white">نقل القيادة لـ {p.name}؟</AlertDialogTitle>
+                                      <AlertDialogDescription className="text-slate-400">
+                                        هتسيب منصب قائد الفريق و {p.name} هيبقى القائد الجديد
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter className="flex gap-2">
+                                      <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-amber-600 text-white hover:bg-amber-700"
+                                        onClick={() => {
+                                          if (globalSocket) {
+                                            globalSocket.emit('transfer-leadership', { targetPlayerId: p.id, type: 'captain' })
+                                          }
+                                        }}
+                                      >
+                                        <Crown className="w-3.5 h-3.5 ml-1" /> نوّل القيادة
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                              {/* Host transfer button: visible to host on non-host players (team mode) */}
+                              {isHost && !p.isHost && !isMe && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button
+                                      className="w-6 h-6 rounded flex items-center justify-center text-violet-400/50 hover:text-violet-400 hover:bg-violet-500/20 transition-all"
+                                      title="نوّل الإدارة"
+                                    >
+                                      <Shield className="w-3 h-3" />
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle className="text-white">نقل الإدارة لـ {p.name}؟</AlertDialogTitle>
+                                      <AlertDialogDescription className="text-slate-400">
+                                        هتسيب منصب مضيف الساحة و {p.name} هيبقى المضيف الجديد
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter className="flex gap-2">
+                                      <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-violet-600 text-white hover:bg-violet-700"
+                                        onClick={() => {
+                                          if (globalSocket) {
+                                            globalSocket.emit('transfer-leadership', { targetPlayerId: p.id, type: 'host' })
+                                          }
+                                        }}
+                                      >
+                                        <Shield className="w-3.5 h-3.5 ml-1" /> نوّل الإدارة
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
@@ -3676,6 +3858,42 @@ function LobbyScreen() {
                             >
                               <VolumeX className="w-3.5 h-3.5" />
                             </Button>
+                          )}
+                          {/* Host-only: Transfer host button */}
+                          {isHost && !player.isHost && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
+                                  title="نوّل الإدارة"
+                                >
+                                  <Crown className="w-3.5 h-3.5" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="text-white">نقل الإدارة لـ {player.name}؟</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-slate-400">
+                                    هتسيب منصب مضيف الساحة و {player.name} هيبقى المضيف الجديد. مش هتقدر تبدأ اللعبة أو تعدل الإعدادات بعد كده
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter className="flex gap-2">
+                                  <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-amber-600 text-white hover:bg-amber-700"
+                                    onClick={() => {
+                                      if (globalSocket) {
+                                        globalSocket.emit('transfer-leadership', { targetPlayerId: player.id, type: 'host' })
+                                      }
+                                    }}
+                                  >
+                                    <Crown className="w-3.5 h-3.5 ml-1" /> نوّل الإدارة
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           )}
                         </div>
                       )}

@@ -2884,7 +2884,44 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     }
     
     // Find the target team's captain
-    const targetCaptain = getTeamPlayers(room, targetTeam).find(p => p.isCaptain)
+    const targetTeamPlayers = getTeamPlayers(room, targetTeam)
+    const targetCaptain = targetTeamPlayers.find(p => p.isCaptain)
+    
+    // If the target team has NO members at all (no captain, no players),
+    // auto-assign this player as the first member AND captain — skip approval flow
+    if (targetTeamPlayers.length === 0) {
+      player.teamId = targetTeam
+      player.isCaptain = true
+      
+      const teamsInfo = getTeamsInfo(room)
+      io.to(roomCode).emit('team-update', {
+        teams: teamsInfo,
+        players: playersToArray(room.players),
+        switchedPlayerId: player.id,
+        switchedPlayerName: player.name,
+        newTeamId: targetTeam,
+      })
+      
+      // Notify the player they were auto-assigned as captain
+      socket.emit('join-request-approved', {
+        requestId: 'auto',
+        teamId: targetTeam,
+        teamName: getTeamDisplayName(room, targetTeam),
+        captainName: player.name,
+      })
+      
+      // Broadcast captain change
+      io.to(roomCode).emit('team-captain-changed', {
+        teamId: targetTeam,
+        newCaptainId: player.id,
+        newCaptainName: player.name,
+        teams: teamsInfo,
+      })
+      
+      console.log(`[request-join-team] ${player.name} auto-assigned as captain of Team ${targetTeam} (empty team)`)
+      return
+    }
+    
     if (!targetCaptain) {
       socket.emit('game-error', { message: 'لا يوجد قائد لهذا الفريق بعد. لا يمكن تقديم الطلب حالياً.' })
       return
@@ -3556,6 +3593,113 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     })
     
     console.log(`[rename-team] ${player.name} renamed team ${data.teamId} to "${trimmed}" in room ${roomCode}`)
+  })
+
+  // ── transfer-leadership ──────────────────────────────────────────────────
+  // Allows a captain to transfer captain role to another team member,
+  // or a host to transfer host role to another player (both solo and team modes)
+  socket.on('transfer-leadership', (data: { targetPlayerId: string; type: 'captain' | 'host' }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    const room = rooms.get(roomCode)
+    if (!room || room.status !== 'waiting') return
+    
+    const currentPlayer = room.players.get(socket.id)
+    if (!currentPlayer) return
+    
+    const targetPlayer = room.players.get(data.targetPlayerId)
+    if (!targetPlayer || targetPlayer.isDisconnected) {
+      socket.emit('game-error', { message: 'اللاعب المحدد غير موجود' })
+      return
+    }
+    
+    if (data.type === 'captain') {
+      // Captain transfer: only current captain can do this, target must be in same team
+      if (!currentPlayer.isCaptain) {
+        socket.emit('game-error', { message: 'فقط قائد الفريق يقدر ينقل القيادة' })
+        return
+      }
+      if (currentPlayer.teamId !== targetPlayer.teamId) {
+        socket.emit('game-error', { message: 'ممكن تنقل القيادة بس لأعضاء فريقك' })
+        return
+      }
+      if (targetPlayer.id === currentPlayer.id) {
+        socket.emit('game-error', { message: 'ما تنقلش القيادة لنفسك!' })
+        return
+      }
+      
+      const teamId = currentPlayer.teamId as TeamId
+      
+      // Remove captain from current player
+      currentPlayer.isCaptain = false
+      // Set new captain
+      targetPlayer.isCaptain = true
+      
+      const teamsInfo = getTeamsInfo(room)
+      
+      // Broadcast captain change
+      io.to(roomCode).emit('team-captain-changed', {
+        teamId,
+        newCaptainId: targetPlayer.id,
+        newCaptainName: targetPlayer.name,
+        teams: teamsInfo,
+      })
+      
+      // Notify the new captain
+      io.to(targetPlayer.id).emit('leadership-received', {
+        type: 'captain',
+        teamId,
+        teamName: getTeamDisplayName(room, teamId),
+        transferredByName: currentPlayer.name,
+      })
+      
+      // Notify the old captain
+      socket.emit('leadership-transferred', {
+        type: 'captain',
+        teamId,
+        newLeaderName: targetPlayer.name,
+      })
+      
+      console.log(`[transfer-leadership] Captain ${currentPlayer.name} transferred captain of Team ${teamId} to ${targetPlayer.name} in room ${roomCode}`)
+      
+    } else if (data.type === 'host') {
+      // Host transfer: only current host can do this, target can be any player
+      if (!currentPlayer.isHost) {
+        socket.emit('game-error', { message: 'فقط المضيف يقدر ينقل الإدارة' })
+        return
+      }
+      if (targetPlayer.id === currentPlayer.id) {
+        socket.emit('game-error', { message: 'ما تنقلش الإدارة لنفسك!' })
+        return
+      }
+      
+      // Transfer host
+      currentPlayer.isHost = false
+      targetPlayer.isHost = true
+      room.hostId = targetPlayer.id
+      room.hostName = targetPlayer.name
+      
+      io.to(roomCode).emit('host-changed', {
+        newHostId: targetPlayer.id,
+        newHostName: targetPlayer.name,
+        oldHostName: currentPlayer.name,
+        players: playersToArray(room.players),
+      })
+      
+      // Notify the new host
+      io.to(targetPlayer.id).emit('leadership-received', {
+        type: 'host',
+        transferredByName: currentPlayer.name,
+      })
+      
+      // Notify the old host
+      socket.emit('leadership-transferred', {
+        type: 'host',
+        newLeaderName: targetPlayer.name,
+      })
+      
+      console.log(`[transfer-leadership] Host ${currentPlayer.name} transferred host to ${targetPlayer.name} in room ${roomCode}`)
+    }
   })
 
   socket.on('error', (error) => {
