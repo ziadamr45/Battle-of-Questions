@@ -337,3 +337,46 @@ Stage Summary:
 - Layout metadata unified
 - Invite generator unified
 - Zero remaining generic terminology instances
+
+---
+Task ID: 8
+Agent: Main Coordinator (Direct)
+Task: Redesign and simplify Captain Moderation Controls
+
+Work Log:
+- Analyzed current moderation UI: multiple separate buttons per player (local mute, global mute, kick, transfer host, transfer captain) creating cluttered, confusing UX
+- Created new `FighterActionMenu` component at `src/components/fighter-action-menu.tsx`
+  - ONE unified trigger button (MoreVertical/⋮ icon) per fighter
+  - Compact action menu popup with smooth Framer Motion animation
+  - Context-aware menu items based on role (host/captain/player)
+  - Player name header in menu for clarity
+  - Confirmation dialogs for destructive actions (kick, transfer)
+  - Mobile-friendly with active:scale feedback
+  - Optimistic local mute updates for instant visual feedback
+  - Auto-close on scroll, resize, Escape, outside click
+- Replaced all multi-button layouts across the app:
+  - Solo lobby player list (was 4 separate buttons → 1 menu)
+  - Team lobby Team A players (was 2 separate buttons → 1 menu)
+  - Team lobby Team B players (was 2 separate buttons → 1 menu)
+  - Team lobby unassigned players (added menu where none existed)
+  - Game screen results sidebar (was 3 separate buttons → 1 menu)
+- Menu items per role:
+  - All players: "كتم لدي فقط" (local mute) / "إلغاء الكتم لدي فقط"
+  - Host only: "كتم لدى الجميع" (global mute), "طرد من الساحة" (kick), "نوّل الإدارة" (transfer host)
+  - Captain only: "نوّل القيادة" (transfer captain, same team only)
+- Performance improvements:
+  - Lightweight popup with no heavy dropdown libraries
+  - Optimistic local mute for instant UI response
+  - Close on scroll/resize to prevent detached menus
+  - Active state transitions for tactile feedback
+- Lint check: PASSED
+- Dev server: RUNNING (no compilation errors)
+- Pushed to GitHub successfully
+
+Stage Summary:
+- Captain moderation controls completely redesigned: from cluttered multi-button to clean unified action menu
+- ONE interaction point per fighter instead of many scattered buttons
+- Feels like "quick tactical arena controls" instead of "admin panel management"
+- Team mode compatible: captain sees team-specific actions, host sees global actions
+- Mobile-friendly with touch-optimized targets
+- All changes pushed to GitHub
