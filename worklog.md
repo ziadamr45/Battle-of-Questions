@@ -686,3 +686,46 @@ Stage Summary:
 - Speed bonus and finished-first shown in round transition team scores
 - Tension ambience with animated "الساحة تنتظر اكتمال الفريق الآخر..." message
 - Lint passes clean, both services compile without errors
+
+---
+Task ID: 13
+Agent: Main Agent
+Task: Enforce Team Mode Inheritance Rule - Team Mode must extend Solo Mode, not rebuild
+
+Work Log:
+- Audited entire codebase for inheritance violations where Team Mode duplicates Solo Mode systems
+- Found key areas where Team Mode needed to properly EXTEND existing Solo systems:
+  1. RoundTransitionScreen: settings/early-end/start-round only checked isHost, missing team-mode captain awareness
+  2. Rejoin system: rejoin-success handler didn't restore team data (myTeamId, isCaptain, battleMode, teams)
+  3. Disconnect handling: no team-aware logic for when all players from one team disconnect during gameplay
+  4. Early-end-game: dead duplicate team mode code block that was never reachable
+- Fixed RoundTransitionScreen (page.tsx):
+  - Added isCaptain, myTeamId, pendingApproval, setPendingApproval store subscriptions
+  - Updated handleUpdateSettings to route through captain-approval-request in team mode (extends solo host flow)
+  - Added handleApprovalResponse function for captain approval popups
+  - Updated start-round button visibility: solo=host only, team=any captain (extends existing ready system)
+  - Updated host controls visibility: solo=host, team=captains can see settings/early-end
+  - Updated early-end click handler: team mode uses captain-approval-request, solo uses confirmation dialog
+  - Added captain approval popup with ApprovalTimer, approve/reject buttons (same component as LobbyScreen)
+- Fixed rejoin-success handler (page.tsx):
+  - Added battleMode and teams to the rejoin-success data type
+  - Restores battleMode, teams, myTeamId, isCaptain from rejoin data
+  - Derives myTeamId and isCaptain from players list (extends existing rejoin flow)
+- Fixed disconnect handling (game-service/index.ts):
+  - Added team-mode check in disconnect branch: if all players from one team disconnect, other team wins
+  - Added team-mode check in leave branch: same logic for voluntary leaves
+  - Emits team-ready-state notification with winning team message
+  - Calls handleRoundEnd to properly end the round
+- Fixed early-end-game handler (game-service/index.ts):
+  - Removed dead duplicate team mode code block (was unreachable after the early return)
+  - Cleaned up leftover lines from the removed block
+- Verified host-start-round handler already updated to allow captains in team mode
+- Lint passes clean, both services compile and run without errors
+
+Stage Summary:
+- Team Mode now properly EXTENDS Solo Mode across all screens and flows
+- RoundTransitionScreen: captains have equal authority in team mode (settings, early-end, start-round)
+- Rejoin system: team data properly restored on reconnection
+- Disconnect/leave: team-mode awareness prevents stale game states when a team empties
+- Solo mode completely unaffected - all changes are conditional on battleMode === 'فرق'
+- Philosophy applied: "extend, adapt, augment" NOT "duplicate, rewrite, replace"

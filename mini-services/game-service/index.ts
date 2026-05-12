@@ -1141,6 +1141,28 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
         winnerName: remainingPlayer?.name,
       })
       handleGameEnd(roomCode)
+    } else if (room.status === 'playing' && room.battleMode === 'فرق' && activePlayers.length > 1) {
+      // Team mode: check if all players from one team left during gameplay
+      const teamAActive = activePlayers.filter(p => p.teamId === 'A')
+      const teamBActive = activePlayers.filter(p => p.teamId === 'B')
+      
+      if (teamAActive.length === 0 && teamBActive.length > 0) {
+        io.to(roomCode).emit('team-ready-state', {
+          teamId: 'B',
+          teamName: 'الفريق الأزرق',
+          message: 'الفريق الأحمر غادر الساحة! الفريق الأزرق يفوز! 🌊',
+          allTeamsReady: true,
+        })
+        handleRoundEnd(roomCode)
+      } else if (teamBActive.length === 0 && teamAActive.length > 0) {
+        io.to(roomCode).emit('team-ready-state', {
+          teamId: 'A',
+          teamName: 'الفريق الأحمر',
+          message: 'الفريق الأزرق غادر الساحة! الفريق الأحمر يفوز! 🔥',
+          allTeamsReady: true,
+        })
+        handleRoundEnd(roomCode)
+      }
     } else if (activePlayers.length === 0) {
       deleteRoom(roomCode)
     }
@@ -1189,6 +1211,33 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
     if (room.status === 'playing' && activePlayers.length === 1) {
       console.log(`[disconnect] Only 1 active player left in room ${roomCode}. Waiting ${DISCONNECT_GRACE_PERIOD / 1000}s for reconnection...`)
       // The cleanup interval will handle ending the game if the player doesn't rejoin
+    }
+
+    // Team mode: check if all players from one team disconnected during gameplay
+    if (room.status === 'playing' && room.battleMode === 'فرق') {
+      const teamAActive = activePlayers.filter(p => p.teamId === 'A')
+      const teamBActive = activePlayers.filter(p => p.teamId === 'B')
+      
+      if (teamAActive.length === 0 && teamBActive.length > 0) {
+        // Team A has no active players - Team B wins by default
+        io.to(roomCode).emit('team-ready-state', {
+          teamId: 'B',
+          teamName: 'الفريق الأزرق',
+          message: 'الفريق الأحمر غادر الساحة! الفريق الأزرق يفوز! 🌊',
+          allTeamsReady: true,
+        })
+        // End the round/game - Team B wins
+        handleRoundEnd(roomCode)
+      } else if (teamBActive.length === 0 && teamAActive.length > 0) {
+        // Team B has no active players - Team A wins by default
+        io.to(roomCode).emit('team-ready-state', {
+          teamId: 'A',
+          teamName: 'الفريق الأحمر',
+          message: 'الفريق الأزرق غادر الساحة! الفريق الأحمر يفوز! 🔥',
+          allTeamsReady: true,
+        })
+        handleRoundEnd(roomCode)
+      }
     }
 
     console.log(`[disconnect] ${playerName} disconnected from room ${roomCode}. Marked for reconnection (grace: ${DISCONNECT_GRACE_PERIOD / 1000}s). Active: ${activePlayers.length}`)
@@ -1464,65 +1513,10 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
-      // In team mode, early-end requires captain approval
+      // In team mode, early end should go through captain-approval-request instead
       if (room.battleMode === 'فرق') {
-        const player = room.players.get(socket.id)
-        if (!player?.isCaptain) {
-          socket.emit('early-end-rejected', { message: 'فقط قائد الفريق يقدر يطلب إنهاء المعركة' })
-          return
-        }
-        
-        // Check if this is already an approved action
-        // If not, send approval request
-        const otherTeamId: TeamId = player.teamId === 'A' ? 'B' : 'A'
-        const otherCaptain = getTeamPlayers(room, otherTeamId).find(p => p.isCaptain)
-        
-        if (otherCaptain) {
-          if (room.pendingApproval && room.pendingApproval.status === 'pending') {
-            socket.emit('early-end-rejected', { message: 'يوجد طلب موافقة معلق بالفعل' })
-            return
-          }
-          
-          const approvalId = `approval-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
-          
-          room.pendingApproval = {
-            id: approvalId,
-            type: 'early-end',
-            description: 'طلب إنهاء المعركة مبكراً',
-            requestedBy: socket.id,
-            requestedByName: player.name,
-            targetCaptainId: otherCaptain.id,
-            targetCaptainName: otherCaptain.name,
-            createdAt: Date.now(),
-            expiresAt: Date.now() + 40000,
-            data: { roomCode },
-            status: 'pending',
-          }
-          
-          io.to(otherCaptain.id).emit('approval-requested', {
-            approvalId,
-            type: 'early-end',
-            description: 'طلب إنهاء المعركة مبكراً',
-            requestedByName: player.name,
-            requestedByTeam: player.teamId,
-            expiresAt: room.pendingApproval.expiresAt,
-          })
-          
-          socket.emit('approval-sent', {
-            approvalId,
-            targetCaptainName: otherCaptain.name,
-          })
-          
-          setTimeout(() => {
-            if (room.pendingApproval && room.pendingApproval.id === approvalId && room.pendingApproval.status === 'pending') {
-              room.pendingApproval.status = 'expired'
-              io.to(roomCode).emit('approval-expired', { approvalId })
-              room.pendingApproval = null
-            }
-          }, 41000)
-          
-          return
-        }
+        socket.emit('game-error', { message: 'في وضع الفرق، يجب طلب الموافقة من قائد الفريق الآخر' })
+        return
       }
 
       // Validate game is in progress
@@ -2374,9 +2368,11 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(roomCode)
     if (!room || room.status !== 'playing') return
 
-    // Verify the requester is the host
+    // Verify the requester is the host (solo) or a captain (team mode)
     const player = room.players.get(socket.id)
-    if (!player?.isHost) {
+    const isHostOrCaptain = player?.isHost || 
+      (room.battleMode === 'فرق' && player?.isCaptain)
+    if (!isHostOrCaptain) {
       socket.emit('game-error', { message: 'فقط القائد يستطيع بدء الجولة' })
       return
     }

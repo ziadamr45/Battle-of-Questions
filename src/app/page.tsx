@@ -494,13 +494,28 @@ function useGameSocket() {
     socket.on('rejoin-success', (data: {
       roomCode: string; players: Player[]; settings: GameSettings; roomType: RoomType; hasPassword: boolean; isHost: boolean;
       status: 'waiting' | 'playing' | 'finished'; gameContent?: GameContent | null; currentRound?: number; totalRounds?: number;
-      answers?: Record<number, number>; scores?: Player[]; timeLeft?: number; roundWinners?: Record<number, string>; roundResults?: Record<number, RoundScore[]>
+      answers?: Record<number, number>; scores?: Player[]; timeLeft?: number; roundWinners?: Record<number, string>; roundResults?: Record<number, RoundScore[]>;
+      battleMode?: BattleMode; teams?: TeamsState;
     }) => {
       const s = store.getState()
       s.setRoomCode(data.roomCode); s.setPlayers(data.players); s.setGameSettings(data.settings)
       if (data.roomType) s.setRoomType(data.roomType)
       if (data.hasPassword) s.setRoomPassword('•')
       s.setIsHost(data.isHost)
+      // Restore team mode data on rejoin (extends solo reconnect system)
+      if (data.battleMode) {
+        s.setBattleMode(data.battleMode)
+        s.setGameSettings({ battleMode: data.battleMode })
+      }
+      if (data.teams) {
+        s.setTeams(data.teams)
+        // Derive myTeamId and isCaptain from players list
+        const myPlayer = data.players.find((p: Player) => p.id === socket.id)
+        if (myPlayer) {
+          s.setMyTeamId(myPlayer.teamId || null)
+          s.setIsCaptain(!!myPlayer.isCaptain)
+        }
+      }
       if (data.status === 'waiting') { s.setScreen('lobby') }
       else if (data.status === 'playing' && data.gameContent) {
         s.setGameContent(data.gameContent); s.setCurrentRound(data.currentRound || 0); s.setTotalRounds(data.totalRounds || 1)
@@ -4016,6 +4031,10 @@ function RoundTransitionScreen() {
   const setIsPlayerReady = useGameStore((s) => s.setIsPlayerReady)
   const teamRoundScores = useGameStore((s) => s.teamRoundScores)
   const battleMode = useGameStore((s) => s.battleMode)
+  const isCaptain = useGameStore((s) => s.isCaptain)
+  const myTeamId = useGameStore((s) => s.myTeamId)
+  const pendingApproval = useGameStore((s) => s.pendingApproval)
+  const setPendingApproval = useGameStore((s) => s.setPendingApproval)
   const [showEditSettings, setShowEditSettings] = useState(false)
   const [showEarlyEndModal, setShowEarlyEndModal] = useState(false)
   const [showAnswerReview, setShowAnswerReview] = useState(false)
@@ -4037,11 +4056,41 @@ function RoundTransitionScreen() {
     setIsPlayerReady(true)
   }, [isPlayerReady, setIsPlayerReady])
 
-  // Send settings update to server (host only)
+  const handleApprovalResponse = useCallback((approvalId: string, approved: boolean) => {
+    if (!globalSocket) return
+    globalSocket.emit('captain-approval-response', { approvalId, approved })
+    setPendingApproval(null)
+  }, [setPendingApproval])
+
+  // Send settings update to server (host/captain)
   const handleUpdateSettings = useCallback((newSettings: Partial<typeof gameSettings>) => {
-    if (!isHost || !globalSocket) return
+    if (!globalSocket) return
+
+    // Team mode: captains need approval from other captain
+    if (battleMode === 'فرق' && isCaptain) {
+      const changeLabels: Record<string, string> = {
+        gameType: 'نوع اللعبة',
+        difficulty: 'الصعوبة',
+        timePerRound: 'وقت الجولة',
+        numberOfRounds: 'عدد الجولات',
+        maxPlayers: 'عدد اللاعبين',
+        playerMode: 'نوع الساحة',
+        passageType: 'نوع القطعة',
+      }
+      const changesDesc = Object.keys(newSettings).map(k => changeLabels[k] || k).join('، ')
+
+      globalSocket.emit('captain-approval-request', {
+        type: 'settings',
+        description: `طلب تعديل: ${changesDesc}`,
+        data: newSettings,
+      })
+      return
+    }
+
+    // Solo mode - host can change directly
+    if (!isHost) return
     globalSocket.emit('update-settings', { settings: newSettings, roomCode })
-  }, [isHost, roomCode])
+  }, [isHost, isCaptain, battleMode, roomCode])
 
   // Listen for settings-updated from server
   useEffect(() => {
@@ -4235,8 +4284,8 @@ function RoundTransitionScreen() {
                       {readyCount}/{totalActive} جاهزين
                     </Badge>
                   </div>
-                  {/* Host: Show start battle button after ready */}
-                  {isHost && (
+                  {/* Host/Captain: Show start battle button after ready */}
+                  {((isHost && battleMode !== 'فرق') || (isCaptain && battleMode === 'فرق')) && (
                     <Button
                       onClick={() => globalSocket?.emit('host-start-round')}
                       className="btn-battle rounded-xl gap-2 px-8 py-5 text-base mt-2"
@@ -4274,8 +4323,8 @@ function RoundTransitionScreen() {
             </div>
           )}
 
-          {/* Host controls between rounds */}
-          {isHost && !isLastRound && (
+          {/* Host/Captain controls between rounds */}
+          {((isHost && battleMode !== 'فرق') || (isCaptain && battleMode === 'فرق')) && !isLastRound && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -4293,7 +4342,21 @@ function RoundTransitionScreen() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowEarlyEndModal(true)}
+                onClick={() => {
+                  if (battleMode === 'فرق' && isCaptain) {
+                    // Team mode: request captain approval for early end
+                    if (globalSocket) {
+                      globalSocket.emit('captain-approval-request', {
+                        type: 'early-end',
+                        description: 'طلب إنهاء المعركة مبكراً',
+                        data: {},
+                      })
+                    }
+                  } else if (isHost) {
+                    // Solo mode: show confirmation dialog
+                    setShowEarlyEndModal(true)
+                  }
+                }}
                 disabled={earlyEndProcessing}
                 className="border-red-500/30 bg-red-500/5 text-red-400 hover:bg-red-500/15 hover:text-red-300 rounded-xl gap-1.5"
               >
@@ -4352,6 +4415,42 @@ function RoundTransitionScreen() {
         totalRounds={totalRounds}
         isProcessing={earlyEndProcessing}
       />
+
+      {/* Captain Approval Popup (team mode) */}
+      <AnimatePresence>
+        {battleMode === 'فرق' && pendingApproval && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className="fixed bottom-4 left-4 right-4 z-50 max-w-md mx-auto"
+          >
+            <div className="battle-card-glow rounded-2xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-5 h-5 text-amber-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-white text-sm">طلب موافقة</h4>
+                  <p className="text-xs text-slate-400 mt-0.5">{pendingApproval.requestedByName} ({pendingApproval.requestedByTeam === 'A' ? 'الفريق الأحمر' : 'الفريق الأزرق'})</p>
+                  <p className="text-sm text-amber-300 mt-2">{pendingApproval.description}</p>
+                  <ApprovalTimer expiresAt={pendingApproval.expiresAt} />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => handleApprovalResponse(pendingApproval.approvalId, true)}>
+                  ✅ موافقة
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                  onClick={() => handleApprovalResponse(pendingApproval.approvalId, false)}>
+                  ❌ رفض
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
