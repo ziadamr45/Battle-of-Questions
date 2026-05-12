@@ -133,6 +133,221 @@ export function generateMultipleNames(count: number = 3): string[] {
   return Array.from(names)
 }
 
+// ============================================
+// TEAM NAME GENERATOR — معركة الأسئلة
+// Battle-oriented, competitive, modern Arabic team names
+// ============================================
+
+// Single-word power names — short, punchy, faction-like
+const teamSingleNames = [
+  // Predators & beasts
+  'الصقور',       // The Falcons
+  'الذئاب',       // The Wolves
+  'النسور',       // The Eagles
+  'النمور',       // The Tigers
+  'الأسود',       // The Lions
+  'العقبان',      // The Eagles (dual)
+  'الأفاعي',      // The Snakes
+  'الفرسان',      // The Knights
+  'الصيادون',     // The Hunters
+  'الكواسر',      // The Predators
+
+  // Forces of nature
+  'العاصفة',      // The Storm
+  'البراكين',     // The Volcanoes
+  'الزلازل',      // The Earthquakes
+  'الأعاصير',     // The Hurricanes
+  'الصواعق',      // The Thunderbolts
+  'السيول',       // The Floods
+  'الرعود',       // The Thunders
+  'البروق',       // The Lightnings
+  'النيران',      // The Fires
+  'اللهيب',       // The Flames
+
+  // Combat & power
+  'النخبة',       // The Elite
+  'القناصة',      // The Snipers
+  'الشبح',        // The Ghost
+  'الأشباح',      // The Ghosts
+  'الظلال',       // The Shadows
+  'الحراس',       // The Guardians
+  'الفرسان',      // The Cavalry
+  'الغزاة',       // The Invaders
+  'الفتوح',       // The Conquerors
+  'الطامحون',     // The Ambitious
+  'الجزارين',     // The Butchers
+  'القاهرون',     // The Conquerors
+  'الصامدون',     // The Resilient
+  'المحاربون',    // The Warriors
+  'المقاتلون',    // The Fighters
+  'المنتصرون',    // The Victorious
+  'المغوارون',    // The Daring
+  'العقاب',       // The Revenge
+  'الدمار',       // The Destruction
+  'الهجوم',       // The Attack
+
+  // Intelligence & strategy
+  'العقول',       // The Minds
+  'العباقرة',     // The Geniuses
+  'الاستراتيجيون', // The Strategists
+  'الأذكياء',     // The Smart Ones
+  'الحواة',       // The Snake-charmers (clever)
+
+  // Dominance & glory
+  'العرش',        // The Throne
+  'التاج',        // The Crown
+  'المجد',        // The Glory
+  'السيادة',      // The Dominance
+  'السطوة',       // The Authority
+  'الريادة',      // The Leadership
+  'القمة',        // The Peak
+  'الصدارة',      // The Forefront
+  'الصولجان',     // The Scepter
+
+  // Darkness & mystery
+  'الظلام',       // The Darkness
+  'الليل',        // The Night
+  'السحاب',       // The Clouds
+  'الضباب',       // The Fog
+  'السراب',       // The Mirage
+  'الكهف',        // The Cave
+
+  // Metal & weapons
+  'السيوف',       // The Swords
+  'الرماح',       // The Spears
+  'السهام',       // The Arrows
+  'الدروع',       // The Shields
+  'الخناجر',      // The Daggers
+  'الحراب',       // The Spears
+  'القناة',       // The Channel/Weapon
+
+  // Intensity & energy
+  'الحماس',       // The Enthusiasm
+  'الشرر',        // The Sparks
+  'الجمر',        // The Embers
+  'الوهج',        // The Blaze
+  'الشعلة',       // The Torch
+  'النبض',        // The Pulse
+  'الزئير',       // The Roar
+  'الكفاح',       // The Struggle
+  'العزيمة',      // The Determination
+
+  // Modern competitive
+  'الكونغرس',     // The Congress
+  'السنيورز',     // The Seniors (elite)
+  'الأبطال',      // The Champions
+  'النجوم',       // The Stars
+  'العمالقة',     // The Giants
+  'الأساطير',     // The Legends
+  'الوحوش',       // The Monsters
+  'الأروقة',      // The Corridors (arena halls)
+]
+
+// Prefix + Suffix combos — "The X of Y" style
+const teamPrefixes = [
+  'أبناء',       // Sons of
+  'فرسان',       // Knights of
+  'حراس',        // Guardians of
+  'سادة',        // Masters of
+  'أمراء',       // Princes of
+  'ملوك',        // Kings of
+  'أسياد',       // Lords of
+  'جنود',        // Soldiers of
+  'ورثة',        // Heirs of
+  'أنصار',       // Supporters of
+  'فرقة',        // Squad of
+  'كتيبة',       // Battalion of
+  'عصابة',       // Gang of
+  'رابطة',       // League of
+  'لواء',        // Brigade of
+]
+
+const teamSuffixes = [
+  'النار',       // Fire
+  'الحرب',       // War
+  'المعركة',     // Battle
+  'العاصفة',     // The Storm
+  'الظلام',      // Darkness
+  'الليل',       // The Night
+  'الدمار',      // Destruction
+  'الفناء',      // Oblivion
+  'الجحيم',      // Hell
+  'الصحراء',     // The Desert
+  'البرق',       // Lightning
+  'الرعد',       // Thunder
+  'الغضب',       // Fury
+  'الموت',       // Death
+  'الخطر',       // Danger
+  'القوة',       // Power
+  'الشرف',       // Honor
+  'المجد',       // Glory
+  'الدم',        // Blood
+  'النصر',       // Victory
+  'الصلب',       // Steel
+  'الحديد',      // Iron
+  'الفضاء',      // Space
+  'الجليد',      // Ice
+  'الزمن',       // Time
+  'السراب',      // Mirage
+  'الهاوية',     // The Abyss
+  'الأشباح',     // Ghosts
+  'الخالدين',    // The Immortals
+  'المجهول',     // The Unknown
+]
+
+// Track recently generated team names to avoid repeats
+let recentTeamNames: string[] = []
+const MAX_RECENT = 20
+
+export function generateRandomTeamName(): string {
+  const style = Math.random()
+  let name: string
+
+  if (style < 0.45) {
+    // Single power name — most common, punchiest
+    name = pickRandom(teamSingleNames)
+  } else if (style < 0.8) {
+    // Prefix + Suffix combo (e.g., "فرسان النار")
+    const prefix = pickRandom(teamPrefixes)
+    const suffix = pickRandom(teamSuffixes)
+    name = `${prefix} ${suffix}`
+  } else if (style < 0.95) {
+    // "الـ" + aggressive noun — definite article power
+    const powerNouns = [
+      'عاصفة', 'صاعقة', 'زلزال', 'بركان', 'إعصار',
+      'هجوم', 'غارة', 'كتلة', 'قوة', 'ضربة',
+    ]
+    name = `ال${pickRandom(powerNouns)}`
+  } else {
+    // Short tactical code name
+    const codeNames = [
+      'فالكون', 'كوبرا', 'رابتور', 'تايفون', 'فينيكس',
+      'سبارتان', 'فايكنج', 'ساموراي', 'تيتان', 'أولمبوس',
+      'كلاود', 'شادو', 'ستورم', 'بلاك آوت', 'فيرنوم',
+    ]
+    name = pickRandom(codeNames)
+  }
+
+  // Avoid exact repetition from recent names
+  if (recentTeamNames.includes(name)) {
+    // Try once more
+    return generateRandomTeamName()
+  }
+
+  // Track recently generated names
+  recentTeamNames.push(name)
+  if (recentTeamNames.length > MAX_RECENT) {
+    recentTeamNames = recentTeamNames.slice(-MAX_RECENT)
+  }
+
+  return name
+}
+
+// Reset recent names tracker (useful when leaving a room)
+export function resetTeamNameTracker(): void {
+  recentTeamNames = []
+}
+
 // Avatar color palette — battle/arena themed
 const avatarColors = [
   '#DC2626', // Red-600

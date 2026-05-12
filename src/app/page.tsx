@@ -85,6 +85,7 @@ import { FighterActionMenu } from '@/components/fighter-action-menu'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
 import { NameEntryModal, EditNameModal, PlayerNameBadge } from '@/components/guest-identity'
 import { useGuestStore } from '@/lib/guest-store'
+import { generateRandomTeamName } from '@/lib/arabic-names'
 import { ShareModal } from '@/components/share-modal'
 import { parseJoinUrl, cleanJoinParams } from '@/lib/share-utils'
 import { BattleHistoryList, BattleDetail } from '@/components/battle-history'
@@ -2929,6 +2930,11 @@ function LobbyScreen() {
     setRenameInput('')
   }, [renameInput])
 
+  const handleRandomTeamName = useCallback(() => {
+    setRenameInput(generateRandomTeamName())
+    audioEngine.buttonClick()
+  }, [])
+
   // Force unassigned players to global chat mode
   useEffect(() => {
     if (battleMode === 'فرق' && myTeamId === null && chatMode === 'team') {
@@ -3258,6 +3264,13 @@ function LobbyScreen() {
                               autoFocus
                               maxLength={20}
                             />
+                            <button
+                              onClick={handleRandomTeamName}
+                              className="w-6 h-6 rounded flex items-center justify-center text-amber-400/50 hover:text-amber-400 hover:bg-amber-500/20 transition-all shrink-0 active:scale-90"
+                              title="اسم عشوائي"
+                            >
+                              <Shuffle className="w-3 h-3" />
+                            </button>
                             <button onClick={() => handleRenameTeam('A')} className="text-green-400 hover:text-green-300 text-xs shrink-0">✓</button>
                             <button onClick={() => { setRenamingTeam(null); setRenameInput('') }} className="text-red-400/60 hover:text-red-400 text-xs shrink-0">✕</button>
                           </div>
@@ -3369,6 +3382,13 @@ function LobbyScreen() {
                               autoFocus
                               maxLength={20}
                             />
+                            <button
+                              onClick={handleRandomTeamName}
+                              className="w-6 h-6 rounded flex items-center justify-center text-amber-400/50 hover:text-amber-400 hover:bg-amber-500/20 transition-all shrink-0 active:scale-90"
+                              title="اسم عشوائي"
+                            >
+                              <Shuffle className="w-3 h-3" />
+                            </button>
                             <button onClick={() => handleRenameTeam('B')} className="text-green-400 hover:text-green-300 text-xs shrink-0">✓</button>
                             <button onClick={() => { setRenamingTeam(null); setRenameInput('') }} className="text-red-400/60 hover:text-red-400 text-xs shrink-0">✕</button>
                           </div>
