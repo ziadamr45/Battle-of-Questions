@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 
 // GET /api/battle-history?playerName=xxx&page=1&limit=30
 // List battles for a specific player, newest first
 export async function GET(req: NextRequest) {
+  // Rate limit: 30 requests per minute per IP
+  const ip = getClientIp(req)
+  const rateCheck = checkRateLimit(ip, 'battle-history', { maxRequests: 30, windowSeconds: 60 })
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'طلبات كتير، حاول تاني بعد شوية' },
+      { status: 429, headers: { 'Retry-After': String(rateCheck.retryAfter) } }
+    )
+  }
+
   const playerName = req.nextUrl.searchParams.get('playerName')
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1', 10)
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '30', 10), 30)
@@ -26,6 +37,11 @@ export async function GET(req: NextRequest) {
 
   if (!playerName) {
     return NextResponse.json({ error: 'Missing playerName' }, { status: 400 })
+  }
+
+  // Validate playerName length to prevent abuse
+  if (playerName.length > 30) {
+    return NextResponse.json({ error: 'Invalid playerName' }, { status: 400 })
   }
 
   const skip = (page - 1) * limit
@@ -65,6 +81,16 @@ export async function GET(req: NextRequest) {
 
 // POST /api/battle-history — Save a new battle record
 export async function POST(req: NextRequest) {
+  // Rate limit: 5 creates per minute per IP (battle saves are infrequent)
+  const ip = getClientIp(req)
+  const rateCheck = checkRateLimit(ip, 'battle-history:post', { maxRequests: 5, windowSeconds: 60 })
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'طلبات كتير، حاول تاني بعد شوية' },
+      { status: 429, headers: { 'Retry-After': String(rateCheck.retryAfter) } }
+    )
+  }
+
   try {
     const body = await req.json()
     const {
@@ -85,6 +111,16 @@ export async function POST(req: NextRequest) {
 
     if (!roomCode || !gameType || !difficulty || !hostName || !participants || !rounds) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Validate participants array length to prevent abuse
+    if (!Array.isArray(participants) || participants.length === 0 || participants.length > 20) {
+      return NextResponse.json({ error: 'Invalid participants data' }, { status: 400 })
+    }
+
+    // Validate rounds array length
+    if (!Array.isArray(rounds) || rounds.length === 0 || rounds.length > 20) {
+      return NextResponse.json({ error: 'Invalid rounds data' }, { status: 400 })
     }
 
     const battle = await db.battle.create({

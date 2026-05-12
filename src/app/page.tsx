@@ -46,7 +46,6 @@ import {
   Crosshair,
   Timer,
   Medal,
-  Award,
   Skull,
   Volume2,
   VolumeX,

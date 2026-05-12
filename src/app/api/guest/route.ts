@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 
 // GET /api/guest?id=<guest_id> — Lookup existing guest
 export async function GET(req: NextRequest) {
+  const ip = getClientIp(req)
+  const rateCheck = checkRateLimit(ip, 'guest', { maxRequests: 30, windowSeconds: 60 })
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'طلبات كتير، حاول تاني بعد شوية' },
+      { status: 429, headers: { 'Retry-After': String(rateCheck.retryAfter) } }
+    )
+  }
+
   const guestId = req.nextUrl.searchParams.get('id')
 
   if (!guestId) {
@@ -28,6 +38,15 @@ export async function GET(req: NextRequest) {
 
 // POST /api/guest — Create new guest or restore by id
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req)
+  const rateCheck = checkRateLimit(ip, 'guest:post', { maxRequests: 10, windowSeconds: 60 })
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'طلبات كتير، حاول تاني بعد شوية' },
+      { status: 429, headers: { 'Retry-After': String(rateCheck.retryAfter) } }
+    )
+  }
+
   try {
     const body = await req.json()
     const { displayName, avatarColor, guestId } = body
@@ -73,6 +92,15 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/guest — Update guest (name, avatarColor)
 export async function PATCH(req: NextRequest) {
+  const ip = getClientIp(req)
+  const rateCheck = checkRateLimit(ip, 'guest:patch', { maxRequests: 15, windowSeconds: 60 })
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'طلبات كتير، حاول تاني بعد شوية' },
+      { status: 429, headers: { 'Retry-After': String(rateCheck.retryAfter) } }
+    )
+  }
+
   try {
     const body = await req.json()
     const { guestId, displayName, avatarColor } = body
