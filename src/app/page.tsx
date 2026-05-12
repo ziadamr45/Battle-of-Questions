@@ -608,22 +608,6 @@ function AudioControls() {
     }
   }, [showSlider])
 
-  // Main button: single click = toggle mute, this is the most common action
-  // Long press or second tap when already muted = show slider for volume control
-  const handleMainClick = () => {
-    initAudio()
-    if (showSlider) {
-      // If slider is open, close it
-      setShowSlider(false)
-    } else if (settings.isMuted) {
-      // If currently muted, unmute on click
-      toggleMute()
-    } else {
-      // If not muted, mute on click (quick mute)
-      toggleMute()
-    }
-  }
-
   // When volume changes via slider, unmute if muted
   const handleVolumeChange = (v: number[]) => {
     const newVol = v[0] / 100
@@ -723,38 +707,20 @@ function AudioControls() {
         )}
       </AnimatePresence>
 
-      {/* Main button - click to mute/unmute, long-press to open slider */}
-      <div className="flex items-center gap-2">
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={handleMainClick}
-          onContextMenu={(e) => { e.preventDefault(); initAudio(); setShowSlider(!showSlider) }}
-          className={`w-10 h-10 rounded-full backdrop-blur-xl border transition-all ${
-            settings.isMuted
-              ? 'bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30 hover:text-red-300'
-              : 'bg-black/40 border-white/10 text-slate-400 hover:text-white hover:bg-white/10 hover:border-white/20'
-          }`}
-          title={settings.isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
-        >
-          <VolumeIcon className="w-4 h-4" />
-        </Button>
-
-        {/* Small gear/expand button to open volume slider */}
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => { initAudio(); setShowSlider(!showSlider) }}
-          className={`w-7 h-7 rounded-full backdrop-blur-xl border transition-all ${
-            showSlider
-              ? 'bg-white/10 border-white/20 text-white'
-              : 'bg-black/30 border-white/5 text-slate-500 hover:text-white hover:bg-white/10'
-          }`}
-          title="ضبط مستوى الصوت"
-        >
-          <Settings className="w-3 h-3" />
-        </Button>
-      </div>
+      {/* Single button - click to toggle slider */}
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={() => { initAudio(); setShowSlider(!showSlider) }}
+        className={`w-10 h-10 rounded-full backdrop-blur-xl border transition-all ${
+          settings.isMuted
+            ? 'bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30 hover:text-red-300'
+            : 'bg-black/40 border-white/10 text-slate-400 hover:text-white hover:bg-white/10 hover:border-white/20'
+        }`}
+        title={settings.isMuted ? 'إلغاء كتم الصوت' : 'التحكم في الصوت'}
+      >
+        <VolumeIcon className="w-4 h-4" />
+      </Button>
     </div>
   )
 }
