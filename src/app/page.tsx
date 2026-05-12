@@ -676,8 +676,8 @@ function AudioControls() {
   }, [settings.masterVolume, settings.isMuted])
 
   return (
-    <div ref={containerRef} className="fixed bottom-4 left-4 z-50 flex flex-col items-start gap-2">
-      {/* Slider popup - appears ABOVE the button */}
+    <div ref={containerRef} className="fixed bottom-4 left-4 z-50">
+      {/* Slider popup - absolutely positioned above the button so it doesn't shift */}
       <AnimatePresence>
         {showSlider && (
           <motion.div
@@ -685,9 +685,9 @@ function AudioControls() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.9 }}
             transition={{ duration: 0.15 }}
-            className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-2xl p-3 flex flex-col items-center gap-2 min-w-[140px]"
+            className="absolute bottom-14 left-0 bg-black/70 backdrop-blur-xl border border-white/10 rounded-2xl p-3 flex flex-col items-center gap-2 min-w-[140px]"
           >
-            <div className="flex items-center gap-2 w-full">
+            <div dir="ltr" className="flex items-center gap-2 w-full">
               <Volume1 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <Slider
                 value={[settings.isMuted ? 0 : settings.masterVolume * 100]}
@@ -707,7 +707,7 @@ function AudioControls() {
         )}
       </AnimatePresence>
 
-      {/* Single button - click to toggle slider */}
+      {/* Single button - stays fixed in place */}
       <Button
         size="icon"
         variant="ghost"
