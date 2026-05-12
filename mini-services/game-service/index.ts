@@ -1197,6 +1197,62 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
   broadcastPublicRooms()
 }
 
+// ─── Team-Aware Finished Status Builder ──────────────────────────────────────
+// Builds the finished-status-update payload with team-specific info for
+// synchronized round progression. In team mode, includes per-team finish
+// counts, readiness flags, and player name lists for cinematic waiting UI.
+
+function buildFinishedStatus(room: GameRoom) {
+  const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
+  const activePlayerCount = activePlayers.length
+  const finishedCount = [...room.finishedPlayers].filter(id => {
+    const p = room.players.get(id)
+    return p && !p.isDisconnected
+  }).length
+
+  const unfinishedPlayerNames = activePlayers
+    .filter(([id]) => !room.finishedPlayers.has(id))
+    .map(([, p]) => p.name)
+
+  const result: any = {
+    finishedPlayers: [...room.finishedPlayers],
+    finishedCount,
+    totalActive: activePlayerCount,
+    unfinishedPlayerNames,
+  }
+
+  // Add team-aware fields for team mode synchronized progression
+  if (room.battleMode === 'فرق') {
+    const teamAPlayers = activePlayers.filter(([, p]) => p.teamId === 'A')
+    const teamBPlayers = activePlayers.filter(([, p]) => p.teamId === 'B')
+
+    const teamAFinished = teamAPlayers.filter(([id]) => room.finishedPlayers.has(id))
+    const teamBFinished = teamBPlayers.filter(([id]) => room.finishedPlayers.has(id))
+
+    const teamATotal = teamAPlayers.length
+    const teamBTotal = teamBPlayers.length
+    const teamAFinishedCount = teamAFinished.length
+    const teamBFinishedCount = teamBFinished.length
+
+    result.teamAFinishedCount = teamAFinishedCount
+    result.teamATotal = teamATotal
+    result.teamBFinishedCount = teamBFinishedCount
+    result.teamBTotal = teamBTotal
+    result.teamAReady = teamATotal > 0 && teamAFinishedCount >= teamATotal
+    result.teamBReady = teamBTotal > 0 && teamBFinishedCount >= teamBTotal
+    result.teamAFinishedNames = teamAFinished.map(([, p]) => p.name)
+    result.teamBFinishedNames = teamBFinished.map(([, p]) => p.name)
+    result.teamAUnfinishedNames = teamAPlayers
+      .filter(([id]) => !room.finishedPlayers.has(id))
+      .map(([, p]) => p.name)
+    result.teamBUnfinishedNames = teamBPlayers
+      .filter(([id]) => !room.finishedPlayers.has(id))
+      .map(([, p]) => p.name)
+  }
+
+  return result
+}
+
 // ─── Socket.IO Connection Handler ────────────────────────────────────────────
 
 io.on('connection', (socket: Socket) => {
@@ -2360,31 +2416,50 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(roomCode)
     if (!room || room.status !== 'playing') return
 
+    // Check team readiness BEFORE adding this player (to detect transitions)
+    let teamABeforeReady = false
+    let teamBBeforeReady = false
+    if (room.battleMode === 'فرق') {
+      const teamAPlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected && p.teamId === 'A')
+      const teamBPlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected && p.teamId === 'B')
+      teamABeforeReady = teamAPlayers.length > 0 && teamAPlayers.every(([id]) => room.finishedPlayers.has(id))
+      teamBBeforeReady = teamBPlayers.length > 0 && teamBPlayers.every(([id]) => room.finishedPlayers.has(id))
+    }
+
     // Add this player to the finished set
     room.finishedPlayers.add(socket.id)
 
-    // Broadcast finished status to all players
-    const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
-    const activePlayerCount = activePlayers.length
-    const finishedCount = [...room.finishedPlayers].filter(id => {
-      const p = room.players.get(id)
-      return p && !p.isDisconnected
-    }).length
+    // Build team-aware finished status
+    const finishedData = buildFinishedStatus(room)
 
-    // Build list of players who haven't finished yet (names)
-    const unfinishedPlayerNames = activePlayers
-      .filter(([id]) => !room.finishedPlayers.has(id))
-      .map(([, p]) => p.name)
+    io.to(roomCode).emit('finished-status-update', finishedData)
 
-    io.to(roomCode).emit('finished-status-update', {
-      finishedPlayers: [...room.finishedPlayers],
-      finishedCount,
-      totalActive: activePlayerCount,
-      unfinishedPlayerNames,
-    })
+    // Emit team-ready-state when a team JUST completed (transition from not-ready to ready)
+    if (room.battleMode === 'فرق') {
+      const player = room.players.get(socket.id)
+      const finishedTeamId = player?.teamId as TeamId | undefined
+
+      if (finishedTeamId === 'A' && !teamABeforeReady && finishedData.teamAReady) {
+        // Team A just completed — emit cinematic notification
+        io.to(roomCode).emit('team-ready-state', {
+          teamId: 'A',
+          teamName: 'الفريق الأحمر',
+          message: 'الفريق الأحمر جاهز! ⚔️',
+          allTeamsReady: !!finishedData.teamBReady,
+        })
+      } else if (finishedTeamId === 'B' && !teamBBeforeReady && finishedData.teamBReady) {
+        // Team B just completed — emit cinematic notification
+        io.to(roomCode).emit('team-ready-state', {
+          teamId: 'B',
+          teamName: 'الفريق الأزرق',
+          message: 'الفريق الأزرق جاهز! ⚔️',
+          allTeamsReady: !!finishedData.teamAReady,
+        })
+      }
+    }
 
     // If all active players have finished, end the round
-    if (finishedCount >= activePlayerCount && activePlayerCount >= 2) {
+    if (finishedData.finishedCount >= finishedData.totalActive && finishedData.totalActive >= 2) {
       handleRoundEnd(roomCode)
     }
   })
@@ -2401,24 +2476,10 @@ io.on('connection', (socket: Socket) => {
     // Remove this player from the finished set
     room.finishedPlayers.delete(socket.id)
 
-    // Broadcast updated finished status
-    const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
-    const activePlayerCount = activePlayers.length
-    const finishedCount = [...room.finishedPlayers].filter(id => {
-      const p = room.players.get(id)
-      return p && !p.isDisconnected
-    }).length
+    // Build team-aware finished status
+    const finishedData = buildFinishedStatus(room)
 
-    const unfinishedPlayerNames = activePlayers
-      .filter(([id]) => !room.finishedPlayers.has(id))
-      .map(([, p]) => p.name)
-
-    io.to(roomCode).emit('finished-status-update', {
-      finishedPlayers: [...room.finishedPlayers],
-      finishedCount,
-      totalActive: activePlayerCount,
-      unfinishedPlayerNames,
-    })
+    io.to(roomCode).emit('finished-status-update', finishedData)
   })
 
   // ── request-rematch ────────────────────────────────────────────────────
@@ -3494,24 +3555,66 @@ function handleRoundEnd(roomCode: string) {
 
   // Calculate team scores for team mode
   let teamRoundScores: {
-    A: { score: number; correctAnswers: number }
-    B: { score: number; correctAnswers: number }
+    A: { score: number; correctAnswers: number; speedBonus: number; finishedFirst: boolean }
+    B: { score: number; correctAnswers: number; speedBonus: number; finishedFirst: boolean }
     winningTeam: string | null
   } | null = null
   if (room.battleMode === 'فرق') {
+    // Determine which team finished first (speed bonus for synchronized progression)
+    const teamAFinishedPlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected && p.teamId === 'A')
+    const teamBFinishedPlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected && p.teamId === 'B')
+    
+    const teamAAllFinished = teamAFinishedPlayers.length > 0 && teamAFinishedPlayers.every(([id]) => room.finishedPlayers.has(id))
+    const teamBAllFinished = teamBFinishedPlayers.length > 0 && teamBFinishedPlayers.every(([id]) => room.finishedPlayers.has(id))
+    
+    // Speed bonus: small bonus for the team that finished first
+    // Only applies if both teams eventually finished (not if timer expired for one)
+    const SPEED_BONUS = 2 // Small fixed bonus that never overpowers accuracy
+    let teamASpeedBonus = 0
+    let teamBSpeedBonus = 0
+    let teamAFinishedFirst = false
+    let teamBFinishedFirst = false
+    
+    if (teamAAllFinished && teamBAllFinished) {
+      // Find the earliest finish time for each team
+      // The team whose last player finished first gets the bonus
+      // Since we don't track per-player finish timestamps, use the order:
+      // Check which team had all members in finishedPlayers first
+      // Heuristic: if the last finished player is from team A, team B finished first (and vice versa)
+      // Actually, we should track this properly. For now, give bonus to team with fewer unfinished at the time.
+      // Simple approach: the team that was fully ready while the other wasn't gets the bonus
+      // We detect this from the team-ready-state events that were emitted
+      // For a clean implementation, track which team completed first
+      // The team that had all players in finishedPlayers before the other gets the bonus
+      // Since we can't easily retroactively determine this, use the simpler approach:
+      // Check which team's last player was added to finishedPlayers more recently
+      // The team whose last player was NOT the most recent finisher finished first
+      const lastFinishedId = [...room.finishedPlayers].pop() // Most recent finisher (approx)
+      const lastFinishedPlayer = lastFinishedId ? room.players.get(lastFinishedId) : null
+      if (lastFinishedPlayer?.teamId === 'A') {
+        // Team A finished last, so Team B finished first
+        teamBSpeedBonus = SPEED_BONUS
+        teamBFinishedFirst = true
+      } else if (lastFinishedPlayer?.teamId === 'B') {
+        // Team B finished last, so Team A finished first
+        teamASpeedBonus = SPEED_BONUS
+        teamAFinishedFirst = true
+      }
+    }
+
     const teamAScore = roundScores
       .filter(s => {
         const p = room.players.get(s.playerId)
         return p?.teamId === 'A'
       })
-      .reduce((sum, s) => sum + s.score, 0)
+      .reduce((sum, s) => sum + s.score, 0) + teamASpeedBonus
     
     const teamBScore = roundScores
       .filter(s => {
         const p = room.players.get(s.playerId)
         return p?.teamId === 'B'
       })
-      .reduce((sum, s) => sum + s.score, 0)
+      .reduce((sum, s) => sum + s.score, 0) + teamBSpeedBonus
     
     const teamACorrect = roundScores
       .filter(s => {
@@ -3528,8 +3631,8 @@ function handleRoundEnd(roomCode: string) {
       .reduce((sum, s) => sum + s.correctAnswers, 0)
     
     teamRoundScores = {
-      A: { score: teamAScore, correctAnswers: teamACorrect },
-      B: { score: teamBScore, correctAnswers: teamBCorrect },
+      A: { score: teamAScore, correctAnswers: teamACorrect, speedBonus: teamASpeedBonus, finishedFirst: teamAFinishedFirst },
+      B: { score: teamBScore, correctAnswers: teamBCorrect, speedBonus: teamBSpeedBonus, finishedFirst: teamBFinishedFirst },
       winningTeam: teamAScore > teamBScore ? 'A' : teamBScore > teamAScore ? 'B' : null,
     }
   }

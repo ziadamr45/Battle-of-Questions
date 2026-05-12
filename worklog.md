@@ -657,3 +657,32 @@ Stage Summary:
 - Captain approval system with countdown timers and smooth animations
 - Chat restrictions enforced for unassigned players
 - All without breaking solo mode
+---
+Task ID: 12
+Agent: Main
+Task: Implement Synchronized Round Progression for Team Battle Mode
+
+Work Log:
+- Reviewed existing codebase - found team mode already heavily implemented (lobby, chat, captain system, join requests, team scores)
+- Identified missing piece: team-aware synchronized waiting state during gameplay when one team finishes before the other
+- Updated game-store.ts: Added team-finished fields to FinishedStatus type (teamAFinishedCount, teamATotal, teamBFinishedCount, teamBTotal, teamAReady, teamBReady, teamAFinishedNames, teamBFinishedNames, teamAUnfinishedNames, teamBUnfinishedNames)
+- Updated game-store.ts: Added speedBonus and finishedFirst fields to TeamRoundScores interface
+- Updated game-service/index.ts: Created buildFinishedStatus() helper function for team-aware finished status payloads
+- Updated game-service/index.ts: Updated player-finished handler with team-ready-before tracking for detecting team completion transitions
+- Updated game-service/index.ts: Added team-ready-state server event emitted when a whole team completes (detects transition from not-ready to ready)
+- Updated game-service/index.ts: Added speed bonus (2 pts) for team that finishes first in handleRoundEnd
+- Updated game-service/index.ts: Updated player-unfinish handler to use buildFinishedStatus()
+- Updated page.tsx: Replaced generic waiting overlay with team-aware cinematic waiting state in GameScreen
+- Updated page.tsx: Added team-ready-state socket listener with cinematic toast notifications
+- Updated page.tsx: Added speed bonus and finished-first indicators in RoundTransitionScreen team scores
+- Solo mode completely unaffected - all changes conditional on battleMode === 'فرق'
+
+Stage Summary:
+- Synchronized round progression now provides team-aware cinematic waiting experience
+- When player clicks "خلصت" in team mode, sees team-specific messages: "فريقك جاهز للجولة التالية ⚔️" or "في انتظار فريقك"
+- Live team completion indicators (X/Y finished, ✅ جاهز or بيحاربوا...)
+- Cinematic notifications when a whole team finishes ("الفريق الأحمر جاهز! ⚔️")
+- Speed bonus of 2 points for team that finishes first (never overpowers accuracy)
+- Speed bonus and finished-first shown in round transition team scores
+- Tension ambience with animated "الساحة تنتظر اكتمال الفريق الآخر..." message
+- Lint passes clean, both services compile without errors

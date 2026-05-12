@@ -94,6 +94,17 @@ export interface FinishedStatus {
   finishedCount: number
   totalActive: number
   unfinishedPlayerNames: string[]
+  // Team-aware synchronized round progression fields
+  teamAFinishedCount?: number
+  teamATotal?: number
+  teamBFinishedCount?: number
+  teamBTotal?: number
+  teamAReady?: boolean  // true when ALL team A players have finished
+  teamBReady?: boolean  // true when ALL team B players have finished
+  teamAFinishedNames?: string[]
+  teamBFinishedNames?: string[]
+  teamAUnfinishedNames?: string[]
+  teamBUnfinishedNames?: string[]
 }
 
 // ─── Team Types ──────────────────────────────────────────────────────────────
@@ -114,8 +125,8 @@ export interface TeamsState {
 }
 
 export interface TeamRoundScores {
-  A: { score: number; correctAnswers: number }
-  B: { score: number; correctAnswers: number }
+  A: { score: number; correctAnswers: number; speedBonus?: number; finishedFirst?: boolean }
+  B: { score: number; correctAnswers: number; speedBonus?: number; finishedFirst?: boolean }
   winningTeam: TeamId | null
 }
 

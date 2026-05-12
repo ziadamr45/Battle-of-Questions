@@ -659,6 +659,23 @@ function useGameSocket() {
       }
     })
 
+    // ─── Team Ready State (Synchronized Round Progression) ──────────────
+    socket.on('team-ready-state', (data: { teamId: TeamId; teamName: string; message: string; allTeamsReady: boolean }) => {
+      // Cinematic notification when a whole team finishes the round
+      audioEngine.progressStep() // Use a celebratory sound
+      if (data.allTeamsReady) {
+        battleToast('all_teams_ready', 'كلا الفريقين جاهز!', 'يتم تجهيز نتائج الجولة...')
+      } else {
+        const myTeamId = store.getState().myTeamId
+        const isMyTeam = data.teamId === myTeamId
+        if (isMyTeam) {
+          battleToast('my_team_ready', `${data.message}`, 'في انتظار الفريق الآخر...')
+        } else {
+          battleToast('other_team_ready', `${data.message}`, 'فريقك ما زال يقاتل...')
+        }
+      }
+    })
+
     socket.on('chat-message', (data: ChatMessage) => {
       store.getState().addChatMessage(data)
     })
@@ -4142,6 +4159,16 @@ function RoundTransitionScreen() {
                 </div>
                 <div className="text-2xl font-black text-white">{Math.round(teamRoundScores.A.score)}</div>
                 <div className="text-[10px] text-slate-400">{teamRoundScores.A.correctAnswers} إجابة صحيحة</div>
+                {/* Speed bonus indicator */}
+                {teamRoundScores.A.speedBonus && teamRoundScores.A.speedBonus > 0 && (
+                  <div className="mt-1.5 flex items-center justify-center gap-1">
+                    <Zap className="w-3 h-3 text-amber-400" />
+                    <span className="text-[10px] text-amber-400 font-bold">+{teamRoundScores.A.speedBonus} سرعة!</span>
+                  </div>
+                )}
+                {teamRoundScores.A.finishedFirst && (
+                  <div className="mt-1 text-[9px] text-green-400/80">⚡ أنهوا أولاً</div>
+                )}
               </div>
               {/* Team B */}
               <div className={`p-3 rounded-xl text-center ${teamRoundScores.winningTeam === 'B' ? 'bg-sky-500/15 border border-sky-500/30' : 'bg-sky-500/5 border border-sky-500/10'}`}>
@@ -4152,6 +4179,16 @@ function RoundTransitionScreen() {
                 </div>
                 <div className="text-2xl font-black text-white">{Math.round(teamRoundScores.B.score)}</div>
                 <div className="text-[10px] text-slate-400">{teamRoundScores.B.correctAnswers} إجابة صحيحة</div>
+                {/* Speed bonus indicator */}
+                {teamRoundScores.B.speedBonus && teamRoundScores.B.speedBonus > 0 && (
+                  <div className="mt-1.5 flex items-center justify-center gap-1">
+                    <Zap className="w-3 h-3 text-amber-400" />
+                    <span className="text-[10px] text-amber-400 font-bold">+{teamRoundScores.B.speedBonus} سرعة!</span>
+                  </div>
+                )}
+                {teamRoundScores.B.finishedFirst && (
+                  <div className="mt-1 text-[9px] text-green-400/80">⚡ أنهوا أولاً</div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -4715,33 +4752,205 @@ function GameScreen() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
           >
             <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
+              initial={{ scale: 0.8, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0, y: 20 }}
               transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-              className="battle-card-glow rounded-2xl p-8 max-w-sm w-full text-center"
+              className="battle-card-glow rounded-2xl p-6 sm:p-8 max-w-md w-full text-center"
             >
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                className="w-12 h-12 mx-auto mb-4 rounded-full border-2 border-cyan-400 border-t-transparent"
-              />
-              <h3 className="text-white font-bold text-lg mb-2">في انتظار باقي المقاتلين</h3>
-              <p className="text-slate-400 text-sm mb-4">
-                في انتظار انتهاء جميع اللاعبين من الإجابة أو انتهاء الوقت
-              </p>
+              {/* ── Team Mode: Cinematic Synchronized Arena State ── */}
+              {battleMode === 'فرق' && myTeamId && finishedStatus ? (
+                <div className="space-y-5">
+                  {/* Team readiness status - the key cinematic element */}
+                  {(() => {
+                    const myTeamReady = myTeamId === 'A' ? finishedStatus.teamAReady : finishedStatus.teamBReady
+                    const otherTeamReady = myTeamId === 'A' ? finishedStatus.teamBReady : finishedStatus.teamAReady
+                    const otherTeamName = myTeamId === 'A' ? 'الفريق الأزرق' : 'الفريق الأحمر'
+                    const otherTeamUnfinished = myTeamId === 'A'
+                      ? (finishedStatus.teamBUnfinishedNames || [])
+                      : (finishedStatus.teamAUnfinishedNames || [])
+                    const myTeamUnfinished = myTeamId === 'A'
+                      ? (finishedStatus.teamAUnfinishedNames || [])
+                      : (finishedStatus.teamBUnfinishedNames || [])
 
-              {/* Show who hasn't finished */}
-              {finishedStatus?.unfinishedPlayerNames && finishedStatus.unfinishedPlayerNames.length > 0 && (
-                <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
-                  <p className="text-xs text-slate-500 mb-1">لسه بيحاربوا:</p>
-                  <p className="text-sm text-slate-300">{finishedStatus.unfinishedPlayerNames.join('، ')}</p>
+                    return (
+                      <>
+                        {/* Main status icon with animation */}
+                        <motion.div
+                          initial={{ scale: 0, rotate: -20 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ type: 'spring', stiffness: 300, damping: 15 }}
+                          className="relative mx-auto w-20 h-20 mb-2"
+                        >
+                          {myTeamReady ? (
+                            // Team ready - show shield with glow
+                            <>
+                              <motion.div
+                                className="absolute inset-0 rounded-full"
+                                style={{
+                                  background: `radial-gradient(circle, ${myTeamId === 'A' ? 'rgba(239,68,68,0.3)' : 'rgba(56,189,248,0.3)'} 0%, transparent 70%)`,
+                                }}
+                                animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.8, 0.5] }}
+                                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                              />
+                              <div className={`w-20 h-20 rounded-full flex items-center justify-center ${myTeamId === 'A' ? 'bg-red-500/20 border-2 border-red-500/40' : 'bg-sky-500/20 border-2 border-sky-500/40'}`}>
+                                <Shield className={`w-10 h-10 ${myTeamId === 'A' ? 'text-red-400' : 'text-sky-400'}`} />
+                              </div>
+                            </>
+                          ) : (
+                            // Team not ready yet - show spinner
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                              className="w-20 h-20 rounded-full border-2 border-cyan-400 border-t-transparent"
+                            />
+                          )}
+                        </motion.div>
+
+                        {/* Cinematic status messages */}
+                        <div className="space-y-2">
+                          {myTeamReady && !otherTeamReady ? (
+                            <>
+                              <motion.h3
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.3 }}
+                                className={`text-xl font-black ${myTeamId === 'A' ? 'text-red-400' : 'text-sky-400'}`}
+                              >
+                                فريقك جاهز للجولة التالية ⚔️
+                              </motion.h3>
+                              <motion.p
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: 0.6 }}
+                                className="text-slate-400 text-sm"
+                              >
+                                {otherTeamName} ما زال يقاتل...
+                              </motion.p>
+                            </>
+                          ) : !myTeamReady ? (
+                            <>
+                              <h3 className="text-white font-bold text-lg">
+                                في انتظار فريقك
+                              </h3>
+                              <p className="text-slate-400 text-sm">
+                                زملائك ما زالوا يقاتلون في الساحة
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <h3 className="text-white font-bold text-lg">
+                                كلا الفريقين جاهز!
+                              </h3>
+                              <p className="text-slate-400 text-sm">
+                                يتم تجهيز نتائج الجولة...
+                              </p>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Live team completion indicators */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Team A indicator */}
+                          <div className={`p-3 rounded-xl ${finishedStatus.teamAReady ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/5 border border-red-500/15'}`}>
+                            <div className="flex items-center justify-center gap-1.5 mb-2">
+                              <div className={`w-2.5 h-2.5 rounded-full ${finishedStatus.teamAReady ? 'bg-green-500' : 'bg-red-500'} ${finishedStatus.teamAReady ? '' : 'animate-pulse'}`} />
+                              <span className="text-xs font-bold text-red-400">الفريق الأحمر</span>
+                            </div>
+                            <div className="text-lg font-black text-white">
+                              {finishedStatus.teamAFinishedCount || 0}/{finishedStatus.teamATotal || 0}
+                            </div>
+                            {finishedStatus.teamAReady ? (
+                              <span className="text-[10px] text-green-400 font-bold">✅ جاهز</span>
+                            ) : (
+                              <span className="text-[10px] text-red-400/80">بيحاربوا...</span>
+                            )}
+                          </div>
+
+                          {/* Team B indicator */}
+                          <div className={`p-3 rounded-xl ${finishedStatus.teamBReady ? 'bg-green-500/10 border border-green-500/30' : 'bg-sky-500/5 border border-sky-500/15'}`}>
+                            <div className="flex items-center justify-center gap-1.5 mb-2">
+                              <div className={`w-2.5 h-2.5 rounded-full ${finishedStatus.teamBReady ? 'bg-green-500' : 'bg-sky-500'} ${finishedStatus.teamBReady ? '' : 'animate-pulse'}`} />
+                              <span className="text-xs font-bold text-sky-400">الفريق الأزرق</span>
+                            </div>
+                            <div className="text-lg font-black text-white">
+                              {finishedStatus.teamBFinishedCount || 0}/{finishedStatus.teamBTotal || 0}
+                            </div>
+                            {finishedStatus.teamBReady ? (
+                              <span className="text-[10px] text-green-400 font-bold">✅ جاهز</span>
+                            ) : (
+                              <span className="text-[10px] text-sky-400/80">بيحاربوا...</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Unfinished player names */}
+                        {otherTeamUnfinished.length > 0 && myTeamReady && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.8 }}
+                            className="p-3 rounded-xl bg-white/5 border border-white/10"
+                          >
+                            <p className="text-xs text-slate-500 mb-1">
+                              {otherTeamUnfinished.length === 1
+                                ? 'متبقّي مقاتل واحد في المعركة'
+                                : `متبقّي ${otherTeamUnfinished.length} لاعبين في المعركة`}
+                            </p>
+                            <p className="text-sm text-slate-300">{otherTeamUnfinished.join('، ')}</p>
+                          </motion.div>
+                        )}
+
+                        {/* My team unfinished players */}
+                        {myTeamUnfinished.length > 0 && !myTeamReady && (
+                          <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                            <p className="text-xs text-slate-500 mb-1">زملائك في الفريق لسه بيحاربوا:</p>
+                            <p className="text-sm text-slate-300">{myTeamUnfinished.join('، ')}</p>
+                          </div>
+                        )}
+
+                        {/* Tension ambience - subtle animated text */}
+                        {myTeamReady && !otherTeamReady && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: [0.3, 0.7, 0.3] }}
+                            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                            className="text-xs text-slate-500 italic"
+                          >
+                            ⏳ الساحة تنتظر اكتمال الفريق الآخر...
+                          </motion.div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </div>
+              ) : (
+                /* ── Solo Mode: Original Waiting State ── */
+                <div>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                    className="w-12 h-12 mx-auto mb-4 rounded-full border-2 border-cyan-400 border-t-transparent"
+                  />
+                  <h3 className="text-white font-bold text-lg mb-2">في انتظار باقي المقاتلين</h3>
+                  <p className="text-slate-400 text-sm mb-4">
+                    في انتظار انتهاء جميع اللاعبين من الإجابة أو انتهاء الوقت
+                  </p>
+
+                  {/* Show who hasn't finished */}
+                  {finishedStatus?.unfinishedPlayerNames && finishedStatus.unfinishedPlayerNames.length > 0 && (
+                    <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
+                      <p className="text-xs text-slate-500 mb-1">لسه بيحاربوا:</p>
+                      <p className="text-sm text-slate-300">{finishedStatus.unfinishedPlayerNames.join('، ')}</p>
+                    </div>
+                  )}
                 </div>
               )}
 
+              {/* Go back button - available in both modes */}
               <Button
                 variant="outline"
                 onClick={() => {
@@ -4750,7 +4959,7 @@ function GameScreen() {
                     setIsPlayerFinished(false)
                   }
                 }}
-                className="border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 rounded-xl gap-2"
+                className="border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 rounded-xl gap-2 mt-4"
               >
                 <ArrowRight className="w-4 h-4 rotate-180" />
                 لا أنا عايز أراجع إجاباتي
