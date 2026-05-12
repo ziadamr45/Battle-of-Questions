@@ -323,3 +323,24 @@ Stage Summary:
 - #18 FIXED: Useless Hello World API route deleted
 - #19 FIXED: Graceful Prisma shutdown + connection pool documentation added
 - #20 FIXED: Unused Award import removed from page.tsx
+
+---
+Task ID: 1
+Agent: Main
+Task: Implement host-controlled round start with ready system
+
+Work Log:
+- Read current game-service/index.ts and page.tsx to understand the round transition flow
+- Found that answer review, AI Q&A, and ready system were ALREADY partially implemented
+- Main change needed: modify ready system from auto-start to host-controlled start
+- Modified game-service/index.ts: removed auto-start from player-ready handler, added host-start-round event
+- Modified game-store.ts: added unreadyPlayerNames field to ReadyStatus interface
+- Modified page.tsx: added host-start-rejected socket listener, updated RoundTransitionScreen UI
+- Build succeeds with no errors
+
+Stage Summary:
+- Server now tracks ready players but does NOT auto-start when all are ready
+- Host must click "ابدأ المعركة" button to start next round
+- If host clicks and not all players ready → toast shows which players aren't ready
+- Each player sees "في انتظار: [names]" showing who isn't ready yet
+- Host sees "ابدأ المعركة" button only after they mark themselves as ready

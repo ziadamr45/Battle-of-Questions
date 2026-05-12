@@ -445,6 +445,12 @@ function useGameSocket() {
       store.getState().setReadyStatus(data)
     })
 
+    socket.on('host-start-rejected', (data: { unreadyPlayers: string[]; readyCount: number; totalActive: number }) => {
+      // Show toast to host with unready player names
+      const names = data.unreadyPlayers.join('، ')
+      battleToast('warning', 'مش جاهزين بعد!', `${names} لسه مش جاهزين. استنى لما الكل يبقى جاهز.`)
+    })
+
     socket.on('answer-explanation', (data: { roundNumber: number; questionIndex: number; explanation: string }) => {
       store.getState().setAnswerExplanation(data.roundNumber, data.questionIndex, data.explanation)
     })
@@ -3354,12 +3360,23 @@ function RoundTransitionScreen() {
           {!isLastRound ? (
             <div className="flex flex-col items-center gap-3">
               {isPlayerReady ? (
-                <div className="flex items-center gap-2 text-emerald-400">
-                  <Check className="w-4 h-4" />
-                  <span className="text-sm font-bold">أنت جاهز</span>
-                  <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-2 py-0.5">
-                    {readyCount}/{totalActive} جاهزين
-                  </Badge>
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <Check className="w-4 h-4" />
+                    <span className="text-sm font-bold">أنت جاهز</span>
+                    <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-2 py-0.5">
+                      {readyCount}/{totalActive} جاهزين
+                    </Badge>
+                  </div>
+                  {/* Host: Show start battle button after ready */}
+                  {isHost && (
+                    <Button
+                      onClick={() => globalSocket?.emit('host-start-round')}
+                      className="btn-battle rounded-xl gap-2 px-8 py-5 text-base mt-2"
+                    >
+                      <Swords className="w-4 h-4" /> ابدأ المعركة
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <Button
@@ -3373,6 +3390,14 @@ function RoundTransitionScreen() {
                 <span className="text-xs text-slate-500">
                   {readyCount}/{totalActive} جاهزين
                 </span>
+              )}
+              {/* Show unready players list to everyone */}
+              {isPlayerReady && readyStatus?.unreadyPlayerNames && readyStatus.unreadyPlayerNames.length > 0 && (
+                <div className="text-center mt-1">
+                  <span className="text-xs text-slate-500">
+                    في انتظار: {readyStatus.unreadyPlayerNames.join('، ')}
+                  </span>
+                </div>
               )}
             </div>
           ) : (

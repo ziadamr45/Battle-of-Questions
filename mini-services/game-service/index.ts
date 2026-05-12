@@ -1943,23 +1943,70 @@ io.on('connection', (socket: Socket) => {
     // Add this player to the ready set
     room.readyPlayers.add(socket.id)
 
-    // Broadcast ready status to all players
-    const activePlayerCount = [...room.players.values()].filter(p => !p.isDisconnected).length
+    // Broadcast ready status to all players (with names for UI display)
+    const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
+    const activePlayerCount = activePlayers.length
     const readyCount = [...room.readyPlayers].filter(id => {
       const p = room.players.get(id)
       return p && !p.isDisconnected
     }).length
 
+    // Build list of unready player names for the host to see
+    const unreadyPlayerNames = activePlayers
+      .filter(([id]) => !room.readyPlayers.has(id))
+      .map(([, p]) => p.name)
+
     io.to(roomCode).emit('ready-status-update', {
       readyPlayers: [...room.readyPlayers],
       readyCount,
       totalActive: activePlayerCount,
+      unreadyPlayerNames,
     })
 
-    // If all active players are ready, start the next round
-    if (readyCount >= activePlayerCount && activePlayerCount >= 2) {
-      startNextRound(roomCode)
+    // NOTE: Round does NOT start automatically when all are ready.
+    // The host must explicitly click "ابدأ المعركة" which emits host-start-round.
+  })
+
+  // ── host-start-round ──────────────────────────────────────────────────
+  // Host initiates the next round — only works if all active players are ready
+  socket.on('host-start-round', () => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+
+    const room = rooms.get(roomCode)
+    if (!room || room.status !== 'playing') return
+
+    // Verify the requester is the host
+    const player = room.players.get(socket.id)
+    if (!player?.isHost) {
+      socket.emit('game-error', { message: 'فقط القائد يستطيع بدء الجولة' })
+      return
     }
+
+    // Check if all active players are ready
+    const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
+    const activePlayerCount = activePlayers.length
+    const readyCount = [...room.readyPlayers].filter(id => {
+      const p = room.players.get(id)
+      return p && !p.isDisconnected
+    }).length
+
+    if (readyCount < activePlayerCount) {
+      // Not all players are ready — tell the host who isn't ready
+      const unreadyNames = activePlayers
+        .filter(([id]) => !room.readyPlayers.has(id))
+        .map(([, p]) => p.name)
+
+      socket.emit('host-start-rejected', {
+        unreadyPlayers: unreadyNames,
+        readyCount,
+        totalActive: activePlayerCount,
+      })
+      return
+    }
+
+    // All players are ready — start the next round
+    startNextRound(roomCode)
   })
 
   // ── explain-answer ─────────────────────────────────────────────────────

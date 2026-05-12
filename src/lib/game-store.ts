@@ -80,6 +80,7 @@ export interface ReadyStatus {
   readyPlayers: string[]
   readyCount: number
   totalActive: number
+  unreadyPlayerNames?: string[]
 }
 
 // ─── Session Storage Helpers ──────────────────────────────────────────────────
