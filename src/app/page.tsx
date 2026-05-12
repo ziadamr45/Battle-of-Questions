@@ -81,6 +81,7 @@ import {
   UserCog,
 } from 'lucide-react'
 import { BattleLogo } from '@/components/battle-logo'
+import { FighterActionMenu } from '@/components/fighter-action-menu'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
 import { NameEntryModal, EditNameModal, PlayerNameBadge } from '@/components/guest-identity'
 import { useGuestStore } from '@/lib/guest-store'
@@ -3280,74 +3281,23 @@ function LobbyScreen() {
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
-                              {/* Transfer captain button: visible to captain of this team on non-captain members */}
-                              {isCaptain && myTeamId === 'A' && !isTeamCaptain && !isMe && (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <button
-                                      className="w-6 h-6 rounded flex items-center justify-center text-amber-400/50 hover:text-amber-400 hover:bg-amber-500/20 transition-all"
-                                      title="نوّل القيادة"
-                                    >
-                                      <Crown className="w-3 h-3" />
-                                    </button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle className="text-white">نقل القيادة لـ {p.name}؟</AlertDialogTitle>
-                                      <AlertDialogDescription className="text-slate-400">
-                                        هتسيب منصب قائد الفريق و {p.name} هيبقى القائد الجديد
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter className="flex gap-2">
-                                      <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-amber-600 text-white hover:bg-amber-700"
-                                        onClick={() => {
-                                          if (globalSocket) {
-                                            globalSocket.emit('transfer-leadership', { targetPlayerId: p.id, type: 'captain' })
-                                          }
-                                        }}
-                                      >
-                                        <Crown className="w-3.5 h-3.5 ml-1" /> نوّل القيادة
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              )}
-                              {/* Host transfer button: visible to host on non-host players (team mode) */}
-                              {isHost && !p.isHost && !isMe && (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <button
-                                      className="w-6 h-6 rounded flex items-center justify-center text-violet-400/50 hover:text-violet-400 hover:bg-violet-500/20 transition-all"
-                                      title="نوّل الإدارة"
-                                    >
-                                      <Shield className="w-3 h-3" />
-                                    </button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle className="text-white">نقل الإدارة لـ {p.name}؟</AlertDialogTitle>
-                                      <AlertDialogDescription className="text-slate-400">
-                                        هتسيب منصب قائد الساحة و {p.name} هيبقى القائد الجديد
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter className="flex gap-2">
-                                      <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-violet-600 text-white hover:bg-violet-700"
-                                        onClick={() => {
-                                          if (globalSocket) {
-                                            globalSocket.emit('transfer-leadership', { targetPlayerId: p.id, type: 'host' })
-                                          }
-                                        }}
-                                      >
-                                        <Shield className="w-3.5 h-3.5 ml-1" /> نوّل الإدارة
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              )}
+                              {/* Unified action menu — one clean interaction point */}
+                              <div className="relative">
+                                <FighterActionMenu
+                                  playerId={p.id}
+                                  playerName={p.name}
+                                  isHost={isHost}
+                                  isCaptain={isCaptain}
+                                  myTeamId={myTeamId}
+                                  playerTeamId="A"
+                                  isPlayerHost={p.isHost}
+                                  isPlayerCaptain={isTeamCaptain}
+                                  isMe={isMe}
+                                  getSocket={() => globalSocket}
+                                  context="lobby"
+                                  compact
+                                />
+                              </div>
                             </div>
                           </div>
                         )
@@ -3442,74 +3392,23 @@ function LobbyScreen() {
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
-                              {/* Transfer captain button: visible to captain of this team on non-captain members */}
-                              {isCaptain && myTeamId === 'B' && !isTeamCaptain && !isMe && (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <button
-                                      className="w-6 h-6 rounded flex items-center justify-center text-amber-400/50 hover:text-amber-400 hover:bg-amber-500/20 transition-all"
-                                      title="نوّل القيادة"
-                                    >
-                                      <Crown className="w-3 h-3" />
-                                    </button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle className="text-white">نقل القيادة لـ {p.name}؟</AlertDialogTitle>
-                                      <AlertDialogDescription className="text-slate-400">
-                                        هتسيب منصب قائد الفريق و {p.name} هيبقى القائد الجديد
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter className="flex gap-2">
-                                      <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-amber-600 text-white hover:bg-amber-700"
-                                        onClick={() => {
-                                          if (globalSocket) {
-                                            globalSocket.emit('transfer-leadership', { targetPlayerId: p.id, type: 'captain' })
-                                          }
-                                        }}
-                                      >
-                                        <Crown className="w-3.5 h-3.5 ml-1" /> نوّل القيادة
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              )}
-                              {/* Host transfer button: visible to host on non-host players (team mode) */}
-                              {isHost && !p.isHost && !isMe && (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <button
-                                      className="w-6 h-6 rounded flex items-center justify-center text-violet-400/50 hover:text-violet-400 hover:bg-violet-500/20 transition-all"
-                                      title="نوّل الإدارة"
-                                    >
-                                      <Shield className="w-3 h-3" />
-                                    </button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle className="text-white">نقل الإدارة لـ {p.name}؟</AlertDialogTitle>
-                                      <AlertDialogDescription className="text-slate-400">
-                                        هتسيب منصب قائد الساحة و {p.name} هيبقى القائد الجديد
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter className="flex gap-2">
-                                      <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-violet-600 text-white hover:bg-violet-700"
-                                        onClick={() => {
-                                          if (globalSocket) {
-                                            globalSocket.emit('transfer-leadership', { targetPlayerId: p.id, type: 'host' })
-                                          }
-                                        }}
-                                      >
-                                        <Shield className="w-3.5 h-3.5 ml-1" /> نوّل الإدارة
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              )}
+                              {/* Unified action menu — one clean interaction point */}
+                              <div className="relative">
+                                <FighterActionMenu
+                                  playerId={p.id}
+                                  playerName={p.name}
+                                  isHost={isHost}
+                                  isCaptain={isCaptain}
+                                  myTeamId={myTeamId}
+                                  playerTeamId="B"
+                                  isPlayerHost={p.isHost}
+                                  isPlayerCaptain={isTeamCaptain}
+                                  isMe={isMe}
+                                  getSocket={() => globalSocket}
+                                  context="lobby"
+                                  compact
+                                />
+                              </div>
                             </div>
                           </div>
                         )
@@ -3571,7 +3470,25 @@ function LobbyScreen() {
                                 {isMe && <span className="text-[9px] sm:text-[10px] text-slate-400">(أنت)</span>}
                               </div>
                             </div>
-                            {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
+                              {/* Unified action menu for unassigned players */}
+                              <div className="relative">
+                                <FighterActionMenu
+                                  playerId={p.id}
+                                  playerName={p.name}
+                                  isHost={isHost}
+                                  isCaptain={isCaptain}
+                                  myTeamId={myTeamId}
+                                  playerTeamId={null}
+                                  isPlayerHost={p.isHost}
+                                  isMe={isMe}
+                                  getSocket={() => globalSocket}
+                                  context="lobby"
+                                  compact
+                                />
+                              </div>
+                            </div>
                           </div>
                         )
                       })}
@@ -3793,108 +3710,18 @@ function LobbyScreen() {
                           <Crown className="w-3 h-3 ml-1 crown-float" />قائد
                         </Badge>
                       )}
-                      {/* Action buttons — not for self */}
-                      {!isMe && (
-                        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                          {/* Local mute button — available to ALL players */}
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
-                            onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id, player.name)}
-                            title={isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
-                          >
-                            {isMuted ? <Volume1 className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
-                          </Button>
-                          {/* Host-only: Kick button */}
-                          {isHost && !player.isHost && (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
-                                  title="طرد المقاتل"
-                                >
-                                  <UserX className="w-3.5 h-3.5" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle className="text-white">طرد {player.name}؟</AlertDialogTitle>
-                                  <AlertDialogDescription className="text-slate-400">
-                                    هتطرد {player.name} من الساحة. المقاتل المش هيقدر يرجع غير لو دخل من أول وجديد.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter className="flex gap-2">
-                                  <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    className="bg-red-600 text-white hover:bg-red-700"
-                                    onClick={() => {
-                                      if (globalSocket) {
-                                        globalSocket.emit('kick-player', { playerId: player.id })
-                                        battleToast('kick_sent', 'تم الطرد', `${player.name} تم طرده من الساحة`)
-                                      }
-                                    }}
-                                  >
-                                    طرد
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          )}
-                          {/* Host-only: Mute for everyone button */}
-                          {isHost && !player.isHost && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-orange-400 hover:bg-orange-400/10 transition-all"
-                              onClick={() => {
-                                if (globalSocket) {
-                                  globalSocket.emit('mute-player', { playerId: player.id })
-                                }
-                              }}
-                              title="كتم الصوت للجميع"
-                            >
-                              <VolumeX className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {/* Host transfer button in solo mode */}
-                          {isHost && !player.isHost && (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <button
-                                  className="w-6 h-6 rounded flex items-center justify-center text-violet-400/50 hover:text-violet-400 hover:bg-violet-500/20 transition-all"
-                                  title="نوّل الإدارة"
-                                >
-                                  <Shield className="w-3 h-3" />
-                                </button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle className="text-white">نقل الإدارة لـ {player.name}؟</AlertDialogTitle>
-                                  <AlertDialogDescription className="text-slate-400">
-                                    هتسيب منصب قائد الساحة و {player.name} هيبقى القائد الجديد
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter className="flex gap-2">
-                                  <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    className="bg-violet-600 text-white hover:bg-violet-700"
-                                    onClick={() => {
-                                      if (globalSocket) {
-                                        globalSocket.emit('transfer-leadership', { targetPlayerId: player.id, type: 'host' })
-                                      }
-                                    }}
-                                  >
-                                    <Shield className="w-3.5 h-3.5 ml-1" /> نوّل الإدارة
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          )}
-                        </div>
-                      )}
+                      {/* Unified action menu — one clean interaction point */}
+                      <div className="relative shrink-0">
+                        <FighterActionMenu
+                          playerId={player.id}
+                          playerName={player.name}
+                          isHost={isHost}
+                          isPlayerHost={player.isHost}
+                          isMe={isMe}
+                          getSocket={() => globalSocket}
+                          context="lobby"
+                        />
+                      </div>
                     </motion.div>
                     )
                   })}
@@ -5837,68 +5664,20 @@ function ResultsScreen() {
                 {isMuted && <MicOff className="w-3 h-3 text-red-400/60 shrink-0" />}
                 <span className={`flex-1 text-right font-semibold text-sm ${isMuted ? 'text-slate-500' : 'text-white'}`}>{player.name}</span>
                 <div className="flex items-center gap-2">
-                  {/* Mute button for other players — all players can local mute */}
+                  {/* Unified action menu — one clean interaction point */}
                   {!isMe && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="w-6 h-6 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
-                      onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id, player.name)}
-                      title={isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
-                    >
-                      {isMuted ? <Volume1 className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
-                    </Button>
-                  )}
-                  {/* Host-only: Kick & mute-for-all buttons during game */}
-                  {!isMe && isHostPlayer && !player.isHost && (
-                    <>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="w-6 h-6 rounded-full text-slate-500 hover:text-orange-400 hover:bg-orange-400/10 transition-all"
-                        onClick={() => {
-                          if (globalSocket) {
-                            globalSocket.emit('mute-player', { playerId: player.id })
-                          }
-                        }}
-                        title="كتم الصوت للجميع"
-                      >
-                        <VolumeX className="w-3 h-3" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="w-6 h-6 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
-                            title="طرد المقاتل"
-                          >
-                            <UserX className="w-3 h-3" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-[#12121F] border-white/10 text-white" dir="rtl">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle className="text-white">طرد {player.name} من المعركة؟</AlertDialogTitle>
-                            <AlertDialogDescription className="text-slate-400">
-                              هتطرد {player.name} من المعركة. النقاط بتاعته هتتحسب لحد ما اتحسبت.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter className="flex gap-2">
-                            <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-red-600 text-white hover:bg-red-700"
-                              onClick={() => {
-                                if (globalSocket) {
-                                  globalSocket.emit('kick-player', { playerId: player.id })
-                                }
-                              }}
-                            >
-                              طرد
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </>
+                    <div className="relative">
+                      <FighterActionMenu
+                        playerId={player.id}
+                        playerName={player.name}
+                        isHost={isHostPlayer}
+                        isPlayerHost={player.isHost}
+                        isMe={isMe}
+                        getSocket={() => globalSocket}
+                        context="game"
+                        compact
+                      />
+                    </div>
                   )}
                   <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs">
                     <Trophy className="w-3 h-3 ml-1" />{player.roundWins || 0}
