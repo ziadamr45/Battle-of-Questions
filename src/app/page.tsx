@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType } from '@/lib/game-store'
 import { audioEngine } from '@/lib/audio-engine'
@@ -623,6 +623,18 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [shaking, setShaking] = useState(false)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
+  // Pre-compute spark positions once (avoids Math.random() recalculation on every render)
+  const sparkPositions = useMemo(() => ({
+    red: [...Array(12)].map((_, i) => ({
+      x: Math.cos((i / 12) * Math.PI * 2) * (80 + Math.random() * 60),
+      y: Math.sin((i / 12) * Math.PI * 2) * (80 + Math.random() * 60),
+    })),
+    amber: [...Array(12)].map((_, i) => ({
+      x: Math.cos((i / 12) * Math.PI * 2 + 0.3) * (70 + Math.random() * 70),
+      y: Math.sin((i / 12) * Math.PI * 2 + 0.3) * (70 + Math.random() * 70),
+    })),
+  }), [])
+
   const startAnimation = useCallback(() => {
     // Initialize audio FIRST — this unlocks AudioContext via user gesture
     initAudio()
@@ -748,10 +760,10 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
             className="absolute"
             style={{ left: '25%', top: '30%' }}
           >
-            {/* Red energy trail */}
+            {/* Red energy trail — GPU-promoted for smooth animation */}
             <motion.div
               className="absolute -top-4 -left-20 w-40 h-40 rounded-full"
-              style={{ background: 'radial-gradient(circle, rgba(220,38,38,0.4) 0%, transparent 70%)', filter: 'blur(20px)' }}
+              style={{ background: 'radial-gradient(circle, rgba(220,38,38,0.4) 0%, transparent 70%)', filter: 'blur(20px)', willChange: 'transform, opacity', transform: 'translate3d(0,0,0)' }}
               animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.8, 0.5] }}
               transition={{ duration: 0.5, repeat: Infinity }}
             />
@@ -778,10 +790,10 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
             className="absolute"
             style={{ right: '25%', top: '30%' }}
           >
-            {/* Amber energy trail */}
+            {/* Amber energy trail — GPU-promoted for smooth animation */}
             <motion.div
               className="absolute -top-4 -right-20 w-40 h-40 rounded-full"
-              style={{ background: 'radial-gradient(circle, rgba(245,158,11,0.4) 0%, transparent 70%)', filter: 'blur(20px)' }}
+              style={{ background: 'radial-gradient(circle, rgba(245,158,11,0.4) 0%, transparent 70%)', filter: 'blur(20px)', willChange: 'transform, opacity', transform: 'translate3d(0,0,0)' }}
               animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.8, 0.5] }}
               transition={{ duration: 0.5, repeat: Infinity }}
             />
@@ -797,59 +809,61 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
       <AnimatePresence>
         {phase === 'clash' && (
           <>
-            {/* Main burst */}
+            {/* Main burst — GPU-promoted */}
             <motion.div
               initial={{ scale: 0, opacity: 1 }}
               animate={{ scale: 6, opacity: 0 }}
               transition={{ duration: 1, ease: 'easeOut' }}
               className="absolute w-12 h-12 rounded-full"
-              style={{ background: 'radial-gradient(circle, #FFFFFF 0%, #FBBF24 20%, #DC2626 40%, transparent 70%)', filter: 'blur(2px)' }}
+              style={{ background: 'radial-gradient(circle, #FFFFFF 0%, #FBBF24 20%, #DC2626 40%, transparent 70%)', filter: 'blur(2px)', willChange: 'transform, opacity', contain: 'layout paint' }}
             />
-            {/* Secondary ring */}
+            {/* Secondary ring — GPU-promoted */}
             <motion.div
               initial={{ scale: 0, opacity: 0.8 }}
               animate={{ scale: 8, opacity: 0 }}
               transition={{ duration: 1.2, ease: 'easeOut' }}
               className="absolute w-8 h-8 rounded-full border-2 border-amber-400/60"
+              style={{ willChange: 'transform, opacity', contain: 'layout paint' }}
             />
-            {/* Sparks - Red */}
-            {[...Array(12)].map((_, i) => (
+            {/* Sparks - Red (pre-computed positions for performance) */}
+            {sparkPositions.red.map((pos, i) => (
               <motion.div
                 key={`red-spark-${i}`}
                 initial={{ scale: 1, opacity: 1, x: 0, y: 0 }}
                 animate={{
                   scale: [1, 0],
                   opacity: [1, 0],
-                  x: (Math.cos((i / 12) * Math.PI * 2) * (80 + Math.random() * 60)),
-                  y: (Math.sin((i / 12) * Math.PI * 2) * (80 + Math.random() * 60)),
+                  x: pos.x,
+                  y: pos.y,
                 }}
                 transition={{ duration: 0.9, ease: 'easeOut' }}
                 className="absolute w-1.5 h-1.5 rounded-full bg-red-500"
-                style={{ boxShadow: '0 0 8px rgba(220,38,38,0.9), 0 0 16px rgba(220,38,38,0.5)' }}
+                style={{ boxShadow: '0 0 8px rgba(220,38,38,0.9), 0 0 16px rgba(220,38,38,0.5)', willChange: 'transform, opacity', contain: 'layout paint' }}
               />
             ))}
-            {/* Sparks - Amber */}
-            {[...Array(12)].map((_, i) => (
+            {/* Sparks - Amber (pre-computed positions for performance) */}
+            {sparkPositions.amber.map((pos, i) => (
               <motion.div
                 key={`amber-spark-${i}`}
                 initial={{ scale: 1, opacity: 1, x: 0, y: 0 }}
                 animate={{
                   scale: [1, 0],
                   opacity: [1, 0],
-                  x: (Math.cos((i / 12) * Math.PI * 2 + 0.3) * (70 + Math.random() * 70)),
-                  y: (Math.sin((i / 12) * Math.PI * 2 + 0.3) * (70 + Math.random() * 70)),
+                  x: pos.x,
+                  y: pos.y,
                 }}
                 transition={{ duration: 1, ease: 'easeOut' }}
                 className="absolute w-1.5 h-1.5 rounded-full bg-amber-400"
-                style={{ boxShadow: '0 0 8px rgba(245,158,11,0.9), 0 0 16px rgba(245,158,11,0.5)' }}
+                style={{ boxShadow: '0 0 8px rgba(245,158,11,0.9), 0 0 16px rgba(245,158,11,0.5)', willChange: 'transform, opacity', contain: 'layout paint' }}
               />
             ))}
-            {/* Flash overlay */}
+            {/* Flash overlay — GPU-promoted */}
             <motion.div
               initial={{ opacity: 0.8 }}
               animate={{ opacity: 0 }}
               transition={{ duration: 0.5 }}
               className="absolute inset-0 bg-white/20"
+              style={{ willChange: 'opacity' }}
             />
           </>
         )}
@@ -863,7 +877,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
             animate={{ scale: 3, opacity: 0 }}
             transition={{ duration: 1.5, ease: 'easeOut' }}
             className="absolute w-32 h-32 rounded-full border-2"
-            style={{ borderColor: 'rgba(251,191,36,0.5)', boxShadow: '0 0 30px rgba(251,191,36,0.3), inset 0 0 20px rgba(220,38,38,0.2)' }}
+            style={{ borderColor: 'rgba(251,191,36,0.5)', boxShadow: '0 0 30px rgba(251,191,36,0.3), inset 0 0 20px rgba(220,38,38,0.2)', willChange: 'transform, opacity', contain: 'layout paint' }}
           />
         )}
       </AnimatePresence>
