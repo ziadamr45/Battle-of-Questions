@@ -497,7 +497,7 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
                         key={msg.id}
                         initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className={`flex flex-col ${isMe ? 'items-start' : 'items-end'}`}
+                        className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                       >
                         <span className="text-[10px] text-slate-500 mb-0.5 px-1">
                           {msg.sender}
@@ -505,8 +505,8 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
                         <div
                           className={`max-w-[80%] px-3 py-2 rounded-xl text-sm ${
                             isMe
-                              ? 'bg-red-500/20 text-red-100 border border-red-500/20 rounded-br-sm'
-                              : 'bg-white/10 text-slate-200 border border-white/10 rounded-bl-sm'
+                              ? 'bg-red-500/20 text-red-100 border border-red-500/20 rounded-bl-sm'
+                              : 'bg-white/10 text-slate-200 border border-white/10 rounded-br-sm'
                           }`}
                         >
                           {msg.text}

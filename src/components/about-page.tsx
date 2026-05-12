@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,7 +35,7 @@ interface AboutPageProps {
 
 /* ─── Floating Particles Background ─── */
 function FloatingParticles() {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
+  const particles = useMemo(() => Array.from({ length: 20 }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
     y: Math.random() * 100,
@@ -43,7 +43,7 @@ function FloatingParticles() {
     duration: Math.random() * 6 + 6,
     delay: Math.random() * 4,
     color: i % 3 === 0 ? '#DC2626' : i % 3 === 1 ? '#F59E0B' : '#06B6D4',
-  }))
+  })), [])
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">

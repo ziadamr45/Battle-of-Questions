@@ -242,11 +242,6 @@ export function isRoundsPlayerCountConflict(players: number, rounds: number): bo
   return (players === 2 && rounds === 2) || (players === 3 && rounds === 3)
 }
 
-// Helper to check if maxPlayers means "open" mode
-export function isOpenMode(maxPlayers: number, playerMode?: PlayerMode): boolean {
-  return playerMode === 'open' || maxPlayers === 0
-}
-
 // Helper to get the persistable state from the store
 function getPersistableState(state: GameState): PersistedState {
   return {
