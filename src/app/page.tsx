@@ -70,6 +70,12 @@ import { parseJoinUrl, cleanJoinParams } from '@/lib/share-utils'
 import { BattleHistoryList, BattleDetail } from '@/components/battle-history'
 import { AboutPage } from '@/components/about-page'
 import { battleToast } from '@/lib/battle-toast-store'
+import { useOnboardingStore, shouldShowCinematicIntro, shouldShowUIHighlights, shouldShowGameplayHints } from '@/lib/onboarding-store'
+import { CinematicIntro } from '@/components/onboarding/cinematic-intro'
+import { UIHighlights } from '@/components/onboarding/ui-highlights'
+import { GameplayHintsProvider, showGameplayHint } from '@/components/onboarding/gameplay-hints'
+import { ArenaTips } from '@/components/onboarding/arena-tips'
+import { ArenaNarratorProvider, showNarration } from '@/components/onboarding/arena-narrator'
 
 // ============================================
 // GLOBAL SOCKET MANAGEMENT
@@ -206,6 +212,7 @@ function useGameSocket() {
       store.getState().setPlayers(data.players)
       audioEngine.playerJoined()
       battleToast('player_joined', 'مقاتل جديد!', `${data.player.name} دخل الساحة`, data.player.name)
+      showNarration('player_entered')
     })
 
     socket.on('player-left', (data: { playerId: string; playerName: string; players: Player[] }) => {
@@ -236,11 +243,13 @@ function useGameSocket() {
     socket.on('player-reconnected', (data: { playerId: string; playerName: string; players: Player[] }) => {
       store.getState().setPlayers(data.players)
       battleToast('player_reconnected', 'عودة المقاتل!', `${data.playerName} رجع للساحة`, data.playerName)
+      showNarration('player_reconnected')
     })
 
     socket.on('game-starting', () => {
       store.getState().resetProgressSteps()  // Clear stale progress steps when game starts
       store.getState().setScreen('loading')
+      showNarration('battle_starting')
     })
 
     socket.on('content-progress', (data: { step: string; text: string }) => {
@@ -260,6 +269,12 @@ function useGameSocket() {
       store.getState().setTimeLeft(data.timePerRound)
       store.getState().setScreen('game')
       audioEngine.battleStart()
+      showNarration('round_starting')
+      // First battle gameplay hints
+      if (shouldShowGameplayHints()) {
+        setTimeout(() => showGameplayHint('timer'), 1500)
+        setTimeout(() => showGameplayHint('readingArea'), 6000)
+      }
     })
 
     socket.on('round-loading', (data: { roundNumber: number; totalRounds: number }) => {
@@ -276,6 +291,10 @@ function useGameSocket() {
       store.getState().setTotalRounds(data.totalRounds)
       store.getState().setScreen('round-transition')
       audioEngine.roundEndReveal()
+      showNarration('round_ending')
+      if (shouldShowGameplayHints()) {
+        setTimeout(() => showGameplayHint('roundTransition'), 800)
+      }
     })
 
     socket.on('answer-confirmed', () => {})
@@ -305,6 +324,9 @@ function useGameSocket() {
       if (data.roundResults) store.getState().setRoundResults(data.roundResults)
       store.getState().setEarlyEndProcessing(false)
       store.getState().setScreen('results')
+      showNarration('battle_ending')
+      // Mark first battle as played after game ends
+      useOnboardingStore.getState().markFirstBattlePlayed()
       // Play victory or defeat based on player position
       const sortedScores = data.scores.sort((a: Player, b: Player) => b.score - a.score)
       const myId = globalSocket?.id
@@ -352,6 +374,7 @@ function useGameSocket() {
       } else {
         battleToast('host_changed_other', 'قائد جديد', `${data.oldHostName} غادر و${data.newHostName} بقى القائد`)
       }
+      showNarration('new_host')
     })
 
     socket.on('public-rooms-update', (data: { rooms: RoomInfo[] }) => { store.getState().setPublicRooms(data.rooms) })
@@ -472,6 +495,15 @@ function useGameSocket() {
       store.getState().setAnswer(questionIndex, answerIndex)
       const s = store.getState()
       globalSocket.emit('submit-answer', { roomCode: s.roomCode, roundNumber: s.currentRound, questionIndex, answerIndex, timeTaken: s.gameSettings.timePerRound * 60 - s.timeLeft })
+      // First battle gameplay hints after answering
+      if (shouldShowGameplayHints()) {
+        if (questionIndex === 0) {
+          setTimeout(() => showGameplayHint('answerArea'), 500)
+        }
+        if (questionIndex >= 2) {
+          setTimeout(() => showGameplayHint('noImmediateAnswers'), 1000)
+        }
+      }
     }
   }, [])
 
@@ -1148,6 +1180,7 @@ function HomeScreen() {
             size="lg"
             className="text-lg px-8 py-7 btn-battle rounded-xl"
             onClick={() => setScreen('create')}
+            data-onboarding="create-room"
           >
             <Swords className="w-5 h-5 ml-2" />
             أنشئ ساحة قتال
@@ -1156,6 +1189,7 @@ function HomeScreen() {
             size="lg"
             className="text-lg px-8 py-7 btn-secondary-battle rounded-xl"
             onClick={() => setScreen('join')}
+            data-onboarding="join-room"
           >
             <Shield className="w-5 h-5 ml-2" />
             انضم لساحة
@@ -1164,6 +1198,7 @@ function HomeScreen() {
             size="lg"
             className="text-lg px-6 py-7 bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white hover:border-white/20 rounded-xl transition-all"
             onClick={() => setScreen('history')}
+            data-onboarding="battle-history"
           >
             <ScrollText className="w-5 h-5 ml-2" />
             سجل المعارك
@@ -3622,6 +3657,13 @@ export default function Home() {
   const [splashComplete, setSplashComplete] = useState(false)
   const prevScreenRef = useRef<Screen>('home')
 
+  // Onboarding state
+  const [showCinematicIntro, setShowCinematicIntro] = useState(false)
+  const [showUIHighlights, setShowUIHighlights] = useState(false)
+  const onboardingCompleted = useOnboardingStore((s) => s.onboardingCompleted)
+  const cinematicIntroCompleted = useOnboardingStore((s) => s.cinematicIntroCompleted)
+  const uiHighlightCompleted = useOnboardingStore((s) => s.uiHighlightCompleted)
+
   // Guest identity state
   const guest = useGuestStore((s) => s.guest)
   const guestIsLoading = useGuestStore((s) => s.isLoading)
@@ -3697,6 +3739,47 @@ export default function Home() {
     }
   }, [splashComplete, guest, guestIsLoading, hasVisitedBefore, setShowNameModal])
 
+  // ─── Onboarding Flow ───────────────────────────────────────────────────────
+  // After name modal closes (identity created) → show cinematic intro (first-time only)
+  // After cinematic intro → show UI highlights
+  // After UI highlights → onboarding complete
+  useEffect(() => {
+    // When name modal just closed and user is new → start cinematic intro
+    if (splashComplete && !showNameModal && guest && !guestIsLoading) {
+      if (shouldShowCinematicIntro()) {
+        // Small delay after name entry for smooth transition
+        const timer = setTimeout(() => {
+          setShowCinematicIntro(true)
+        }, 600)
+        return () => clearTimeout(timer)
+      } else if (shouldShowUIHighlights() && screen === 'home') {
+        // If cinematic already done but UI highlights not → start highlights
+        const timer = setTimeout(() => {
+          setShowUIHighlights(true)
+        }, 500)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [splashComplete, showNameModal, guest, guestIsLoading, screen])
+
+  // Handle cinematic intro completion
+  const handleCinematicIntroComplete = useCallback(() => {
+    setShowCinematicIntro(false)
+    // Mark onboarding as completed in the store (cinematic intro done)
+    useOnboardingStore.getState().completeOnboarding()
+    // Start UI highlights after a short delay
+    if (!uiHighlightCompleted) {
+      setTimeout(() => {
+        setShowUIHighlights(true)
+      }, 800)
+    }
+  }, [uiHighlightCompleted])
+
+  // Handle UI highlights completion
+  const handleUIHighlightsComplete = useCallback(() => {
+    setShowUIHighlights(false)
+  }, [])
+
   // Play transition sound when screen changes
   useEffect(() => {
     if (prevScreenRef.current !== screen && !showSplash) {
@@ -3769,55 +3852,81 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col">
-      {/* Audio Controls - always visible */}
-      <AudioControls />
+    <ArenaNarratorProvider>
+      <GameplayHintsProvider>
+        <main className="min-h-screen flex flex-col">
+          {/* Audio Controls - always visible */}
+          <AudioControls />
 
-      {/* Guest Identity Modals */}
-      <AnimatePresence>
-        {showNameModal && <NameEntryModal />}
-      </AnimatePresence>
-      <EditNameModal />
+          {/* Guest Identity Modals */}
+          <AnimatePresence>
+            {showNameModal && <NameEntryModal />}
+          </AnimatePresence>
+          <EditNameModal />
 
-      {/* Splash Screen */}
-      <AnimatePresence>
-        {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
-      </AnimatePresence>
+          {/* Cinematic Onboarding Intro - after identity creation, first-time only */}
+          <AnimatePresence>
+            {showCinematicIntro && guest && (
+              <CinematicIntro
+                onComplete={handleCinematicIntroComplete}
+                playerName={guest.displayName}
+              />
+            )}
+          </AnimatePresence>
 
-      {/* Main content */}
-      {!showSplash && (
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={screen}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            variants={battleTransition}
-            transition={{ duration: 0.4 }}
-            className="flex-1 flex flex-col"
-          >
-            {screen === 'home' && <HomeScreen />}
-            {screen === 'create' && <CreateGameScreen />}
-            {screen === 'join' && <JoinGameScreen />}
-            {screen === 'lobby' && <LobbyScreen />}
-            {screen === 'loading' && <LoadingScreen />}
-            {screen === 'game' && <GameScreen key={gameContent?.title || 'game'} />}
-            {screen === 'round-transition' && <RoundTransitionScreen />}
-            {screen === 'history' && <HistoryScreenWrapper />}
-            {screen === 'about' && <AboutPage onBack={() => setScreen('home')} />}
-            {screen === 'results' && <ResultsScreen />}
-          </motion.div>
-        </AnimatePresence>
-      )}
+          {/* UI Highlights Tour - after cinematic intro, first-time only */}
+          <UIHighlights
+            isActive={showUIHighlights && screen === 'home'}
+            onComplete={handleUIHighlightsComplete}
+          />
 
-      {/* Voice Chat - persists across screens, chat only in lobby */}
-      {!showSplash && (screen === 'lobby' || screen === 'game' || screen === 'loading' || screen === 'round-transition') && roomCode && playerName && (
-        <VoiceChat
-          roomCode={roomCode}
-          playerName={playerName}
-          showChat={screen === 'lobby'}
-        />
-      )}
-    </main>
+          {/* Splash Screen */}
+          <AnimatePresence>
+            {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
+          </AnimatePresence>
+
+          {/* Main content */}
+          {!showSplash && (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={screen}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                variants={battleTransition}
+                transition={{ duration: 0.4 }}
+                className="flex-1 flex flex-col"
+              >
+                {screen === 'home' && <HomeScreen />}
+                {screen === 'create' && <CreateGameScreen />}
+                {screen === 'join' && <JoinGameScreen />}
+                {screen === 'lobby' && <LobbyScreen />}
+                {screen === 'loading' && <LoadingScreen />}
+                {screen === 'game' && <GameScreen key={gameContent?.title || 'game'} />}
+                {screen === 'round-transition' && <RoundTransitionScreen />}
+                {screen === 'history' && <HistoryScreenWrapper />}
+                {screen === 'about' && <AboutPage onBack={() => setScreen('home')} />}
+                {screen === 'results' && <ResultsScreen />}
+              </motion.div>
+            </AnimatePresence>
+          )}
+
+          {/* Arena Tips - context-aware rotating tips */}
+          {!showSplash && screen === 'loading' && <div className="py-4"><ArenaTips context="loading" /></div>}
+          {!showSplash && screen === 'lobby' && <div className="py-2"><ArenaTips context="lobby" /></div>}
+          {!showSplash && screen === 'results' && <div className="py-4"><ArenaTips context="results" /></div>}
+          {!showSplash && screen === 'round-transition' && <div className="py-4"><ArenaTips context="round-transition" /></div>}
+
+          {/* Voice Chat - persists across screens, chat only in lobby */}
+          {!showSplash && (screen === 'lobby' || screen === 'game' || screen === 'loading' || screen === 'round-transition') && roomCode && playerName && (
+            <VoiceChat
+              roomCode={roomCode}
+              playerName={playerName}
+              showChat={screen === 'lobby'}
+            />
+          )}
+        </main>
+      </GameplayHintsProvider>
+    </ArenaNarratorProvider>
   )
 }
