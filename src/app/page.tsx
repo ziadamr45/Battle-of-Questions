@@ -431,10 +431,10 @@ function useGameSocket() {
         // leadership-received event handles the toast for voluntary transfer
         // This handler covers auto-transfer on disconnect/leave
         if (lastLeadershipTransferTime > Date.now() - 3000) return // skip if voluntary transfer happened recently
-        battleToast('host_changed_self', 'أنت المضيف الجديد!', `${data.oldHostName} غادر وأنت الأقدم فبقيت المضيف`)
+        battleToast('host_changed_self', 'أنت القائد الجديد!', `${data.oldHostName} غادر وأنت الأقدم فبقيت القائد`)
       } else {
         if (lastLeadershipTransferTime > Date.now() - 3000) return // skip if voluntary transfer happened recently
-        battleToast('host_changed_other', 'مضيف جديد', `${data.newHostName} بقى مضيف الساحة`)
+        battleToast('host_changed_other', 'قائد جديد', `${data.newHostName} بقى قائد الساحة`)
       }
     })
 
@@ -473,7 +473,7 @@ function useGameSocket() {
     socket.on('player-audio-muted', (data: { playerId: string; playerName: string }) => {
       // A player was host-muted — mute their audio for everyone
       usePlayerMuteStore.getState().addHostMuted(data.playerId, data.playerName)
-      battleToast('player_audio_muted', 'تم كتم اللاعب', `${data.playerName} تم كتم صوته بواسطة القائد`)
+      battleToast('player_audio_muted', 'تم كتم المقاتل', `${data.playerName} تم كتم صوته بواسطة القائد`)
     })
 
     // ─── Ready Status & Answer Explanation Events ──────────────────────
@@ -589,7 +589,7 @@ function useGameSocket() {
         battleToast('captain_received', 'أنت القائد الجديد! 👑', `${data.transferredByName} غيّرلك القيادة${data.teamName ? ` في ${data.teamName}` : ''}`)
       } else {
         store.getState().setIsHost(true)
-        battleToast('host_received', 'أنت المضيف الجديد! 🏠', `${data.transferredByName} غيّرلك إدارة الساحة`)
+        battleToast('host_received', 'أنت القائد الجديد! 🏠', `${data.transferredByName} غيّرلك إدارة الساحة`)
       }
     })
 
@@ -600,7 +600,7 @@ function useGameSocket() {
         battleToast('captain_transferred', 'تم نقل القيادة', `${data.newLeaderName} بقى قائد الفريق`)
       } else {
         store.getState().setIsHost(false)
-        battleToast('host_transferred', 'تم نقل الإدارة', `${data.newLeaderName} بقى مضيف الساحة`)
+        battleToast('host_transferred', 'تم نقل الإدارة', `${data.newLeaderName} بقى قائد الساحة`)
       }
     })
 
@@ -672,7 +672,7 @@ function useGameSocket() {
     socket.on('join-request-resolved', (data: { requestId: string; playerName: string; approved: boolean }) => {
       store.getState().removeJoinRequest(data.requestId)
       if (data.approved) {
-        battleToast('join_resolved', 'تم قبول اللاعب ✅', `${data.playerName} انضم للفريق`)
+        battleToast('join_resolved', 'تم قبول المقاتل ✅', `${data.playerName} انضم للفريق`)
       } else {
         battleToast('join_resolved', 'تم رفض الطلب ❌', `رفضت طلب انضمام ${data.playerName}`)
       }
@@ -2001,8 +2001,8 @@ function CreateGameScreen() {
                 <span>1</span>
                 <span className="text-amber-400/80">
                   {gameSettings.playerMode === 'open' 
-                    ? 'التحقق بعدد اللاعبين هيحصل وقت البداية'
-                    : maxPlayers === 2 ? 'لاعبين ما يلعبوش جولتين' : maxPlayers === 3 ? 'ثلاث لاعبين ما يلعبوش ثلاث جولات' : 'كل الأعداد متاحة'}
+                    ? 'التحقق بعدد المقاتلين هيحصل وقت البداية'
+                    : maxPlayers === 2 ? 'مقاتلين ما يلعبوش جولتين' : maxPlayers === 3 ? 'ثلاث مقاتلين ما يلعبوش ثلاث جولات' : 'كل الأعداد متاحة'}
                 </span>
                 <span>20</span>
               </div>
@@ -2941,7 +2941,7 @@ function LobbyScreen() {
   // Team mode: need at least 1 player per team
   const teamStartError = battleMode === 'فرق' && teams 
     ? ((teams.unassignedPlayerIds || []).length > 0
-      ? `يوجد ${(teams.unassignedPlayerIds || []).length} لاعب غير مصنف. يجب أن ينضموا لفريق أولاً.`
+      ? `يوجد ${(teams.unassignedPlayerIds || []).length} مقاتل غير مصنف. يجب أن ينضموا لفريق أولاً.`
       : teams.teamA.playerIds.length === 0 
       ? `${teams.teamA.customName || 'الفريق الأحمر'} لازم يكون فيه مقاتل واحد على الأقل`
       : teams.teamB.playerIds.length === 0 
@@ -2955,11 +2955,11 @@ function LobbyScreen() {
     !!teamStartError
   const startValidationError = teamStartError
     || (activePlayers < 2
-    ? 'لازم يكون لاعبين على الأقل'
+    ? 'لازم يكون مقاتلين على الأقل'
     : activePlayers === 2 && gameSettings.numberOfRounds === 2
-      ? 'لاعبين ما يلعبوش جولتين'
+      ? 'مقاتلين ما يلعبوش جولتين'
       : activePlayers === 3 && gameSettings.numberOfRounds === 3
-        ? 'ثلاث لاعبين ما يلعبوش ثلاث جولات'
+        ? 'ثلاث مقاتلين ما يلعبوش ثلاث جولات'
         : '')
 
   const copyCode = async () => {
@@ -3002,11 +3002,11 @@ function LobbyScreen() {
     // In team mode, captains need approval for settings changes
     if (battleMode === 'فرق' && isCaptain) {
       const changeLabels: Record<string, string> = {
-        gameType: 'نوع اللعبة',
+        gameType: 'نوع المعركة',
         difficulty: 'الصعوبة',
         timePerRound: 'وقت الجولة',
         numberOfRounds: 'عدد الجولات',
-        maxPlayers: 'عدد اللاعبين',
+        maxPlayers: 'عدد المقاتلين',
         playerMode: 'نوع الساحة',
         passageType: 'نوع القطعة',
       }
@@ -3032,11 +3032,11 @@ function LobbyScreen() {
       setGameSettings(data.settings)
       if (data.changes.length > 0) {
         const changeLabels: Record<string, string> = {
-          gameType: 'نوع اللعبة',
+          gameType: 'نوع المعركة',
           difficulty: 'الصعوبة',
           timePerRound: 'وقت الجولة',
           numberOfRounds: 'عدد الجولات',
-          maxPlayers: 'عدد اللاعبين',
+          maxPlayers: 'عدد المقاتلين',
           playerMode: 'نوع الساحة',
           passageType: 'نوع القطعة',
         }
@@ -3271,11 +3271,11 @@ function LobbyScreen() {
                                 {isTeamCaptain && <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />}
                                 <span className="text-xs sm:text-sm text-white truncate">{p.name}</span>
                                 {isMe && <span className="text-[9px] sm:text-[10px] text-red-400">(أنت)</span>}
-                                {p.isHost && !isTeamCaptain && <Badge className="host-badge text-white border-0 text-[8px] sm:text-[9px] shrink-0 py-0 px-1"><Shield className="w-2 h-2 ml-0.5" />مضيف</Badge>}
+                                {p.isHost && !isTeamCaptain && <Badge className="host-badge text-white border-0 text-[8px] sm:text-[9px] shrink-0 py-0 px-1"><Shield className="w-2 h-2 ml-0.5" />قائد</Badge>}
                               </div>
                               <div className="flex items-center gap-1">
                                 {isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-amber-400/80">قائد الفريق</span>}
-                                {p.isHost && isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-violet-400/80">· مضيف</span>}
+                                {p.isHost && isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-violet-400/80">· قائد</span>}
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -3329,7 +3329,7 @@ function LobbyScreen() {
                                     <AlertDialogHeader>
                                       <AlertDialogTitle className="text-white">نقل الإدارة لـ {p.name}؟</AlertDialogTitle>
                                       <AlertDialogDescription className="text-slate-400">
-                                        هتسيب منصب مضيف الساحة و {p.name} هيبقى المضيف الجديد
+                                        هتسيب منصب قائد الساحة و {p.name} هيبقى القائد الجديد
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter className="flex gap-2">
@@ -3433,11 +3433,11 @@ function LobbyScreen() {
                                 {isTeamCaptain && <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />}
                                 <span className="text-xs sm:text-sm text-white truncate">{p.name}</span>
                                 {isMe && <span className="text-[9px] sm:text-[10px] text-sky-400">(أنت)</span>}
-                                {p.isHost && !isTeamCaptain && <Badge className="host-badge text-white border-0 text-[8px] sm:text-[9px] shrink-0 py-0 px-1"><Shield className="w-2 h-2 ml-0.5" />مضيف</Badge>}
+                                {p.isHost && !isTeamCaptain && <Badge className="host-badge text-white border-0 text-[8px] sm:text-[9px] shrink-0 py-0 px-1"><Shield className="w-2 h-2 ml-0.5" />قائد</Badge>}
                               </div>
                               <div className="flex items-center gap-1">
                                 {isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-amber-400/80">قائد الفريق</span>}
-                                {p.isHost && isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-violet-400/80">· مضيف</span>}
+                                {p.isHost && isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-violet-400/80">· قائد</span>}
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -3491,7 +3491,7 @@ function LobbyScreen() {
                                     <AlertDialogHeader>
                                       <AlertDialogTitle className="text-white">نقل الإدارة لـ {p.name}؟</AlertDialogTitle>
                                       <AlertDialogDescription className="text-slate-400">
-                                        هتسيب منصب مضيف الساحة و {p.name} هيبقى المضيف الجديد
+                                        هتسيب منصب قائد الساحة و {p.name} هيبقى القائد الجديد
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter className="flex gap-2">
@@ -3554,7 +3554,7 @@ function LobbyScreen() {
                         <span className="font-bold text-slate-400 text-xs sm:text-sm">الغير مصنف</span>
                       </div>
                       <Badge variant="outline" className="border-slate-500/30 text-slate-400 text-[10px]">
-                        {(teams.unassignedPlayerIds || []).length} لاعب
+                        {(teams.unassignedPlayerIds || []).length} مقاتل
                       </Badge>
                     </div>
                     <div className="p-1.5 sm:p-2 space-y-1 sm:space-y-1.5 max-h-28 sm:max-h-32 overflow-y-auto custom-scrollbar">
@@ -3576,7 +3576,7 @@ function LobbyScreen() {
                         )
                       })}
                       {(teams.unassignedPlayerIds || []).length === 0 && (
-                        <div className="text-center text-[11px] sm:text-xs text-slate-500 py-2">لا يوجد لاعبين غير مصنفين</div>
+                        <div className="text-center text-[11px] sm:text-xs text-slate-500 py-2">لا يوجد مقاتلين غير مصنفين</div>
                       )}
                     </div>
                     {/* Join request buttons for unassigned current player */}
@@ -3814,7 +3814,7 @@ function LobbyScreen() {
                                   size="icon"
                                   variant="ghost"
                                   className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
-                                  title="طرد اللاعب"
+                                  title="طرد المقاتل"
                                 >
                                   <UserX className="w-3.5 h-3.5" />
                                 </Button>
@@ -3823,7 +3823,7 @@ function LobbyScreen() {
                                 <AlertDialogHeader>
                                   <AlertDialogTitle className="text-white">طرد {player.name}؟</AlertDialogTitle>
                                   <AlertDialogDescription className="text-slate-400">
-                                    هتطرد {player.name} من الساحة. اللاعب المش هيقدر يرجع غير لو دخل من أول وجديد.
+                                    هتطرد {player.name} من الساحة. المقاتل المش هيقدر يرجع غير لو دخل من أول وجديد.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter className="flex gap-2">
@@ -3874,7 +3874,7 @@ function LobbyScreen() {
                                 <AlertDialogHeader>
                                   <AlertDialogTitle className="text-white">نقل الإدارة لـ {player.name}؟</AlertDialogTitle>
                                   <AlertDialogDescription className="text-slate-400">
-                                    هتسيب منصب مضيف الساحة و {player.name} هيبقى المضيف الجديد
+                                    هتسيب منصب قائد الساحة و {player.name} هيبقى القائد الجديد
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter className="flex gap-2">
@@ -3911,9 +3911,9 @@ function LobbyScreen() {
                   <span className="text-amber-300 font-bold text-xs sm:text-sm">الساحة مفتوحة</span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-400 mt-1.5 sm:mt-2">
-                  {activePlayers === 0 ? 'لسه محدش دخل...' : activePlayers === 1 ? 'محارب واحد مستني...' : `${activePlayers} لاعبين داخل المعركة`}
+                  {activePlayers === 0 ? 'لسه محدش دخل...' : activePlayers === 1 ? 'محارب واحد مستني...' : `${activePlayers} مقاتلين داخل المعركة`}
                 </p>
-                <p className="text-[11px] sm:text-xs text-slate-500 mt-1">المضيف يحدد وقت البداية</p>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-1">القائد يحدد وقت البداية</p>
               </motion.div>
             ) : (
               <>
@@ -4388,11 +4388,11 @@ function RoundTransitionScreen() {
     // Team mode: captains need approval from other captain
     if (battleMode === 'فرق' && isCaptain) {
       const changeLabels: Record<string, string> = {
-        gameType: 'نوع اللعبة',
+        gameType: 'نوع المعركة',
         difficulty: 'الصعوبة',
         timePerRound: 'وقت الجولة',
         numberOfRounds: 'عدد الجولات',
-        maxPlayers: 'عدد اللاعبين',
+        maxPlayers: 'عدد المقاتلين',
         playerMode: 'نوع الساحة',
         passageType: 'نوع القطعة',
       }
@@ -5398,7 +5398,7 @@ function GameScreen() {
                             <p className="text-xs text-slate-500 mb-1">
                               {otherTeamUnfinished.length === 1
                                 ? 'متبقّي مقاتل واحد في المعركة'
-                                : `متبقّي ${otherTeamUnfinished.length} لاعبين في المعركة`}
+                                : `متبقّي ${otherTeamUnfinished.length} مقاتلين في المعركة`}
                             </p>
                             <p className="text-sm text-slate-300">{otherTeamUnfinished.join('، ')}</p>
                           </motion.div>
@@ -5437,7 +5437,7 @@ function GameScreen() {
                   />
                   <h3 className="text-white font-bold text-lg mb-2">في انتظار باقي المقاتلين</h3>
                   <p className="text-slate-400 text-sm mb-4">
-                    في انتظار انتهاء جميع اللاعبين من الإجابة أو انتهاء الوقت
+                    في انتظار انتهاء جميع المقاتلين من الإجابة أو انتهاء الوقت
                   </p>
 
                   {/* Show who hasn't finished */}
@@ -5871,7 +5871,7 @@ function ResultsScreen() {
                             size="icon"
                             variant="ghost"
                             className="w-6 h-6 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
-                            title="طرد اللاعب"
+                            title="طرد المقاتل"
                           >
                             <UserX className="w-3 h-3" />
                           </Button>
@@ -6016,7 +6016,7 @@ function ResultsScreen() {
               </motion.div>
               <h3 className="text-white font-bold text-xl mb-2">عايز تلعب معركة مشابهه؟</h3>
               <p className="text-slate-400 text-sm mb-6">
-                نفس الإعدادات، غرفة جديدة، وأول واحد يدوس نعم هيبقى هو القائد
+                نفس الإعدادات، ساحة جديدة، وأول واحد يدوس نعم هيبقى هو القائد
               </p>
               <div className="flex flex-col gap-3">
                 <Button

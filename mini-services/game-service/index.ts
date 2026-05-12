@@ -920,7 +920,7 @@ function buildPrompt(
 
 ${searchInspiration}${seedInstruction}${varietyConstraint}
 
-نوع اللعبة: نصوص (أدب وبلاغة)
+نوع المعركة: نصوص (أدب وبلاغة)
 مستوى الصعوبة: ${difficulty}
 
 القواعد:
@@ -1027,7 +1027,7 @@ ${searchInspiration}${seedInstruction}${varietyConstraint}
 
 ${searchInspiration}${seedInstruction}${varietyConstraint}
 
-نوع اللعبة: ${gameType}
+نوع المعركة: ${gameType}
 مستوى الصعوبة: ${difficulty}
 ${passageTypeInstruction}
 
@@ -1096,7 +1096,7 @@ async function fetchGameContent(
 
   const generatePromise = async (): Promise<GameContent> => {
   // Step 1: Emit "checking"
-  io.to(roomCode).emit('content-progress', { step: 'checking', text: 'جاري فحص المحتوى السابق للاعبين...' })
+  io.to(roomCode).emit('content-progress', { step: 'checking', text: 'جاري فحص المحتوى السابق للمقاتلين...' })
   await new Promise(r => setTimeout(r, 300))
 
   // Step 2: Emit "searching"
@@ -1587,7 +1587,7 @@ io.on('connection', (socket: Socket) => {
 
       const room = rooms.get(roomCode.toUpperCase())
       if (!room) {
-        socket.emit('rejoin-failed', { message: 'الغرفة لم تعد موجودة' })
+        socket.emit('rejoin-failed', { message: 'الساحة لم تعد موجودة' })
         return
       }
 
@@ -1603,7 +1603,7 @@ io.on('connection', (socket: Socket) => {
       }
 
       if (!existingPlayer || !existingPlayerId) {
-        socket.emit('rejoin-failed', { message: 'أنت لست في هذه الغرفة' })
+        socket.emit('rejoin-failed', { message: 'أنت مش في الساحة دي' })
         return
       }
 
@@ -1761,7 +1761,7 @@ io.on('connection', (socket: Socket) => {
       // Validate room exists
       const room = rooms.get(roomCode?.toUpperCase())
       if (!room) {
-        socket.emit('early-end-rejected', { message: 'الغرفة مش موجودة' })
+        socket.emit('early-end-rejected', { message: 'الساحة مش موجودة' })
         return
       }
 
@@ -1800,11 +1800,11 @@ io.on('connection', (socket: Socket) => {
       // 2 active players CANNOT end game if exactly 2 rounds completed
       // 3 active players CANNOT end game if exactly 3 rounds completed
       if (activePlayerCount === 2 && completedRoundsCount === 2) {
-        socket.emit('early-end-rejected', { message: 'لاعبين ما يلعبوش جولتين — القاعدة بتمنع إنهاء المعركة دلوقتي' })
+        socket.emit('early-end-rejected', { message: 'مقاتلين ما يلعبوش جولتين — القاعدة بتمنع إنهاء المعركة دلوقتي' })
         return
       }
       if (activePlayerCount === 3 && completedRoundsCount === 3) {
-        socket.emit('early-end-rejected', { message: 'ثلاث لاعبين ما يلعبوش ثلاث جولات — القاعدة بتمنع إنهاء المعركة دلوقتي' })
+        socket.emit('early-end-rejected', { message: 'ثلاث مقاتلين ما يلعبوش ثلاث جولات — القاعدة بتمنع إنهاء المعركة دلوقتي' })
         return
       }
 
@@ -1868,7 +1868,7 @@ io.on('connection', (socket: Socket) => {
       const { playerName, settings, roomType, password } = data
 
       if (!playerName || playerName.trim().length === 0) {
-        socket.emit('game-error', { message: 'اسم اللاعب مطلوب' })
+        socket.emit('game-error', { message: 'اسم المقاتل مطلوب' })
         return
       }
 
@@ -1876,7 +1876,7 @@ io.on('connection', (socket: Socket) => {
       // Only validate for fixed mode (open mode will be validated at start time with actual player count)
       if (settings.playerMode !== 'open' && settings.maxPlayers !== 0) {
         if ((settings.maxPlayers === 2 && settings.numberOfRounds === 2) || (settings.maxPlayers === 3 && settings.numberOfRounds === 3)) {
-          socket.emit('game-error', { message: 'عدد الجولات لا يمكن أن يساوي عدد اللاعبين عند 2 أو 3 لاعبين' })
+          socket.emit('game-error', { message: 'عدد الجولات لا يمكن أن يساوي عدد المقاتلين عند 2 أو 3 مقاتلين' })
           return
         }
       }
@@ -1963,31 +1963,31 @@ io.on('connection', (socket: Socket) => {
       const { roomCode, playerName, password } = data
 
       if (!roomCode || !playerName || playerName.trim().length === 0) {
-        socket.emit('game-error', { message: 'رمز الغرفة واسم اللاعب مطلوبان' })
+        socket.emit('game-error', { message: 'رمز الساحة واسم المقاتل مطلوبان' })
         return
       }
 
       const room = rooms.get(roomCode.toUpperCase())
       if (!room) {
-        socket.emit('game-error', { message: 'الغرفة غير موجودة أو تم حذفها' })
+        socket.emit('game-error', { message: 'الساحة غير موجودة أو تم حذفها' })
         return
       }
 
       if (room.players.size === 0) {
-        socket.emit('game-error', { message: 'الغرفة غير موجودة أو تم حذفها' })
+        socket.emit('game-error', { message: 'الساحة غير موجودة أو تم حذفها' })
         broadcastPublicRooms()
         return
       }
 
       if (room.status !== 'waiting') {
-        socket.emit('game-error', { message: 'اللعبة قد بدأت بالفعل' })
+        socket.emit('game-error', { message: 'المعركة بدأت بالفعل' })
         return
       }
 
       if (room.settings.maxPlayers !== 0) {
         const activePlayers = [...room.players.values()].filter(p => !p.isDisconnected).length
         if (activePlayers >= room.settings.maxPlayers) {
-          socket.emit('game-error', { message: 'الغرفة ممتلئة' })
+          socket.emit('game-error', { message: 'الساحة ممتلئة' })
           return
         }
       }
@@ -2003,7 +2003,7 @@ io.on('connection', (socket: Socket) => {
         (p) => p.name === playerName.trim()
       )
       if (nameTaken) {
-        socket.emit('game-error', { message: 'اسم اللاعب مستخدم بالفعل في هذه الغرفة' })
+        socket.emit('game-error', { message: 'اسم المقاتل مستخدم بالفعل في الساحة دي' })
         return
       }
 
@@ -2112,24 +2112,24 @@ io.on('connection', (socket: Socket) => {
       console.log(`[start-game] Request from ${socket.id}, roomCode: ${roomCode}, room found: ${!!room}`)
 
       if (!room) {
-        socket.emit('game-error', { message: 'الغرفة غير موجودة' })
+        socket.emit('game-error', { message: 'الساحة غير موجودة' })
         return
       }
 
       if (room.hostId !== socket.id) {
-        socket.emit('game-error', { message: 'فقط المضيف يمكنه بدء اللعبة' })
+        socket.emit('game-error', { message: 'فقط القائد يقدر يبدأ المعركة' })
         return
       }
 
       // Count only active (non-disconnected) players
       const activePlayerCount = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
       if (activePlayerCount < 2) {
-        socket.emit('game-error', { message: 'يجب أن يكون هناك لاعبان نشطان على الأقل' })
+        socket.emit('game-error', { message: 'يجب أن يكون هناك مقاتلان نشطان على الأقل' })
         return
       }
 
       if (room.status !== 'waiting') {
-        socket.emit('game-error', { message: 'اللعبة قد بدأت بالفعل' })
+        socket.emit('game-error', { message: 'المعركة بدأت بالفعل' })
         return
       }
 
@@ -2138,7 +2138,7 @@ io.on('connection', (socket: Socket) => {
         const unassigned = getUnassignedPlayers(room)
         if (unassigned.length > 0) {
           const names = unassigned.map(p => p.name).join('، ')
-          socket.emit('game-error', { message: `اللاعبون التالية أسماؤهم غير مصنفين: ${names}. يجب أن ينضموا لفريق أولاً.` })
+          socket.emit('game-error', { message: `المقاتلون التالية أسماؤهم غير مصنفين: ${names}. يجب أن ينضموا لفريق أولاً.` })
           return
         }
       }
@@ -2146,11 +2146,11 @@ io.on('connection', (socket: Socket) => {
       // Validate round/player conflict rules with current player count
       const currentActivePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
       if (currentActivePlayers === 2 && room.settings.numberOfRounds === 2) {
-        socket.emit('game-error', { message: 'لاعبين ما يلعبوش جولتين' })
+        socket.emit('game-error', { message: 'مقاتلين ما يلعبوش جولتين' })
         return
       }
       if (currentActivePlayers === 3 && room.settings.numberOfRounds === 3) {
-        socket.emit('game-error', { message: 'ثلاث لاعبين ما يلعبوش ثلاث جولات' })
+        socket.emit('game-error', { message: 'ثلاث مقاتلين ما يلعبوش ثلاث جولات' })
         return
       }
 
@@ -2238,7 +2238,7 @@ io.on('connection', (socket: Socket) => {
         room.status = 'waiting'
         room.rounds = []
         io.to(roomCode).emit('game-error', {
-          message: 'فشل في توليد محتوى اللعبة. يرجى المحاولة مرة أخرى.',
+          message: 'فشل في توليد محتوى المعركة. يرجى المحاولة مرة أخرى.',
         })
         broadcastPublicRooms()
       }
@@ -2256,13 +2256,13 @@ io.on('connection', (socket: Socket) => {
       const room = rooms.get(roomCode?.toUpperCase())
 
       if (!room) {
-        socket.emit('game-error', { message: 'الغرفة غير موجودة' })
+        socket.emit('game-error', { message: 'الساحة غير موجودة' })
         return
       }
 
       // 1. Only host can update settings
       if (room.hostId !== socket.id) {
-        socket.emit('game-error', { message: 'فقط المضيف يمكنه تعديل الإعدادات' })
+        socket.emit('game-error', { message: 'فقط القائد يقدر يعدّل الإعدادات' })
         return
       }
 
@@ -2277,11 +2277,11 @@ io.on('connection', (socket: Socket) => {
       if (room.battleMode === 'فرق' && player?.isCaptain) {
         // Build description of changes
         const changeLabels: Record<string, string> = {
-          gameType: 'نوع اللعبة',
+          gameType: 'نوع المعركة',
           difficulty: 'الصعوبة',
           timePerRound: 'وقت الجولة',
           numberOfRounds: 'عدد الجولات',
-          maxPlayers: 'عدد اللاعبين',
+          maxPlayers: 'عدد المقاتلين',
           playerMode: 'نوع الساحة',
           passageType: 'نوع القطعة',
         }
@@ -2347,7 +2347,7 @@ io.on('connection', (socket: Socket) => {
         const forbiddenMidGame = ['gameType', 'maxPlayers', 'playerMode'] as const
         for (const key of forbiddenMidGame) {
           if (key in newSettings) {
-            socket.emit('game-error', { message: `لا يمكن تغيير ${key === 'gameType' ? 'نوع اللعبة' : key === 'maxPlayers' ? 'عدد اللاعبين' : 'وضع اللاعبين'} أثناء اللعب` })
+            socket.emit('game-error', { message: `لا يمكن تغيير ${key === 'gameType' ? 'نوع المعركة' : key === 'maxPlayers' ? 'عدد المقاتلين' : 'وضع المقاتلين'} أثناء اللعب` })
             return
           }
         }
@@ -2363,17 +2363,17 @@ io.on('connection', (socket: Socket) => {
           // Open mode: validate rounds vs current player count
           const currentActivePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
           if (currentActivePlayers === 2 && effectiveNumberOfRounds === 2) {
-            socket.emit('game-error', { message: 'لاعبين ما يلعبوش جولتين' })
+            socket.emit('game-error', { message: 'مقاتلين ما يلعبوش جولتين' })
             return
           }
           if (currentActivePlayers === 3 && effectiveNumberOfRounds === 3) {
-            socket.emit('game-error', { message: 'ثلاث لاعبين ما يلعبوش ثلاث جولات' })
+            socket.emit('game-error', { message: 'ثلاث مقاتلين ما يلعبوش ثلاث جولات' })
             return
           }
         } else {
           // Fixed mode: validate rounds vs maxPlayers
           if ((effectiveMaxPlayers === 2 && effectiveNumberOfRounds === 2) || (effectiveMaxPlayers === 3 && effectiveNumberOfRounds === 3)) {
-            socket.emit('game-error', { message: 'عدد الجولات لا يمكن أن يساوي عدد اللاعبين عند 2 أو 3 لاعبين' })
+            socket.emit('game-error', { message: 'عدد الجولات لا يمكن أن يساوي عدد المقاتلين عند 2 أو 3 مقاتلين' })
             return
           }
         }
@@ -2383,11 +2383,11 @@ io.on('connection', (socket: Socket) => {
       if (newSettings.playerMode === 'open' || (newSettings.maxPlayers === 0 && effectivePlayerMode === 'open')) {
         const currentActivePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected).length
         if (currentActivePlayers === 2 && effectiveNumberOfRounds === 2) {
-          socket.emit('game-error', { message: 'لاعبين ما يلعبوش جولتين' })
+          socket.emit('game-error', { message: 'مقاتلين ما يلعبوش جولتين' })
           return
         }
         if (currentActivePlayers === 3 && effectiveNumberOfRounds === 3) {
-          socket.emit('game-error', { message: 'ثلاث لاعبين ما يلعبوش ثلاث جولات' })
+          socket.emit('game-error', { message: 'ثلاث مقاتلين ما يلعبوش ثلاث جولات' })
           return
         }
       }
@@ -2488,18 +2488,18 @@ io.on('connection', (socket: Socket) => {
       const timeTaken = room ? Math.max(0, room.roundTimerSeconds - (timeLeft || 0)) : 0
 
       if (!room) {
-        socket.emit('game-error', { message: 'الغرفة غير موجودة' })
+        socket.emit('game-error', { message: 'الساحة غير موجودة' })
         return
       }
 
       if (room.status !== 'playing') {
-        socket.emit('game-error', { message: 'اللعبة ليست قيد التشغيل' })
+        socket.emit('game-error', { message: 'المعركة مش شغالة' })
         return
       }
 
       const player = room.players.get(socket.id)
       if (!player) {
-        socket.emit('game-error', { message: 'أنت لست في هذه الغرفة' })
+        socket.emit('game-error', { message: 'أنت مش في الساحة دي' })
         return
       }
 
@@ -3035,7 +3035,7 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
 
     // Validate sender is the host
     if (room.hostId !== socket.id) {
-      socket.emit('game-error', { message: 'فقط القائد يقدر يطرد لاعب' })
+      socket.emit('game-error', { message: 'فقط القائد يقدر يطرد مقاتل' })
       return
     }
 
@@ -3048,7 +3048,7 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     // Find the player to kick
     const playerToKick = room.players.get(data.playerId)
     if (!playerToKick) {
-      socket.emit('game-error', { message: 'اللاعب مش موجود في الساحة' })
+      socket.emit('game-error', { message: 'المقاتل مش موجود في الساحة' })
       return
     }
 
@@ -3107,7 +3107,7 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
 
     // Validate sender is the host
     if (room.hostId !== socket.id) {
-      socket.emit('game-error', { message: 'فقط القائد يقدر يكتم لاعب' })
+      socket.emit('game-error', { message: 'فقط القائد يقدر يكتم مقاتل' })
       return
     }
 
@@ -3119,7 +3119,7 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
 
     const playerToMute = room.players.get(data.playerId)
     if (!playerToMute) {
-      socket.emit('game-error', { message: 'اللاعب مش موجود في الساحة' })
+      socket.emit('game-error', { message: 'المقاتل مش موجود في الساحة' })
       return
     }
 
@@ -3893,7 +3893,7 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     
     const targetPlayer = room.players.get(data.targetPlayerId)
     if (!targetPlayer || targetPlayer.isDisconnected) {
-      socket.emit('game-error', { message: 'اللاعب المحدد غير موجود' })
+      socket.emit('game-error', { message: 'المقاتل المحدد غير موجود' })
       return
     }
     
@@ -3949,7 +3949,7 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     } else if (data.type === 'host') {
       // Host transfer: only current host can do this, target can be any player
       if (!currentPlayer.isHost) {
-        socket.emit('game-error', { message: 'فقط المضيف يقدر ينقل الإدارة' })
+        socket.emit('game-error', { message: 'فقط القائد يقدر ينقل القيادة' })
         return
       }
       if (targetPlayer.id === currentPlayer.id) {

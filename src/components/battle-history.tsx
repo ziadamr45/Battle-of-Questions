@@ -474,7 +474,7 @@ export function BattleDetail({ battle, playerName, onBack }: BattleDetailProps) 
             </Button>
             <div className="flex-1">
               <h1 className="text-xl font-black text-white">تقرير المعركة</h1>
-              <p className="text-xs text-slate-500">{timeAgo(battle.endedAt)} • غرفة {battle.roomCode}</p>
+              <p className="text-xs text-slate-500">{timeAgo(battle.endedAt)} • ساحة {battle.roomCode}</p>
             </div>
             {/* Result badge */}
             <div className={`px-3 py-1.5 rounded-lg text-sm font-bold ${
@@ -564,9 +564,9 @@ export function BattleDetail({ battle, playerName, onBack }: BattleDetailProps) 
             </h3>
           </div>
           <div className="p-4 grid grid-cols-2 gap-3">
-            <InfoItem icon={<GameTypeIcon gameType={battle.gameType} className="w-3.5 h-3.5" />} label="نوع اللعبة" value={battle.gameType} />
+            <InfoItem icon={<GameTypeIcon gameType={battle.gameType} className="w-3.5 h-3.5" />} label="نوع المعركة" value={battle.gameType} />
             <InfoItem icon={<Target className="w-3.5 h-3.5" />} label="الصعوبة" value={battle.difficulty} highlight />
-            <InfoItem icon={<Users className="w-3.5 h-3.5" />} label="عدد اللاعبين" value={`${battle.participants.length} مقاتلين`} />
+            <InfoItem icon={<Users className="w-3.5 h-3.5" />} label="عدد المقاتلين" value={`${battle.participants.length} مقاتلين`} />
             <InfoItem icon={<Swords className="w-3.5 h-3.5" />} label="الجولات" value={`${battle.completedRounds}/${battle.totalRounds}`} />
             <InfoItem icon={<Clock className="w-3.5 h-3.5" />} label="المدة" value={formatDuration(battle.totalDuration)} />
             <InfoItem icon={<Star className="w-3.5 h-3.5" />} label="قائد الساحة" value={battle.hostName} />

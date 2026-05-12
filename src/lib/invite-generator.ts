@@ -101,10 +101,10 @@ function getUrgencyLine(status: string, currentPlayers: number, maxPlayers: numb
 
   if (currentPlayers === 1) {
     const lines = [
-      'ناككككككككككككككك لاعب واحد عشان نبدأ 😤',
+      'ناككككككككككككككك مقاتل واحد عشان نبدأ 😤',
       'مستنيينك بس إنت عشان نبدأ 🔥',
       'فاضل واحد وبنبدأ... يلا ادخل! ⚡',
-      'ناكس لاعب واحد وهنبدا المعركة 🎯',
+      'ناكس مقاتل واحد وهنبدا المعركة 🎯',
     ]
     return pickRandom(lines)
   }
@@ -272,7 +272,7 @@ export function generateShortInvite(info: ShareRoomInfo): string {
   const statusPart = remaining > 0 && info.roomStatus === 'waiting'
     ? `فاضل ${remaining} مكان`
     : info.roomStatus === 'playing'
-      ? 'اللعبة بدأت!'
+      ? 'المعركة بدأت!'
       : 'الساحة فاتحة'
 
   return `${intro}\n⚔️ ${info.gameType}${info.gameType === 'قراءة متحررة' && info.passageType ? ' • ' + info.passageType : ''} • ${info.difficulty}\n${statusPart}\n🔗 ${info.joinUrl}`

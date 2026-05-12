@@ -444,7 +444,7 @@ export function AboutPage({ onBack }: AboutPageProps) {
                 <div>
                   <h3 className="text-lg font-bold text-white mb-2">ما هي معركة الأسئلة؟</h3>
                   <p className="text-white/60 text-sm leading-relaxed">
-                    ليست مجرد لعبة أسئلة عادية... معركة الأسئلة هي ساحة رقمية تتحول فيها المعرفة إلى سلاح.
+                    ليست مجرد معركة أسئلة عادية... معركة الأسئلة هي ساحة رقمية تتحول فيها المعرفة إلى سلاح.
                     كل سؤال هو ضربة، وكل إجابة هي درع. هنا لا تقرأ لتتعلم فقط — بل تقرأ لتفوز.
                   </p>
                 </div>
@@ -474,7 +474,7 @@ export function AboutPage({ onBack }: AboutPageProps) {
                   <Users size={22} className="text-[#06B6D4]" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white mb-2">رؤية متعددة اللاعبين</h3>
+                  <h3 className="text-lg font-bold text-white mb-2">قتال جماعي</h3>
                   <p className="text-white/60 text-sm leading-relaxed">
                     نتخيل عالماً حيث يتحدى أصدقاؤك في ساحات حقيقية، حيث كل مواجهة هي مبارزة فكرية حية.
                     معركة الأسئلة صُممت لتكون تجربة جماعية بامتياز — صوت حي، تصويت لحظي، وإثارة لا تتوقف.

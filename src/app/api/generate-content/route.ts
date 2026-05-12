@@ -405,7 +405,7 @@ function buildPrompt(
 
 ${searchInspiration}${seedInstruction}${varietyConstraint}
 
-نوع اللعبة: نصوص (أدب وبلاغة)
+نوع المعركة: نصوص (أدب وبلاغة)
 مستوى الصعوبة: ${difficulty}
 
 القواعد:
@@ -532,7 +532,7 @@ ${searchInspiration}${seedInstruction}${varietyConstraint}
 
 أنشئ تمرين قراءة متحررة كامل بالمتطلبات التالية:
 
-نوع اللعبة: ${gameType}
+نوع المعركة: ${gameType}
 مستوى الصعوبة: ${difficulty}
 
 القواعد:

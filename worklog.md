@@ -194,3 +194,146 @@ Stage Summary:
 - النصوص mode now has distinct literary presentation: poetry formatting, verse spacing, elegant typography, amber color scheme
 - Players will instantly FEEL the difference between modes visually
 - القراءة المتحررة mode: UNCHANGED
+
+---
+Task ID: 6
+Agent: Terminology Unification Agent (page.tsx)
+Task: Unify battle-themed terminology in page.tsx
+
+Work Log:
+- Read worklog.md to understand prior work context
+- Searched entire page.tsx for all instances of لاعب, مضيف, لعبة/اللعبة, غرفة/الغرفة
+- Verified that all occurrences are in user-facing Arabic text strings only (not in code identifiers, CSS class names, or socket event names)
+- **Used replace_all for efficiency and completeness:**
+  - `لاعب` → `مقاتل` (replace_all) — handles all forms: لاعب→مقاتل, اللاعب→المقاتل, لاعبين→مقاتلين, اللاعبين→المقاتلين
+  - `مضيف` → `قائد` (replace_all) — handles all forms: مضيف→قائد, المضيف→القائد
+  - `نوع اللعبة` → `نوع المعركة` (replace_all) — 3 occurrences in settings changeLabels
+  - `غرفة جديدة` → `ساحة جديدة` — 1 occurrence in rematch dialog
+- **لاعب replacements (19 instances):**
+  - 'تم كتم اللاعب' → 'تم كتم المقاتل'
+  - 'تم قبول اللاعب ✅' → 'تم قبول المقاتل ✅'
+  - 'بعدد اللاعبين' → 'بعدد المقاتلين'
+  - 'لاعبين ما يلعبوش جولتين' → 'مقاتلين ما يلعبوش جولتين' (2x)
+  - 'ثلاث لاعبين ما يلعبوش ثلاث جولات' → 'ثلاث مقاتلين ما يلعبوش ثلاث جولات' (2x)
+  - 'لاعب غير مصنف' → 'مقاتل غير مصنف'
+  - 'لازم يكون لاعبين' → 'لازم يكون مقاتلين'
+  - 'عدد اللاعبين' → 'عدد المقاتلين' (3x in changeLabels)
+  - '} لاعب' → '} مقاتل' (badge count)
+  - 'لا يوجد لاعبين غير مصنفين' → 'لا يوجد مقاتلين غير مصنفين'
+  - title="طرد اللاعب" → title="طرد المقاتل" (2x)
+  - 'اللاعب المش هيقدر' → 'المقاتل مش هيقدر'
+  - 'لاعبين داخل المعركة' → 'مقاتلين داخل المعركة'
+  - 'لاعبين في المعركة' → 'مقاتلين في المعركة'
+  - 'جميع اللاعبين' → 'جميع المقاتلين'
+- **مضيف replacements (10+ instances):**
+  - 'أنت المضيف الجديد!' → 'أنت القائد الجديد!' (2x, with/without emoji)
+  - 'بقيت المضيف' → 'بقيت القائد'
+  - 'مضيف جديد' → 'قائد جديد'
+  - 'بقى مضيف الساحة' → 'بقى قائد الساحة' (2x)
+  - Badge "مضيف" → "قائد" (2x in host-badge)
+  - "· مضيف" → "· قائد" (2x)
+  - "مضيف الفريق" → "قائد الفريق" (2x in captain transfer dialogs)
+  - "منصب مضيف الساحة" → "منصب قائد الساحة" (3x)
+  - "المضيف الجديد" → "القائد الجديد" (3x)
+  - "المضيف يحدد وقت البداية" → "القائد يحدد وقت البداية"
+- **لعبة replacements (3 instances):**
+  - 'نوع اللعبة' → 'نوع المعركة' (3x in changeLabels)
+- **غرفة replacements (1 instance):**
+  - 'غرفة جديدة' → 'ساحة جديدة'
+- **Preserved unchanged:**
+  - All code identifiers: isHost, hostId, hostName, gameType, etc.
+  - All CSS class names: host-badge
+  - All socket event names: host-changed, player-joined, etc.
+  - Game type names: نصوص, قراءة متحررة
+- Post-replacement verification: searched entire file for remaining لاعب, مضيف, لعبة/اللعبة, غرفة/الغرفة — zero results
+- Lint check passed with no errors
+
+Stage Summary:
+- ALL generic Arabic terminology replaced with battle-themed equivalents in page.tsx
+- لاعب→مقاتل, مضيف→قائد, نوع اللعبة→نوع المعركة, غرفة جديدة→ساحة جديدة
+- No code identifiers, CSS classes, or socket event names were modified
+- Zero remaining instances of the old terminology
+
+---
+Task ID: 7
+Agent: Terminology Unification Agent (game-service)
+Task: Unify battle-themed terminology in game-service/index.ts
+
+Work Log:
+- Read worklog.md to understand prior work context (Task 6 already handled page.tsx)
+- Searched entire game-service/index.ts for all instances of لاعب, مضيف, لعبة/اللعبة, غرفة/الغرفة
+- Found 23 لاعب instances, 9 لعبة/اللعبة instances, 12 غرفة/الغرفة instances, 3 مضيف/المضيف instances
+- All occurrences confirmed to be in user-facing Arabic text strings only (error messages, event data, AI prompt instructions, display labels)
+- **Used MultiEdit with 28 targeted replacements for precision and completeness:**
+
+- **لاعب replacements (23 instances):**
+  - 'السابق للاعبين' → 'السابق للمقاتلين' (1x, content-progress)
+  - 'لاعبين ما يلعبوش جولتين' → 'مقاتلين ما يلعبوش جولتين' (4x: early-end + start-game + update-settings x2)
+  - 'ثلاث لاعبين ما يلعبوش ثلاث جولات' → 'ثلاث مقاتلين ما يلعبوش ثلاث جولات' (4x: same locations)
+  - 'اسم اللاعب' → 'اسم المقاتل' (3x: create-game, join-game x2)
+  - 'عدد اللاعبين' → 'عدد المقاتلين' (4x: create-game, changeLabels, update-settings ternary, update-settings validation)
+  - 'عند 2 أو 3 لاعبين' → 'عند 2 أو 3 مقاتلين' (2x: create-game, update-settings)
+  - 'وضع اللاعبين' → 'وضع المقاتلين' (1x: update-settings ternary)
+  - 'لاعبان نشطان' → 'مقاتلان نشطان' (1x: start-game minimum check)
+  - 'اللاعبون التالية أسماؤهم' → 'المقاتلون التالية أسماؤهم' (1x: start-game unassigned check)
+  - 'فقط القائد يقدر يطرد لاعب' → 'فقط القائد يقدر يطرد مقاتل' (1x: kick-player)
+  - 'اللاعب مش موجود في الساحة' → 'المقاتل مش موجود في الساحة' (2x: kick-player, mute-player)
+  - 'فقط القائد يقدر يكتم لاعب' → 'فقط القائد يقدر يكتم مقاتل' (1x: mute-player)
+  - 'اللاعب المحدد غير موجود' → 'المقاتل المحدد غير موجود' (1x: transfer-leadership)
+
+- **لعبة/اللعبة replacements (9 instances):**
+  - 'نوع اللعبة' → 'نوع المعركة' (4x: AI prompt نصوص, AI prompt قراءة متحررة, changeLabels, update-settings ternary)
+  - 'محتوى اللعبة' → 'محتوى المعركة' (1x: content generation failure)
+  - 'اللعبة قد بدأت بالفعل' → 'المعركة بدأت بالفعل' (2x: join-game, start-game)
+  - 'اللعبة ليست قيد التشغيل' → 'المعركة مش شغالة' (1x: submit-answer)
+  - 'فقط المضيف يمكنه بدء اللعبة' → 'فقط القائد يقدر يبدأ المعركة' (1x: start-game — also replaces المضيف)
+
+- **غرفة/الغرفة replacements (12 instances):**
+  - 'الغرفة غير موجودة أو تم حذفها' → 'الساحة غير موجودة أو تم حذفها' (2x: join-game)
+  - 'الغرفة غير موجودة' → 'الساحة غير موجودة' (3x: start-game, update-settings, submit-answer)
+  - 'الغرفة لم تعد موجودة' → 'الساحة لم تعد موجودة' (1x: rejoin)
+  - 'أنت لست في هذه الغرفة' → 'أنت مش في الساحة دي' (2x: rejoin, submit-answer)
+  - 'الغرفة مش موجودة' → 'الساحة مش موجودة' (1x: early-end-game)
+  - 'الغرفة ممتلئة' → 'الساحة ممتلئة' (1x: join-game)
+  - 'رمز الغرفة' → 'رمز الساحة' (1x: join-game validation)
+  - 'في هذه الغرفة' → 'في الساحة دي' (1x: join-game name-taken)
+
+- **المضيف replacements (3 instances):**
+  - 'فقط المضيف يمكنه بدء اللعبة' → 'فقط القائد يقدر يبدأ المعركة' (1x: start-game — also replaces اللعبة)
+  - 'فقط المضيف يمكنه تعديل الإعدادات' → 'فقط القائد يقدر يعدّل الإعدادات' (1x: update-settings)
+  - 'فقط المضيف يقدر ينقل الإدارة' → 'فقط القائد يقدر ينقل القيادة' (1x: transfer-leadership)
+
+- **Preserved unchanged:**
+  - All code identifiers: isHost, hostId, hostName, gameType, roomCode, playerToKick, etc.
+  - All TypeScript type names: Player, GameRoom, etc.
+  - All Map keys and socket event names: player-joined, host-changed, kick-player, etc.
+  - Code comments describing logic (e.g., "// Validate sender is the host")
+- Post-replacement verification: searched entire file for remaining لاعب, لعبة/اللعبة, غرفة/الغرفة, مضيف/المضيف — ZERO results
+- Game service restarted and health endpoint verified OK
+
+Stage Summary:
+- ALL 47 instances of generic Arabic terminology replaced with battle-themed equivalents in game-service/index.ts
+- لاعب→مقاتل (23 instances), لعبة/اللعبة→معركة/المعركة (9 instances), غرفة/الغرفة→ساحة/الساحة (12 instances), مضيف/المضيف→قائد/القائد (3 instances)
+- No code identifiers, type names, or socket event names were modified
+- Zero remaining instances of the old terminology
+- Game service runs correctly with battle-themed terminology
+
+---
+Task ID: 5
+Agent: Main Coordinator (Direct)
+Task: Unify terminology in components, API routes, and remaining files
+
+Work Log:
+- Fixed battle-history.tsx: "غرفة" → "ساحة", "نوع اللعبة" → "نوع المعركة", "عدد اللاعبين" → "عدد المقاتلين"
+- Fixed about-page.tsx: "لعبة أسئلة" → "معركة أسئلة", "رؤية متعددة اللاعبين" → "قتال جماعي"
+- Fixed invite-generator.ts: "لاعب واحد" → "مقاتل واحد" (2 instances), "اللعبة بدأت" → "المعركة بدأت"
+- Fixed layout.tsx: "لعبة مسابقات" → "معركة مسابقات" in description, "لعبة تعليمية" → "معركة تعليمية" in keywords
+- Fixed api/generate-content/route.ts: "نوع اللعبة" → "نوع المعركة" (2 instances in AI prompts)
+- Final verification scan: ZERO remaining instances of لاعب, لعبة, غرفة, مضيف across entire codebase
+
+Stage Summary:
+- All component files unified
+- All API routes unified
+- Layout metadata unified
+- Invite generator unified
+- Zero remaining generic terminology instances
