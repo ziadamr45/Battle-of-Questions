@@ -186,7 +186,7 @@ const socialLinks = [
   {
     name: 'الموقع الشخصي',
     nameEn: 'Website',
-    url: 'https://ziadamrme.netlify.app',
+    url: 'https://ziadamrme.vercel.app/',
     color: '#00C7B7',
     icon: 'globe',
   },
