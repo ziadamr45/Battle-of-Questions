@@ -693,7 +693,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
               transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
               className="mb-8"
             >
-              <BattleLogo size="2xl" className="w-20 h-20 sm:w-28 sm:h-28 md:w-[120px] md:h-[120px]" />
+              <BattleLogo size="2xl" className="w-28 h-28 sm:w-36 sm:h-36 md:w-44 md:h-44" />
             </motion.div>
 
             {/* Tap prompt */}
