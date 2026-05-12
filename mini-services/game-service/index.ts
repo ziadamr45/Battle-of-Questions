@@ -1179,7 +1179,7 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(roomCode)
     if (!room) return
 
-    const player = room.players.find((p: any) => p.id === socket.id)
+    const player = room.players.get(socket.id)
     if (!player) return
 
     const oldName = player.name
@@ -1190,7 +1190,7 @@ io.on('connection', (socket: Socket) => {
       playerId: socket.id,
       oldName,
       newName: player.name,
-      players: room.players,
+      players: playersToArray(room.players),
     })
   })
 

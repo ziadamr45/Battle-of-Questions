@@ -384,7 +384,10 @@ function useGameSocket() {
 
     socket.on('player-name-updated', (data: { playerId: string; oldName: string; newName: string; players: Player[] }) => {
       store.getState().setPlayers(data.players)
-      store.getState().setPlayerName(data.newName) // Update local name in case it was us
+      // Only update local name if THIS client is the one who changed their name
+      if (data.playerId === socket.id) {
+        store.getState().setPlayerName(data.newName)
+      }
       battleToast('name_updated', 'اسم جديد', `${data.oldName} غيّر اسمه لـ ${data.newName}`)
     })
 
