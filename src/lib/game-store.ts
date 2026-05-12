@@ -455,11 +455,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastRoundWinner: null,
       loadingStep: 'preparing',
       progressSteps: [],
-      playerMode: 'fixed',
       wasEarlyEnd: false,
       completedRounds: 0,
       earlyEndProcessing: false,
-      passageType: 'عشوائي',
     })
     clearSessionStorage()
   },

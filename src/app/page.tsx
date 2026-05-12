@@ -319,7 +319,9 @@ function useGameSocket() {
     })
 
     socket.on('game-ended', (data: { scores: Player[]; roundWinners: Record<number, string>; roundResults: Record<number, RoundScore[]>; totalRounds: number; battleData?: any }) => {
-      store.getState().setScores(data.scores.sort((a: Player, b: Player) => b.score - a.score))
+      // Sort a COPY to avoid mutating the socket data in-place
+      const sortedScores = [...data.scores].sort((a: Player, b: Player) => b.score - a.score)
+      store.getState().setScores(sortedScores)
       if (data.roundWinners) store.getState().setRoundWinners(data.roundWinners)
       if (data.roundResults) store.getState().setRoundResults(data.roundResults)
       store.getState().setEarlyEndProcessing(false)
@@ -328,7 +330,6 @@ function useGameSocket() {
       // Mark first battle as played after game ends
       useOnboardingStore.getState().markFirstBattlePlayed()
       // Play victory or defeat based on player position
-      const sortedScores = data.scores.sort((a: Player, b: Player) => b.score - a.score)
       const myId = globalSocket?.id
       const isWinner = myId && sortedScores[0]?.id === myId
       if (isWinner) {
@@ -453,7 +454,7 @@ function useGameSocket() {
   }, [connectAndDo])
 
   const joinGame = useCallback((roomCode: string, playerName: string, password?: string) => {
-    store.getState().setIsHost(false); store.getState().setPlayerName(playerName); store.getState().setIsLoading(true)
+    store.getState().setIsHost(false); store.getState().setPlayerName(playerName); store.getState().setRoomCode(roomCode.toUpperCase()); store.getState().setIsLoading(true)
     connectAndDo((socket) => { socket.emit('join-game', { roomCode: roomCode.toUpperCase(), playerName, password }) })
     // Safety timeout: if join-game doesn't complete in 12s, reset loading
     setTimeout(() => {
