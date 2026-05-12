@@ -158,7 +158,18 @@ export function BattleHistoryList({ playerName, onBattleSelect, onBack }: Battle
   const fetchBattles = useCallback(async (pageNum: number) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/battle-history?playerName=${encodeURIComponent(playerName)}&page=${pageNum}&limit=30`)
+      // Get guestId from cookie for reliable lookup (survives name changes)
+      const guestId = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('maaraka-guest-id='))
+        ?.split('=')[1] || ''
+      const params = new URLSearchParams({
+        playerName,
+        page: String(pageNum),
+        limit: '30',
+      })
+      if (guestId) params.set('guestId', guestId)
+      const res = await fetch(`/api/battle-history?${params}`)
       if (res.ok) {
         const data = await res.json()
         setBattles(data.battles || [])

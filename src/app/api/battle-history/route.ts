@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 
-// GET /api/battle-history?playerName=xxx&page=1&limit=30
+// GET /api/battle-history?playerName=xxx&guestId=xxx&page=1&limit=30
 // List battles for a specific player, newest first
+// Searches by guestId (preferred, survives name changes) OR playerName
 export async function GET(req: NextRequest) {
   // Rate limit: 30 requests per minute per IP
   const ip = getClientIp(req)
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
   }
 
   const playerName = req.nextUrl.searchParams.get('playerName')
+  const guestId = req.nextUrl.searchParams.get('guestId')
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1', 10)
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '30', 10), 30)
   const battleId = req.nextUrl.searchParams.get('battleId')
@@ -35,12 +37,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(battle)
   }
 
-  if (!playerName) {
-    return NextResponse.json({ error: 'Missing playerName' }, { status: 400 })
+  // Build the where clause: prefer guestId for reliable lookup, fall back to playerName
+  let participantWhere: any = {}
+
+  if (guestId) {
+    // Search by guestId — this survives name changes
+    participantWhere = {
+      OR: [
+        { guestId },
+        // Also include playerName match as fallback for old records without guestId
+        ...(playerName ? [{ playerName }] : []),
+      ],
+    }
+  } else if (playerName) {
+    participantWhere = { playerName }
+  } else {
+    return NextResponse.json({ error: 'Missing playerName or guestId' }, { status: 400 })
   }
 
   // Validate playerName length to prevent abuse
-  if (playerName.length > 30) {
+  if (playerName && playerName.length > 30) {
     return NextResponse.json({ error: 'Invalid playerName' }, { status: 400 })
   }
 
@@ -50,7 +66,7 @@ export async function GET(req: NextRequest) {
     db.battle.findMany({
       where: {
         participants: {
-          some: { playerName },
+          some: participantWhere,
         },
       },
       include: {
@@ -64,7 +80,7 @@ export async function GET(req: NextRequest) {
     db.battle.count({
       where: {
         participants: {
-          some: { playerName },
+          some: participantWhere,
         },
       },
     }),
@@ -139,6 +155,7 @@ export async function POST(req: NextRequest) {
         participants: {
           create: participants.map((p: any) => ({
             playerName: p.playerName,
+            guestId: p.guestId || null,
             finalRank: p.finalRank,
             totalScore: p.totalScore || 0,
             roundWins: p.roundWins || 0,

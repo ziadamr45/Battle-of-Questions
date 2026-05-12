@@ -72,6 +72,7 @@ model BattleParticipant {
   id            String   @id @default(cuid())
   battleId      String
   playerName    String
+  guestId       String?  // Links to Guest.id for name-independent lookups
   finalRank     Int      // 1st, 2nd, 3rd...
   totalScore    Float
   roundWins     Int
@@ -81,6 +82,7 @@ model BattleParticipant {
   battle        Battle   @relation(fields: [battleId], references: [id], onDelete: Cascade)
 
   @@unique([battleId, playerName])
+  @@index([guestId]) // Fast lookup by guest identity
 }
 
 // Each round's summary in a battle

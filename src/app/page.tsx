@@ -417,10 +417,22 @@ function useGameSocket() {
       if (data.battleData) {
         const playerName = store.getState().playerName
         if (playerName) {
+          // Enrich battle data with guestId for reliable history lookup
+          const battleDataWithGuest = { ...data.battleData }
+          const guestId = useGuestStore.getState().guest?.id
+          if (guestId && battleDataWithGuest.participants) {
+            // Add guestId to the participant that matches this player
+            battleDataWithGuest.participants = battleDataWithGuest.participants.map((p: any) => {
+              if (p.playerName === playerName) {
+                return { ...p, guestId }
+              }
+              return p
+            })
+          }
           fetch('/api/battle-history', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data.battleData),
+            body: JSON.stringify(battleDataWithGuest),
           }).catch(err => {
             console.error('[Battle History] Failed to save:', err)
           })
