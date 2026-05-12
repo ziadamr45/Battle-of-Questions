@@ -2065,10 +2065,12 @@ function JoinGameScreen() {
   const storedRoomCode = useGameStore((s) => s.roomCode)
   const [name, setName] = useState('')
   const [code, setCode] = useState(storedRoomCode || '')
+  const [activeTab, setActiveTab] = useState<string>(storedRoomCode ? 'code' : 'public')
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const [selectedRoom, setSelectedRoom] = useState<RoomInfo | null>(null)
   const [dialogPassword, setDialogPassword] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [autoJoinAttempted, setAutoJoinAttempted] = useState(false)
   const setScreen = useGameStore((s) => s.setScreen)
   const isLoading = useGameStore((s) => s.isLoading)
   const publicRooms = useGameStore((s) => s.publicRooms)
@@ -2122,6 +2124,20 @@ function JoinGameScreen() {
 
   // Auto-fill name from guest identity
   const effectiveJoinName = name || guest?.displayName || ''
+
+  // Auto-join when arriving from a share link (?join=CODE) and user has a name
+  const clearRoomCode = useGameStore((s) => s.setRoomCode)
+  useEffect(() => {
+    if (storedRoomCode && !autoJoinAttempted && effectiveJoinName.trim() && !isLoading) {
+      const timer = setTimeout(() => {
+        setAutoJoinAttempted(true)
+        joinGame(storedRoomCode.trim(), effectiveJoinName.trim())
+        // Clear stored room code after auto-join attempt so it doesn't persist
+        clearRoomCode('')
+      }, 800)
+      return () => clearTimeout(timer)
+    }
+  }, [storedRoomCode, effectiveJoinName, autoJoinAttempted, isLoading, joinGame, clearRoomCode])
 
   const handleJoinByCode = () => {
     if (!effectiveJoinName.trim() || !code.trim()) return
@@ -2201,7 +2217,7 @@ function JoinGameScreen() {
               </div>
             </div>
 
-            <Tabs defaultValue="public">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="w-full bg-white/5 border border-white/10 rounded-xl h-12">
                 <TabsTrigger value="public" className="flex-1 rounded-lg data-[state=active]:bg-red-600/20 data-[state=active]:text-red-400 text-slate-400 h-10">
                   <Globe className="w-4 h-4 ml-1" /> الساحات العامة

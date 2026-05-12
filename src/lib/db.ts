@@ -4,13 +4,18 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+// Use NEON_DATABASE_URL if available (takes precedence over DATABASE_URL)
+// This allows the sandbox environment to use PostgreSQL even when the system
+// sets DATABASE_URL to a local SQLite path.
+const effectiveDatabaseUrl = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL
+
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
     datasources: {
       db: {
-        url: process.env.DATABASE_URL,
+        url: effectiveDatabaseUrl,
       },
     },
   })
