@@ -459,3 +459,201 @@ Stage Summary:
 - Team chat with فريقي/الكل modes
 - MVP display in results
 - All builds and lint pass cleanly
+
+---
+Task ID: 2
+Agent: game-service-agent
+Task: Add Unassigned Players System (الغير مصنف) for team battle mode
+
+Work Log:
+- Added `JoinRequest` interface at line ~250 with fields: id, playerId, playerName, targetTeamId, type ('join'|'switch'), currentTeamId, createdAt, expiresAt, status
+- Added `joinRequests: Map<string, JoinRequest>` to GameRoom interface at line ~219
+- Added `getUnassignedPlayers()` helper function at line ~427 - filters players with teamId === null
+- Updated `getTeamsInfo()` return type to include `unassignedPlayerIds: string[]` at line ~433
+- Modified `join-game` handler (line ~1665): players now start as `teamId: null, isCaptain: false` instead of auto-assigned to a team
+- Added `request-join-team` socket event (line ~2728): unassigned players request to join a team, request goes to the team's captain with 40s auto-expire
+- Added `join-team-response` socket event (line ~2862): captains approve/reject join requests (handles both 'join' and 'switch' types), with captain transfer logic for switching players
+- Replaced `switch-team` handler (line ~2904): now requires captain approval via JoinRequest system instead of instant switching; unassigned players are redirected to use request-join-team
+- Added `joinRequests: new Map()` to GameRoom initialization in `create-game` handler (line ~1590)
+- Added `joinRequests: new Map()` to rematch room creation (line ~2558)
+- Updated disconnect handling in `removePlayerFromRoom()` (both 'leave' and 'disconnect' branches): cleans up pending join requests for departing/disconnecting players, notifies relevant captains
+- Updated `start-game` validation (line ~1781): checks for unassigned players and blocks game start with Arabic error listing their names
+- Updated `rejoin-room` handler (line ~1294): includes `pendingJoinRequests` in rejoin data
+- Updated `game-joined` and `player-joined` emits (lines ~1729, ~1740): includes `pendingJoinRequests` array with pending request details
+- Updated rematch `game-joined` and `player-joined` emits (lines ~2492, ~2502): includes pending join requests
+- Updated rematch player creation (line ~2476): `teamId: null, isCaptain: false` instead of auto-assigned
+- Game service health check passes, TypeScript errors in the file are pre-existing (not caused by this change)
+
+Stage Summary:
+- New players joining a team-mode room start as "unassigned" (الغير مصنف) instead of auto-assigned to a team
+- Only the room creator auto-joins Team A as captain (unchanged)
+- Unassigned players must submit a join request via `request-join-team` event
+- Team captains approve/reject join requests via `join-team-response` event
+- Switching teams also requires captain approval (replaces instant switch)
+- Join requests auto-expire after 40 seconds
+- Disconnecting/leaving players have their pending requests cleaned up
+- Game cannot start if any players are unassigned
+- All room state emissions include pending join requests for captains to see
+- Solo mode (فردي) is completely unaffected by these changes
+
+## Task 3 - Update Zustand Game Store for Unassigned Players System
+
+**Agent**: Code Agent
+**Status**: ✅ Completed
+
+### Changes Made to `/home/z/my-project/src/lib/game-store.ts`
+
+1. **Updated `TeamsState` interface** — Added `unassignedPlayerIds: string[]` field to track players not yet assigned to a team.
+
+2. **Added `JoinRequestState` interface** — New interface with fields: `id`, `playerId`, `playerName`, `targetTeamId`, `type` ('join' | 'switch'), `currentTeamId` (TeamId | null), `expiresAt`.
+
+3. **Updated `ApprovalRequestState` type** — Extended the `type` union to include `'join-team'` and `'switch-team'` alongside existing values.
+
+4. **Added new state fields to `GameState` interface** — In the Team Mode State section:
+   - `pendingJoinRequests: JoinRequestState[]` — incoming join/switch requests visible to captain
+   - `setPendingJoinRequests` — setter for full replacement
+   - `addJoinRequest` — append a single request
+   - `removeJoinRequest` — remove by request ID
+   - `myJoinRequest` — player's own pending request with `requestId`, `targetTeamId`, `captainName`
+   - `setMyJoinRequest` — setter for player's own request
+
+5. **Initialized new state fields in the store** — Added implementations:
+   - `pendingJoinRequests: []` with set/add/remove actions
+   - `myJoinRequest: null` with setter
+
+6. **Updated `resetGame`** — Added `pendingJoinRequests: []` and `myJoinRequest: null` to the reset set call.
+
+### Verification
+- `bun run lint` passes with no errors.
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Add Unassigned Players UI for team battle mode
+
+Work Log:
+- Added `JoinRequestState` type import to page.tsx from game-store
+- Added new Lucide icons: `Hourglass`, `UserPlus`, `UserCog`
+- Added 6 new socket event listeners in `useGameSocket()` after the `team-captain-changed` handler:
+  - `join-request-received`: captain receives incoming join/switch request, adds to pendingJoinRequests, plays error sound + toast
+  - `join-request-sent`: confirmation to requester that their request was sent, sets myJoinRequest state
+  - `join-request-approved`: requester's request approved, clears myJoinRequest, updates myTeamId and isCaptain, plays progress sound + toast
+  - `join-request-rejected`: requester's request rejected, clears myJoinRequest, plays error sound + toast
+  - `join-request-expired`: request expired, clears myJoinRequest, removes from pendingJoinRequests, toast
+  - `join-request-resolved`: captain's view after responding, removes from pendingJoinRequests, toast
+- Updated `player-joined` handler to accept `pendingJoinRequests` in data and call `setPendingJoinRequests`
+- Updated `game-joined` handler to check for `pendingJoinRequests` in data and call `setPendingJoinRequests`
+- Updated `rejoin-success` handler to check for `pendingJoinRequests` in data and call `setPendingJoinRequests`
+- Added store subscriptions in LobbyScreen: `pendingJoinRequests` and `myJoinRequest`
+- Added handler functions in LobbyScreen:
+  - `handleRequestJoinTeam(targetTeamId)`: emits `request-join-team` event for unassigned players
+  - `handleJoinRequestResponse(requestId, approved)`: emits `join-team-response` event for captains
+- Created `JoinRequestCard` component (before LobbyScreen):
+  - Shows player name, request type (📩 انضمام / 🔄 تبديل), target team with colored indicator
+  - Approve (✅ green) and Reject (❌ red) buttons
+  - Countdown timer bar with urgent state when ≤10 seconds
+  - Framer Motion entry/exit animations
+- Updated team lobby UI with 3 new sections:
+
+  1. **Modified Team Column buttons**: Changed "انضم للفريق" to "طلب الانتقال" (Request Transfer)
+     - Shows pulsing "طلبك قيد المراجعة..." when player has pending request to that team
+     - Disables button (grayed out) when player has pending request to a different team
+     - Only shows for players already on a team (myTeamId !== null), not for unassigned
+
+  2. **Unassigned Players Section** (الغير مصنف):
+     - Appears below the team columns when there are unassigned players
+     - Gray/neutral styling (border-slate-500/30, bg-slate-500/5)
+     - Pulsing gray dot indicator with "الغير مصنف" title
+     - Player count badge
+     - Player list with UserCog icon and "أنت" indicator for current player
+     - For the current unassigned player: two join request buttons (Red Team / Blue Team) with UserPlus icon
+     - When request is pending: shows "طلبك قيد المراجعة..." with Hourglass icon and captain name, pulsing animation
+
+  3. **Captain Join Requests Panel**:
+     - Only visible when player is a captain AND there are pending join requests
+     - Amber/gold styling (border-amber-500/30, bg-amber-500/5)
+     - Shield icon with "طلبات الانضمام" title
+     - Request count badge
+     - Lists all pending JoinRequestCards with approve/reject buttons
+     - Scrollable area with max height
+
+- Solo mode (فردي) completely unaffected - all changes are conditional on `battleMode === 'فرق'`
+- `bun run lint` passes with 0 errors
+
+Stage Summary:
+- Complete Unassigned Players UI implemented for team battle mode
+- New players start as "الغير مصنف" and must request to join a team
+- Captains see incoming requests panel with approve/reject and countdown timers
+- Team switching now shows "طلب الانتقال" instead of instant join
+- Pending request indicators with pulsing animation and captain name
+- 6 new socket event listeners for join request lifecycle
+- 3 new handler functions for join request interactions
+- JoinRequestCard component with cinematic game-style timer bars
+- All changes are team-mode only; solo mode untouched
+---
+Task ID: 2
+Agent: Main Agent
+Task: Implement Unassigned Players System (الغير مصنف) in game-service
+
+Work Log:
+- Added JoinRequest interface with id, playerId, playerName, targetTeamId, type (join/switch), currentTeamId, createdAt, expiresAt, status
+- Added joinRequests Map to GameRoom interface
+- Added getUnassignedPlayers helper function
+- Updated getTeamsInfo to include unassignedPlayerIds in return type
+- CRITICAL: Changed join-game handler so new players start as teamId: null (unassigned) instead of auto-assigned
+- Added request-join-team socket event for unassigned players to request joining a team
+- Added join-team-response socket event for captains to approve/reject join/switch requests
+- Replaced switch-team handler to require captain approval instead of instant switching
+- Updated create-game to add joinRequests: new Map() to new rooms
+- Updated disconnect handling to clean up pending join requests
+- Added start-game validation blocking game start if unassigned players exist
+- Updated rejoin-room, game-joined, player-joined handlers to include pendingJoinRequests data
+- Fixed room variable ordering bug in submit-answer handler
+- Fixed RoomType casting in rematch room creation
+
+Stage Summary:
+- Game service fully supports unassigned players system
+- Join/switch requests go through captain approval with 40-second auto-expiry
+- Solo mode completely unaffected
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Update game-store.ts with new state fields for unassigned system
+
+Work Log:
+- Added unassignedPlayerIds: string[] to TeamsState interface
+- Added JoinRequestState interface
+- Extended ApprovalRequestState type to include 'join-team' and 'switch-team'
+- Added pendingJoinRequests, setPendingJoinRequests, addJoinRequest, removeJoinRequest state
+- Added myJoinRequest, setMyJoinRequest state
+- Updated resetGame to include new fields
+
+Stage Summary:
+- Store properly tracks join requests and player's own pending request
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Update page.tsx with Unassigned Players UI and captain approval
+
+Work Log:
+- Added 6 new socket event listeners (join-request-received, join-request-sent, join-request-approved, join-request-rejected, join-request-expired, join-request-resolved)
+- Added JoinRequestCard component with countdown timer, approve/reject buttons
+- Added Unassigned Players section (الغير مصنف) with neutral gray styling
+- Added join request buttons for unassigned players (الفريق الأحمر / الفريق الأزرق)
+- Added Captain Join Requests Panel with amber styling
+- Updated team column buttons from instant switch to request-based switching
+- Added pending request state handling (pulsing review message, disabled buttons)
+- Added chat restrictions for unassigned players (global-only mode, forced to global)
+- Added team start validation error for unassigned players
+- Added BattleToastType entries for all new notification types
+- Fixed game-joined handler to properly handle null teamId for unassigned players
+- Added currentRound subscription to main Home component
+- Fixed various TypeScript errors
+
+Stage Summary:
+- Complete Unassigned Players UI with cinematic game-style design
+- Captain approval system with countdown timers and smooth animations
+- Chat restrictions enforced for unassigned players
+- All without breaking solo mode

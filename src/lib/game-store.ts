@@ -110,6 +110,7 @@ export interface TeamInfo {
 export interface TeamsState {
   teamA: TeamInfo
   teamB: TeamInfo
+  unassignedPlayerIds: string[]
 }
 
 export interface TeamRoundScores {
@@ -118,9 +119,19 @@ export interface TeamRoundScores {
   winningTeam: TeamId | null
 }
 
+export interface JoinRequestState {
+  id: string
+  playerId: string
+  playerName: string
+  targetTeamId: TeamId
+  type: 'join' | 'switch'
+  currentTeamId: TeamId | null
+  expiresAt: number
+}
+
 export interface ApprovalRequestState {
   approvalId: string
-  type: 'settings' | 'early-end' | 'voice-merge' | 'round-start'
+  type: 'settings' | 'early-end' | 'voice-merge' | 'round-start' | 'join-team' | 'switch-team'
   description: string
   requestedByName: string
   requestedByTeam: TeamId | null
@@ -351,6 +362,16 @@ interface GameState {
 
   teamRoundScores: TeamRoundScores | null
   setTeamRoundScores: (scores: TeamRoundScores | null) => void
+
+  // Join requests visible to captain (incoming requests)
+  pendingJoinRequests: JoinRequestState[]
+  setPendingJoinRequests: (requests: JoinRequestState[]) => void
+  addJoinRequest: (request: JoinRequestState) => void
+  removeJoinRequest: (requestId: string) => void
+
+  // Player's own pending join/switch request
+  myJoinRequest: { requestId: string; targetTeamId: TeamId; captainName: string } | null
+  setMyJoinRequest: (request: { requestId: string; targetTeamId: TeamId; captainName: string } | null) => void
 
   // Chat state
   chatMessages: ChatMessage[]
@@ -622,6 +643,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   teamRoundScores: null,
   setTeamRoundScores: (scores) => set({ teamRoundScores: scores }),
 
+  pendingJoinRequests: [],
+  setPendingJoinRequests: (requests) => set({ pendingJoinRequests: requests }),
+  addJoinRequest: (request) => set((state) => ({
+    pendingJoinRequests: [...state.pendingJoinRequests, request],
+  })),
+  removeJoinRequest: (requestId) => set((state) => ({
+    pendingJoinRequests: state.pendingJoinRequests.filter(r => r.id !== requestId),
+  })),
+
+  myJoinRequest: null,
+  setMyJoinRequest: (request) => set({ myJoinRequest: request }),
+
   // Chat state
   chatMessages: [],
   addChatMessage: (message) => set((state) => ({
@@ -674,6 +707,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       pendingApproval: null,
       approvalSent: null,
       teamRoundScores: null,
+      pendingJoinRequests: [],
+      myJoinRequest: null,
       chatMessages: [],
       chatMode: 'team',
     })

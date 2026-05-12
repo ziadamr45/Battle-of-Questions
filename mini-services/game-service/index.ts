@@ -216,6 +216,7 @@ interface GameRoom {
   battleMode: BattleMode
   voiceMerged: boolean
   pendingApproval: ApprovalRequest | null
+  joinRequests: Map<string, JoinRequest>  // requestId -> JoinRequest
 }
 
 // Info sent to clients about public rooms
@@ -243,6 +244,18 @@ interface ApprovalRequest {
   createdAt: number
   expiresAt: number
   data: any
+  status: 'pending' | 'approved' | 'rejected' | 'expired'
+}
+
+interface JoinRequest {
+  id: string
+  playerId: string
+  playerName: string
+  targetTeamId: TeamId
+  type: 'join' | 'switch'  // 'join' = from unassigned, 'switch' = from another team
+  currentTeamId: TeamId | null  // null for unassigned players
+  createdAt: number
+  expiresAt: number
   status: 'pending' | 'approved' | 'rejected' | 'expired'
 }
 
@@ -411,11 +424,18 @@ function getTeamPlayers(room: GameRoom, teamId: TeamId): Player[] {
     .sort((a, b) => a.joinOrder - b.joinOrder)
 }
 
-function getTeamsInfo(room: GameRoom): { teamA: TeamInfo; teamB: TeamInfo } {
+function getUnassignedPlayers(room: GameRoom): Player[] {
+  return Array.from(room.players.values())
+    .filter(p => !p.isDisconnected && p.teamId === null)
+    .sort((a, b) => a.joinOrder - b.joinOrder)
+}
+
+function getTeamsInfo(room: GameRoom): { teamA: TeamInfo; teamB: TeamInfo; unassignedPlayerIds: string[] } {
   const teamAPlayers = getTeamPlayers(room, 'A')
   const teamBPlayers = getTeamPlayers(room, 'B')
   const teamACaptain = teamAPlayers.find(p => p.isCaptain)
   const teamBCaptain = teamBPlayers.find(p => p.isCaptain)
+  const unassignedPlayers = getUnassignedPlayers(room)
   
   return {
     teamA: {
@@ -434,6 +454,7 @@ function getTeamsInfo(room: GameRoom): { teamA: TeamInfo; teamB: TeamInfo } {
       captainName: teamBCaptain?.name || null,
       playerIds: teamBPlayers.map(p => p.id),
     },
+    unassignedPlayerIds: unassignedPlayers.map(p => p.id),
   }
 }
 
@@ -1090,6 +1111,22 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
       }
     }
 
+    // Clean up pending join requests for leaving player
+    if (room.battleMode === 'فرق') {
+      const toDelete: string[] = []
+      for (const [reqId, req] of room.joinRequests.entries()) {
+        if (req.playerId === socketId) {
+          req.status = 'expired'
+          const captain = req.targetTeamId === 'A'
+            ? getTeamPlayers(room, 'A').find(p => p.isCaptain)
+            : getTeamPlayers(room, 'B').find(p => p.isCaptain)
+          if (captain) io.to(captain.id).emit('join-request-expired', { requestId: reqId })
+          toDelete.push(reqId)
+        }
+      }
+      for (const id of toDelete) room.joinRequests.delete(id)
+    }
+
     io.to(roomCode).emit('player-left', {
       playerId: socketId,
       playerName,
@@ -1121,6 +1158,22 @@ function removePlayerFromRoom(socketId: string, reason: 'leave' | 'disconnect') 
     // In team mode, transfer team captain if needed
     if (room.battleMode === 'فرق' && player?.teamId && player.isCaptain) {
       transferTeamCaptain(room, player.teamId, socketId)
+    }
+
+    // Clean up pending join requests for disconnected player
+    if (room.battleMode === 'فرق') {
+      const toDelete: string[] = []
+      for (const [reqId, req] of room.joinRequests.entries()) {
+        if (req.playerId === socketId) {
+          req.status = 'expired'
+          const captain = req.targetTeamId === 'A'
+            ? getTeamPlayers(room, 'A').find(p => p.isCaptain)
+            : getTeamPlayers(room, 'B').find(p => p.isCaptain)
+          if (captain) io.to(captain.id).emit('join-request-expired', { requestId: reqId })
+          toDelete.push(reqId)
+        }
+      }
+      for (const id of toDelete) room.joinRequests.delete(id)
     }
 
     // Notify others that this player is temporarily disconnected
@@ -1238,6 +1291,9 @@ io.on('connection', (socket: Socket) => {
         currentRound: room.currentRound,
         battleMode: room.battleMode,
         teams: room.battleMode === 'فرق' ? getTeamsInfo(room) : null,
+        pendingJoinRequests: room.battleMode === 'فرق' ? Array.from(room.joinRequests.values())
+          .filter(r => r.status === 'pending')
+          .map(r => ({ id: r.id, playerName: r.playerName, playerId: r.playerId, targetTeamId: r.targetTeamId, type: r.type, currentTeamId: r.currentTeamId, expiresAt: r.expiresAt })) : [],
       }
 
       // If game is in progress, send current round content and progress
@@ -1566,6 +1622,7 @@ io.on('connection', (socket: Socket) => {
         battleMode: settings.battleMode || 'فردي',
         voiceMerged: false,
         pendingApproval: null,
+        joinRequests: new Map(),
       }
 
       rooms.set(roomCode, room)
@@ -1652,8 +1709,8 @@ io.on('connection', (socket: Socket) => {
         isDisconnected: false,
         disconnectedAt: null,
         oldSocketIds: [],
-        teamId: room.battleMode === 'فرق' ? (getTeamPlayers(room, 'B').length === 0 ? 'B' : (getTeamPlayers(room, 'A').length <= getTeamPlayers(room, 'B').length ? 'A' : 'B')) : null,
-        isCaptain: room.battleMode === 'فرق' ? (getTeamPlayers(room, 'B').length === 0) : false,
+        teamId: null,  // Start as unassigned in team mode - must request to join a team
+        isCaptain: false,  // Never captain on join
       }
 
       room.players.set(socket.id, player)
@@ -1669,6 +1726,9 @@ io.on('connection', (socket: Socket) => {
         hasPassword: !!room.password,
         battleMode: room.battleMode,
         teams: getTeamsInfo(room),
+        pendingJoinRequests: Array.from(room.joinRequests.values())
+          .filter(r => r.status === 'pending')
+          .map(r => ({ id: r.id, playerName: r.playerName, playerId: r.playerId, targetTeamId: r.targetTeamId, type: r.type, currentTeamId: r.currentTeamId, expiresAt: r.expiresAt })),
       })
 
       // Notify others in the room
@@ -1677,6 +1737,9 @@ io.on('connection', (socket: Socket) => {
         players: playersToArray(room.players),
         battleMode: room.battleMode,
         teams: getTeamsInfo(room),
+        pendingJoinRequests: Array.from(room.joinRequests.values())
+          .filter(r => r.status === 'pending')
+          .map(r => ({ id: r.id, playerName: r.playerName, playerId: r.playerId, targetTeamId: r.targetTeamId, type: r.type, currentTeamId: r.currentTeamId, expiresAt: r.expiresAt })),
       })
 
       broadcastPublicRooms()
@@ -1716,6 +1779,16 @@ io.on('connection', (socket: Socket) => {
       if (room.status !== 'waiting') {
         socket.emit('game-error', { message: 'اللعبة قد بدأت بالفعل' })
         return
+      }
+
+      // In team mode, check that there are no unassigned players
+      if (room.battleMode === 'فرق') {
+        const unassigned = getUnassignedPlayers(room)
+        if (unassigned.length > 0) {
+          const names = unassigned.map(p => p.name).join('، ')
+          socket.emit('game-error', { message: `اللاعبون التالية أسماؤهم غير مصنفين: ${names}. يجب أن ينضموا لفريق أولاً.` })
+          return
+        }
       }
 
       // Validate round/player conflict rules with current player count
@@ -2058,9 +2131,9 @@ io.on('connection', (socket: Socket) => {
       timeLeft: number
     }) => {
       const { roomCode, roundNumber, questionIndex, answerIndex, timeLeft } = data
-      // Calculate timeTaken server-side using the authoritative round timer
-      const timeTaken = Math.max(0, room.roundTimerSeconds - (timeLeft || 0))
       const room = rooms.get(roomCode?.toUpperCase())
+      // Calculate timeTaken server-side using the authoritative round timer
+      const timeTaken = room ? Math.max(0, room.roundTimerSeconds - (timeLeft || 0)) : 0
 
       if (!room) {
         socket.emit('game-error', { message: 'الغرفة غير موجودة' })
@@ -2400,8 +2473,8 @@ io.on('connection', (socket: Socket) => {
           isDisconnected: false,
           disconnectedAt: null,
           oldSocketIds: [],
-          teamId: existingRoom.battleMode === 'فرق' ? (getTeamPlayers(existingRoom, 'B').length === 0 ? 'B' : (getTeamPlayers(existingRoom, 'A').length <= getTeamPlayers(existingRoom, 'B').length ? 'A' : 'B')) : null,
-          isCaptain: existingRoom.battleMode === 'فرق' ? (getTeamPlayers(existingRoom, 'B').length === 0) : false,
+          teamId: null,  // Start as unassigned in team mode
+          isCaptain: false,  // Never captain on rematch join
         }
 
         existingRoom.players.set(socket.id, player)
@@ -2416,6 +2489,9 @@ io.on('connection', (socket: Socket) => {
           hasPassword: !!existingRoom.password,
           battleMode: existingRoom.battleMode,
           teams: getTeamsInfo(existingRoom),
+          pendingJoinRequests: Array.from(existingRoom.joinRequests.values())
+            .filter(r => r.status === 'pending')
+            .map(r => ({ id: r.id, playerName: r.playerName, playerId: r.playerId, targetTeamId: r.targetTeamId, type: r.type, currentTeamId: r.currentTeamId, expiresAt: r.expiresAt })),
         })
 
         socket.to(rData.newRoomCode).emit('player-joined', {
@@ -2423,6 +2499,9 @@ io.on('connection', (socket: Socket) => {
           players: playersToArray(existingRoom.players),
           battleMode: existingRoom.battleMode,
           teams: getTeamsInfo(existingRoom),
+          pendingJoinRequests: Array.from(existingRoom.joinRequests.values())
+            .filter(r => r.status === 'pending')
+            .map(r => ({ id: r.id, playerName: r.playerName, playerId: r.playerId, targetTeamId: r.targetTeamId, type: r.type, currentTeamId: r.currentTeamId, expiresAt: r.expiresAt })),
         })
 
         broadcastPublicRooms()
@@ -2454,7 +2533,7 @@ io.on('connection', (socket: Socket) => {
 
     const newRoom: GameRoom = {
       roomCode: newRoomCode,
-      roomType: rData.roomType,
+      roomType: rData.roomType as RoomType,
       password: rData.password,
       hostId: socket.id,
       hostName: playerName.trim(),
@@ -2476,6 +2555,7 @@ io.on('connection', (socket: Socket) => {
       battleMode: rData.settings.battleMode || 'فردي',
       voiceMerged: false,
       pendingApproval: null,
+      joinRequests: new Map(),
     }
 
     rooms.set(newRoomCode, newRoom)
@@ -2696,14 +2776,190 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     })
   })
 
+  // ── request-join-team ──────────────────────────────────────────────────
+  // An unassigned player requests to join a team. The request goes to the team's captain.
+  socket.on('request-join-team', (data: { targetTeamId: TeamId }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    const room = rooms.get(roomCode)
+    if (!room || room.status !== 'waiting' || room.battleMode !== 'فرق') return
+    
+    const player = room.players.get(socket.id)
+    if (!player) return
+    
+    // Must be unassigned to request joining
+    if (player.teamId !== null) {
+      socket.emit('game-error', { message: 'أنت بالفعل في فريق. استخدم طلب تبديل الفريق بدلاً من ذلك.' })
+      return
+    }
+    
+    const targetTeam = data.targetTeamId
+    if (targetTeam !== 'A' && targetTeam !== 'B') return
+    
+    // Check if player already has a pending request
+    const existingRequest = Array.from(room.joinRequests.values()).find(
+      r => r.playerId === socket.id && r.status === 'pending'
+    )
+    if (existingRequest) {
+      socket.emit('game-error', { message: 'لديك طلب معلق بالفعل. انتظر الرد أو انتهاء المهلة.' })
+      return
+    }
+    
+    // Find the target team's captain
+    const targetCaptain = getTeamPlayers(room, targetTeam).find(p => p.isCaptain)
+    if (!targetCaptain) {
+      socket.emit('game-error', { message: 'لا يوجد قائد لهذا الفريق بعد. لا يمكن تقديم الطلب حالياً.' })
+      return
+    }
+    
+    const requestId = `join-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    const request: JoinRequest = {
+      id: requestId,
+      playerId: socket.id,
+      playerName: player.name,
+      targetTeamId: targetTeam,
+      type: 'join',
+      currentTeamId: null,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 40000,
+      status: 'pending',
+    }
+    
+    room.joinRequests.set(requestId, request)
+    
+    // Notify the captain
+    io.to(targetCaptain.id).emit('join-request-received', {
+      requestId,
+      playerName: player.name,
+      playerId: socket.id,
+      targetTeamId: targetTeam,
+      type: 'join',
+      expiresAt: request.expiresAt,
+    })
+    
+    // Confirm to requester
+    socket.emit('join-request-sent', {
+      requestId,
+      targetTeamId: targetTeam,
+      captainName: targetCaptain.name,
+    })
+    
+    // Auto-expire after 40 seconds
+    setTimeout(() => {
+      const req = room.joinRequests.get(requestId)
+      if (req && req.status === 'pending') {
+        req.status = 'expired'
+        // Notify both player and captain
+        io.to(req.playerId).emit('join-request-expired', { requestId })
+        const captain = getTeamPlayers(room, targetTeam).find(p => p.isCaptain)
+        if (captain) {
+          io.to(captain.id).emit('join-request-expired', { requestId })
+        }
+        room.joinRequests.delete(requestId)
+      }
+    }, 41000)
+  })
+
+  // ── join-team-response ──────────────────────────────────────────────────
+  // Captain approves or rejects a join request (for both 'join' and 'switch' types)
+  socket.on('join-team-response', (data: { requestId: string; approved: boolean }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+    const room = rooms.get(roomCode)
+    if (!room) return
+    
+    const player = room.players.get(socket.id)
+    if (!player || !player.isCaptain) {
+      socket.emit('game-error', { message: 'فقط قائد الفريق يقدر يوافق أو يرفض طلبات الانضمام' })
+      return
+    }
+    
+    const request = room.joinRequests.get(data.requestId)
+    if (!request || request.status !== 'pending') {
+      socket.emit('game-error', { message: 'طلب الانضمام غير موجود أو تم الرد عليه' })
+      return
+    }
+    
+    // Verify this captain is the captain of the target team
+    if (player.teamId !== request.targetTeamId) {
+      socket.emit('game-error', { message: 'أنت لست قائد الفريق المطلوب' })
+      return
+    }
+    
+    if (data.approved) {
+      request.status = 'approved'
+      const requestingPlayer = room.players.get(request.playerId)
+      if (requestingPlayer) {
+        // If the request is a switch and the player was a captain, transfer captain role
+        if (request.type === 'switch' && requestingPlayer.isCaptain && request.currentTeamId) {
+          requestingPlayer.isCaptain = false
+          // Transfer captain to next player in old team
+          const oldTeamPlayers = getTeamPlayers(room, request.currentTeamId).filter(p => p.id !== requestingPlayer.id)
+          if (oldTeamPlayers.length > 0 && !oldTeamPlayers.some(p => p.isCaptain)) {
+            const newCaptain = oldTeamPlayers[0]
+            newCaptain.isCaptain = true
+          }
+        }
+        
+        requestingPlayer.teamId = request.targetTeamId
+        // If the target team has no captain (shouldn't happen but safety), make them captain
+        const teamHasCaptain = getTeamPlayers(room, request.targetTeamId).some(p => p.isCaptain && p.id !== requestingPlayer.id)
+        if (!teamHasCaptain) {
+          requestingPlayer.isCaptain = true
+        }
+        
+        const teamsInfo = getTeamsInfo(room)
+        io.to(roomCode).emit('team-update', {
+          teams: teamsInfo,
+          players: playersToArray(room.players),
+          switchedPlayerId: requestingPlayer.id,
+          switchedPlayerName: requestingPlayer.name,
+          newTeamId: request.targetTeamId,
+        })
+        
+        // Notify the player
+        io.to(request.playerId).emit('join-request-approved', {
+          requestId: request.id,
+          teamId: request.targetTeamId,
+          teamName: request.targetTeamId === 'A' ? 'الفريق الأحمر' : 'الفريق الأزرق',
+          captainName: player.name,
+        })
+        
+        // Notify captain who approved
+        socket.emit('join-request-resolved', {
+          requestId: request.id,
+          playerName: requestingPlayer.name,
+          approved: true,
+        })
+      }
+    } else {
+      request.status = 'rejected'
+      
+      // Notify the player
+      io.to(request.playerId).emit('join-request-rejected', {
+        requestId: request.id,
+        captainName: player.name,
+      })
+      
+      // Notify captain who rejected
+      socket.emit('join-request-resolved', {
+        requestId: request.id,
+        playerName: request.playerName,
+        approved: false,
+      })
+    }
+    
+    room.joinRequests.delete(data.requestId)
+  })
+
   // ── switch-team ────────────────────────────────────────────────────────
+  // Now requires captain approval instead of instant switching
   socket.on('switch-team', (data: { teamId: TeamId }) => {
     const roomCode = socketRoomMap.get(socket.id)
     if (!roomCode) return
     
     const room = rooms.get(roomCode)
-    if (!room || room.status !== 'waiting') return
-    if (room.battleMode !== 'فرق') return
+    if (!room || room.status !== 'waiting' || room.battleMode !== 'فرق') return
     
     const player = room.players.get(socket.id)
     if (!player) return
@@ -2712,40 +2968,74 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
     if (targetTeam !== 'A' && targetTeam !== 'B') return
     if (player.teamId === targetTeam) return
     
-    const oldTeamId = player.teamId
-    
-    // If captain is switching, transfer captain role
-    if (player.isCaptain && oldTeamId) {
-      player.isCaptain = false
-      // Transfer captain to next player in old team
-      const otherTeamPlayers = getTeamPlayers(room, oldTeamId).filter(p => p.id !== socket.id)
-      if (otherTeamPlayers.length > 0) {
-        const newCaptain = otherTeamPlayers[0]
-        newCaptain.isCaptain = true
-      }
+    // If player is unassigned, they should use request-join-team instead
+    if (player.teamId === null) {
+      socket.emit('game-error', { message: 'استخدم طلب الانضمام لفريق بدلاً من ذلك' })
+      return
     }
     
-    // Switch team
-    player.teamId = targetTeam
-    
-    // If the new team has no captain, make this player captain
-    const newTeamPlayers = getTeamPlayers(room, targetTeam)
-    const hasCaptain = newTeamPlayers.some(p => p.isCaptain)
-    if (!hasCaptain) {
-      player.isCaptain = true
+    // Check for duplicate pending requests
+    const existingRequest = Array.from(room.joinRequests.values()).find(
+      r => r.playerId === socket.id && r.status === 'pending'
+    )
+    if (existingRequest) {
+      socket.emit('game-error', { message: 'لديك طلب معلق بالفعل' })
+      return
     }
     
-    const teamsInfo = getTeamsInfo(room)
-    io.to(roomCode).emit('team-update', {
-      teams: teamsInfo,
-      players: playersToArray(room.players),
-      switchedPlayerId: socket.id,
-      switchedPlayerName: player.name,
-      newTeamId: targetTeam,
+    // Find target team's captain
+    const targetCaptain = getTeamPlayers(room, targetTeam).find(p => p.isCaptain)
+    if (!targetCaptain) {
+      socket.emit('game-error', { message: 'لا يوجد قائد للفريق المستهدف' })
+      return
+    }
+    
+    const requestId = `switch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    const request: JoinRequest = {
+      id: requestId,
+      playerId: socket.id,
+      playerName: player.name,
+      targetTeamId: targetTeam,
+      type: 'switch',
+      currentTeamId: player.teamId,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 40000,
+      status: 'pending',
+    }
+    
+    room.joinRequests.set(requestId, request)
+    
+    // Notify the target team's captain
+    io.to(targetCaptain.id).emit('join-request-received', {
+      requestId,
+      playerName: player.name,
+      playerId: socket.id,
+      targetTeamId: targetTeam,
+      type: 'switch',
+      currentTeamId: player.teamId,
+      expiresAt: request.expiresAt,
     })
     
-    broadcastPublicRooms()
-    console.log(`[switch-team] ${player.name} switched to Team ${targetTeam} in room ${roomCode}`)
+    // Confirm to requester
+    socket.emit('join-request-sent', {
+      requestId,
+      targetTeamId: targetTeam,
+      captainName: targetCaptain.name,
+    })
+    
+    // Auto-expire after 40 seconds
+    setTimeout(() => {
+      const req = room.joinRequests.get(requestId)
+      if (req && req.status === 'pending') {
+        req.status = 'expired'
+        io.to(req.playerId).emit('join-request-expired', { requestId })
+        const captain = getTeamPlayers(room, targetTeam).find(p => p.isCaptain)
+        if (captain) {
+          io.to(captain.id).emit('join-request-expired', { requestId })
+        }
+        room.joinRequests.delete(requestId)
+      }
+    }, 41000)
   })
 
   // ── captain-approval-request ──────────────────────────────────────────

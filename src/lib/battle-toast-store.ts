@@ -26,6 +26,27 @@ export type BattleToastType =
   | 'warning'
   | 'early_end_rejected'
   | 'battle_event'
+  | 'name_updated'
+  | 'kicked'
+  | 'muted_by_host'
+  | 'player_audio_muted'
+  | 'team_switched'
+  | 'team_switch'
+  | 'captain_promoted'
+  | 'captain_changed'
+  | 'join_request'
+  | 'switch_request'
+  | 'join_request_sent'
+  | 'join_approved'
+  | 'join_rejected'
+  | 'join_expired'
+  | 'join_resolved'
+  | 'approval_sent'
+  | 'approval_approved'
+  | 'approval_rejected'
+  | 'approval_expired'
+  | 'voice_merged'
+  | 'kick_sent'
 
 export interface BattleToastItem {
   id: string
@@ -68,6 +89,27 @@ const TOAST_TYPE_CONFIGS: Record<BattleToastType, ToastTypeConfig> = {
   warning:             { priority: 5, duration: 3000, category: 'system' },
   early_end_rejected:  { priority: 7, duration: 4000, category: 'error' },
   battle_event:        { priority: 5, duration: 3000, category: 'combat' },
+  name_updated:        { priority: 2, duration: 2500, category: 'arena' },
+  kicked:              { priority: 8, duration: 4000, category: 'error' },
+  muted_by_host:       { priority: 6, duration: 3000, category: 'system' },
+  player_audio_muted:  { priority: 3, duration: 2500, category: 'arena' },
+  team_switched:       { priority: 4, duration: 2500, category: 'arena' },
+  team_switch:         { priority: 4, duration: 2500, category: 'arena' },
+  captain_promoted:    { priority: 6, duration: 3500, category: 'combat' },
+  captain_changed:     { priority: 5, duration: 3000, category: 'arena' },
+  join_request:        { priority: 7, duration: 4000, category: 'combat' },
+  switch_request:      { priority: 7, duration: 4000, category: 'combat' },
+  join_request_sent:   { priority: 4, duration: 3000, category: 'system' },
+  join_approved:       { priority: 6, duration: 3000, category: 'combat' },
+  join_rejected:       { priority: 6, duration: 3000, category: 'system' },
+  join_expired:        { priority: 4, duration: 2500, category: 'system' },
+  join_resolved:       { priority: 4, duration: 2500, category: 'arena' },
+  approval_sent:       { priority: 4, duration: 3000, category: 'system' },
+  approval_approved:   { priority: 6, duration: 3000, category: 'combat' },
+  approval_rejected:   { priority: 6, duration: 3000, category: 'system' },
+  approval_expired:    { priority: 4, duration: 2500, category: 'system' },
+  voice_merged:        { priority: 5, duration: 3000, category: 'combat' },
+  kick_sent:           { priority: 3, duration: 2000, category: 'system' },
 }
 
 const MAX_VISIBLE = 3

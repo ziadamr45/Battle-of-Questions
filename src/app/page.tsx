@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType, type AnswerReviewItem, type FullAnswerReviewItem, type ReadyStatus, type FinishedStatus, type BattleMode, type TeamId, type TeamsState, type TeamInfo, type TeamRoundScores, type ApprovalRequestState, type ChatMessage, type ChatMode } from '@/lib/game-store'
+import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType, type AnswerReviewItem, type FullAnswerReviewItem, type ReadyStatus, type FinishedStatus, type BattleMode, type TeamId, type TeamsState, type TeamInfo, type TeamRoundScores, type ApprovalRequestState, type JoinRequestState, type ChatMessage, type ChatMode } from '@/lib/game-store'
 import { audioEngine } from '@/lib/audio-engine'
 import { useAudioStore } from '@/lib/audio-store'
 import { Button } from '@/components/ui/button'
@@ -76,6 +76,9 @@ import {
   ShieldCheck,
   Send,
   Radio,
+  Hourglass,
+  UserPlus,
+  UserCog,
 } from 'lucide-react'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
@@ -209,10 +212,13 @@ function useGameSocket() {
 
     // Note: game-created and game-joined handlers are defined below (with team data support)
 
-    socket.on('player-joined', (data: { player: Player; players: Player[]; battleMode?: BattleMode; teams?: TeamsState }) => {
+    socket.on('player-joined', (data: { player: Player; players: Player[]; battleMode?: BattleMode; teams?: TeamsState; pendingJoinRequests?: JoinRequestState[] }) => {
       store.getState().setPlayers(data.players)
       if (data.battleMode) store.getState().setBattleMode(data.battleMode)
       if (data.teams) store.getState().setTeams(data.teams)
+      if (data.pendingJoinRequests) {
+        store.getState().setPendingJoinRequests(data.pendingJoinRequests)
+      }
       audioEngine.playerJoined()
       battleToast('player_joined', 'مقاتل جديد!', `${data.player.name} دخل الساحة`, data.player.name)
       showNarration('player_entered')
@@ -511,6 +517,9 @@ function useGameSocket() {
         if (data.roundResults) s.setRoundResults(data.roundResults)
         s.setScreen('results')
       } else { s.setScreen('lobby') }
+      if ((data as any).pendingJoinRequests) {
+        store.getState().setPendingJoinRequests((data as any).pendingJoinRequests)
+      }
       s.setIsReconnecting(false); s.setIsLoading(false)
       battleToast('rejoin_success', 'تمت العودة!', 'رجعت للساحة بنجاح')
     })
@@ -545,6 +554,75 @@ function useGameSocket() {
         battleToast('captain_promoted', 'أنت القائد الجديد!', `بقيت قائد ${data.teamId === 'A' ? 'الفريق الأحمر' : 'الفريق الأزرق'}`)
       } else {
         battleToast('captain_changed', 'قائد جديد', `${data.newCaptainName} بقى قائد ${data.teamId === 'A' ? 'الفريق الأحمر' : 'الفريق الأزرق'}`)
+      }
+    })
+
+    // Join request received by captain
+    socket.on('join-request-received', (data: { requestId: string; playerName: string; playerId: string; targetTeamId: TeamId; type: 'join' | 'switch'; currentTeamId: TeamId | null; expiresAt: number }) => {
+      store.getState().addJoinRequest({
+        id: data.requestId,
+        playerId: data.playerId,
+        playerName: data.playerName,
+        targetTeamId: data.targetTeamId,
+        type: data.type,
+        currentTeamId: data.currentTeamId,
+        expiresAt: data.expiresAt,
+      })
+      audioEngine.error() // Attention-grabbing notification
+      if (data.type === 'join') {
+        battleToast('join_request', 'طلب انضمام جديد! 📩', `${data.playerName} يريد الانضمام ل${data.targetTeamId === 'A' ? 'لفريق الأحمر' : 'لفريق الأزرق'}`)
+      } else {
+        battleToast('switch_request', 'طلب تبديل فريق! 🔄', `${data.playerName} يريد الانتقال ل${data.targetTeamId === 'A' ? 'لفريق الأحمر' : 'لفريق الأزرق'}`)
+      }
+    })
+
+    // Join request sent confirmation
+    socket.on('join-request-sent', (data: { requestId: string; targetTeamId: TeamId; captainName: string }) => {
+      store.getState().setMyJoinRequest({
+        requestId: data.requestId,
+        targetTeamId: data.targetTeamId,
+        captainName: data.captainName,
+      })
+      battleToast('join_request_sent', 'تم إرسال الطلب 📤', `في انتظار موافقة ${data.captainName}...`)
+    })
+
+    // Join request approved
+    socket.on('join-request-approved', (data: { requestId: string; teamId: TeamId; teamName: string; captainName: string }) => {
+      store.getState().setMyJoinRequest(null)
+      store.getState().setMyTeamId(data.teamId)
+      // Update isCaptain based on teams
+      const teams = store.getState().teams
+      if (teams) {
+        const isNowCaptain = data.teamId === 'A'
+          ? teams.teamA.captainId === globalSocket?.id
+          : teams.teamB.captainId === globalSocket?.id
+        store.getState().setIsCaptain(isNowCaptain)
+      }
+      audioEngine.progressStep()
+      battleToast('join_approved', 'تم قبولك في الفريق! ✅', `${data.captainName} وافق على انضمامك ل${data.teamName}`)
+    })
+
+    // Join request rejected
+    socket.on('join-request-rejected', (data: { requestId: string; captainName: string }) => {
+      store.getState().setMyJoinRequest(null)
+      audioEngine.error()
+      battleToast('join_rejected', 'تم رفض طلب الانضمام ❌', `${data.captainName} رفض طلب انضمامك`)
+    })
+
+    // Join request expired
+    socket.on('join-request-expired', (data: { requestId: string }) => {
+      store.getState().setMyJoinRequest(null)
+      store.getState().removeJoinRequest(data.requestId)
+      battleToast('join_expired', 'انتهت صلاحية الطلب ⏰', 'لم يتم الرد على طلبك في الوقت المحدد')
+    })
+
+    // Join request resolved (for captain)
+    socket.on('join-request-resolved', (data: { requestId: string; playerName: string; approved: boolean }) => {
+      store.getState().removeJoinRequest(data.requestId)
+      if (data.approved) {
+        battleToast('join_resolved', 'تم قبول اللاعب ✅', `${data.playerName} انضم للفريق`)
+      } else {
+        battleToast('join_resolved', 'تم رفض الطلب ❌', `رفضت طلب انضمام ${data.playerName}`)
       }
     })
 
@@ -619,10 +697,13 @@ function useGameSocket() {
         // Find my team from the players list
         const myId = socket.id
         const myPlayer = data.players.find((p: Player) => p.id === myId)
-        if (myPlayer?.teamId) {
-          store.getState().setMyTeamId(myPlayer.teamId)
+        if (myPlayer) {
+          store.getState().setMyTeamId(myPlayer.teamId || null)
           store.getState().setIsCaptain(!!myPlayer.isCaptain)
         }
+      }
+      if ((data as any).pendingJoinRequests) {
+        store.getState().setPendingJoinRequests((data as any).pendingJoinRequests)
       }
       store.getState().setScreen('lobby')
     })
@@ -1952,7 +2033,7 @@ function JoinGameScreen() {
     const onShowPasswordDialog = (e: Event) => {
       const detail = (e as CustomEvent).detail
       if (detail?.roomCode) {
-        setSelectedRoom({ roomCode: detail.roomCode, roomType: 'خاصة', hasPassword: true, hostName: '', playerCount: 0, maxPlayers: 0, settings: { gameType: 'قراءة متحررة', difficulty: 'متوسط', timePerRound: 15, numberOfRounds: 3, maxPlayers: 10, playerMode: 'fixed', passageType: 'عشوائي' }, status: 'waiting' })
+        setSelectedRoom({ roomCode: detail.roomCode, roomType: 'خاصة', hasPassword: true, hostName: '', playerCount: 0, maxPlayers: 0, settings: { gameType: 'قراءة متحررة', difficulty: 'متوسط', timePerRound: 15, numberOfRounds: 3, maxPlayers: 10, playerMode: 'fixed', passageType: 'عشوائي', battleMode: 'فردي' }, status: 'waiting' })
         setDialogPassword('')
         setShowPasswordDialog(true)
       }
@@ -2622,6 +2703,84 @@ function ApprovalTimer({ expiresAt }: { expiresAt: number }) {
 }
 
 // ============================================
+// JOIN REQUEST CARD COMPONENT
+// ============================================
+function JoinRequestCard({ request, onApprove, onReject }: { request: JoinRequestState; onApprove: () => void; onReject: () => void }) {
+  const [timeLeft, setTimeLeft] = useState(Math.max(0, Math.floor((request.expiresAt - Date.now()) / 1000)))
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((request.expiresAt - Date.now()) / 1000))
+      setTimeLeft(remaining)
+      if (remaining <= 0) clearInterval(interval)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [request.expiresAt])
+
+  const percentage = Math.max(0, (timeLeft / 40) * 100)
+  const isUrgent = timeLeft <= 10
+  const isRedTeam = request.targetTeamId === 'A'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="p-2.5 rounded-lg bg-white/5 border border-white/10"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className={`w-2 h-2 rounded-full shrink-0 ${isRedTeam ? 'bg-red-500' : 'bg-sky-500'}`} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-white truncate font-medium">{request.playerName}</span>
+              <span className="text-[10px] text-slate-500">
+                {request.type === 'join' ? '📩 انضمام' : '🔄 تبديل'}
+              </span>
+            </div>
+            <span className={`text-[10px] ${isRedTeam ? 'text-red-400' : 'text-sky-400'}`}>
+              → {isRedTeam ? 'الفريق الأحمر' : 'الفريق الأزرق'}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Button
+            size="icon"
+            className="w-7 h-7 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+            onClick={onApprove}
+            title="قبول"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            className="w-7 h-7 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+            onClick={onReject}
+            title="رفض"
+          >
+            <XCircle className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </div>
+      {/* Countdown timer bar */}
+      <div className="mt-2">
+        <div className="flex items-center justify-between text-[10px] mb-1">
+          <span className={isUrgent ? 'text-red-400 font-bold animate-pulse' : 'text-slate-500'}>
+            {isUrgent ? '⚠️' : ''} {timeLeft} ثانية
+          </span>
+        </div>
+        <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-1000 ${isUrgent ? 'bg-red-500' : 'bg-amber-500'}`}
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ============================================
 // LOBBY SCREEN (ARENA)
 // ============================================
 function LobbyScreen() {
@@ -2652,8 +2811,17 @@ function LobbyScreen() {
   const chatMessages = useGameStore((s) => s.chatMessages)
   const chatMode = useGameStore((s) => s.chatMode)
   const setChatMode = useGameStore((s) => s.setChatMode)
+  const pendingJoinRequests = useGameStore((s) => s.pendingJoinRequests)
+  const myJoinRequest = useGameStore((s) => s.myJoinRequest)
   const { startGame, leaveAndDisconnect } = useGameSocket()
   const resetGame = useGameStore((s) => s.resetGame)
+
+  // Force unassigned players to global chat mode
+  useEffect(() => {
+    if (battleMode === 'فرق' && myTeamId === null && chatMode === 'team') {
+      setChatMode('global')
+    }
+  }, [battleMode, myTeamId, chatMode, setChatMode])
 
   const isOpen = playerMode === 'open' || maxPlayers === 0
 
@@ -2681,7 +2849,9 @@ function LobbyScreen() {
 
   // Team mode: need at least 1 player per team
   const teamStartError = battleMode === 'فرق' && teams 
-    ? (teams.teamA.playerIds.length === 0 
+    ? ((teams.unassignedPlayerIds || []).length > 0
+      ? `يوجد ${(teams.unassignedPlayerIds || []).length} لاعب غير مصنف. يجب أن ينضموا لفريق أولاً.`
+      : teams.teamA.playerIds.length === 0 
       ? 'الفريق الأحمر لازم يكون فيه مقاتل واحد على الأقل'
       : teams.teamB.playerIds.length === 0 
       ? 'الفريق الأزرق لازم يكون فيه مقاتل واحد على الأقل'
@@ -2710,6 +2880,18 @@ function LobbyScreen() {
   const handleSwitchTeam = useCallback((teamId: TeamId) => {
     if (!globalSocket) return
     globalSocket.emit('switch-team', { teamId })
+  }, [])
+
+  // Request to join a team (for unassigned players)
+  const handleRequestJoinTeam = useCallback((targetTeamId: TeamId) => {
+    if (!globalSocket) return
+    globalSocket.emit('request-join-team', { targetTeamId })
+  }, [])
+
+  // Respond to a join request (for captains)
+  const handleJoinRequestResponse = useCallback((requestId: string, approved: boolean) => {
+    if (!globalSocket) return
+    globalSocket.emit('join-team-response', { requestId, approved })
   }, [])
 
   const handleApprovalResponse = useCallback((approvalId: string, approved: boolean) => {
@@ -2989,13 +3171,24 @@ function LobbyScreen() {
                         <div className="text-center text-xs text-slate-500 py-4">لا يوجد مقاتلين</div>
                       )}
                     </div>
-                    {/* Switch to Team A button */}
-                    {myTeamId !== 'A' && (
+                    {/* Request to join/switch to Team A */}
+                    {myTeamId !== 'A' && myTeamId !== null && (
                       <div className="p-2 border-t border-red-500/10">
-                        <Button size="sm" variant="ghost" className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs"
-                          onClick={() => handleSwitchTeam('A')}>
-                          <ArrowLeftRight className="w-3 h-3 ml-1" /> انضم للفريق الأحمر
-                        </Button>
+                        {myJoinRequest && myJoinRequest.targetTeamId === 'A' ? (
+                          <div className="text-center py-1.5 text-[11px] text-amber-400/80 animate-pulse">
+                            <Hourglass className="w-3 h-3 inline ml-1" />
+                            طلبك قيد المراجعة...
+                          </div>
+                        ) : myJoinRequest ? (
+                          <Button size="sm" variant="ghost" className="w-full text-red-400/40 hover:text-red-400/40 hover:bg-transparent text-xs cursor-not-allowed" disabled>
+                            <ArrowLeftRight className="w-3 h-3 ml-1" /> طلب الانتقال
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="ghost" className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs"
+                            onClick={() => handleSwitchTeam('A')}>
+                            <ArrowLeftRight className="w-3 h-3 ml-1" /> طلب الانتقال
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3035,17 +3228,120 @@ function LobbyScreen() {
                         <div className="text-center text-xs text-slate-500 py-4">لا يوجد مقاتلين</div>
                       )}
                     </div>
-                    {/* Switch to Team B button */}
-                    {myTeamId !== 'B' && (
+                    {/* Request to join/switch to Team B */}
+                    {myTeamId !== 'B' && myTeamId !== null && (
                       <div className="p-2 border-t border-sky-500/10">
-                        <Button size="sm" variant="ghost" className="w-full text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 text-xs"
-                          onClick={() => handleSwitchTeam('B')}>
-                          <ArrowLeftRight className="w-3 h-3 ml-1" /> انضم للفريق الأزرق
-                        </Button>
+                        {myJoinRequest && myJoinRequest.targetTeamId === 'B' ? (
+                          <div className="text-center py-1.5 text-[11px] text-amber-400/80 animate-pulse">
+                            <Hourglass className="w-3 h-3 inline ml-1" />
+                            طلبك قيد المراجعة...
+                          </div>
+                        ) : myJoinRequest ? (
+                          <Button size="sm" variant="ghost" className="w-full text-sky-400/40 hover:text-sky-400/40 hover:bg-transparent text-xs cursor-not-allowed" disabled>
+                            <ArrowLeftRight className="w-3 h-3 ml-1" /> طلب الانتقال
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="ghost" className="w-full text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 text-xs"
+                            onClick={() => handleSwitchTeam('B')}>
+                            <ArrowLeftRight className="w-3 h-3 ml-1" /> طلب الانتقال
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
+
+                {/* Unassigned Players Section - always show if there are unassigned players OR if current player is unassigned */}
+                {((teams.unassignedPlayerIds && teams.unassignedPlayerIds.length > 0) || myTeamId === null) && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl border-2 border-slate-500/30 bg-slate-500/5 overflow-hidden"
+                  >
+                    <div className="p-3 bg-slate-500/10 border-b border-slate-500/20 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-slate-400 shadow-lg shadow-slate-400/50 animate-pulse" />
+                        <span className="font-bold text-slate-400 text-sm">الغير مصنف</span>
+                      </div>
+                      <Badge variant="outline" className="border-slate-500/30 text-slate-400 text-[10px]">
+                        {(teams.unassignedPlayerIds || []).length} لاعب
+                      </Badge>
+                    </div>
+                    <div className="p-2 space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                      {(teams.unassignedPlayerIds || []).map(playerId => {
+                        const p = players.find(pl => pl.id === playerId)
+                        if (!p) return null
+                        const isMe = p.id === globalSocket?.id
+                        return (
+                          <div key={p.id} className={`flex items-center gap-2 p-2 rounded-lg ${isMe ? 'bg-slate-500/10 border border-slate-500/20' : 'bg-white/5'}`}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <UserCog className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="text-sm text-white truncate">{p.name}</span>
+                                {isMe && <span className="text-[10px] text-slate-400">(أنت)</span>}
+                              </div>
+                            </div>
+                            {p.isReady && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                          </div>
+                        )
+                      })}
+                      {(teams.unassignedPlayerIds || []).length === 0 && (
+                        <div className="text-center text-xs text-slate-500 py-2">لا يوجد لاعبين غير مصنفين</div>
+                      )}
+                    </div>
+                    {/* Join request buttons for unassigned current player */}
+                    {myTeamId === null && (
+                      <div className="p-2 border-t border-slate-500/10">
+                        {myJoinRequest ? (
+                          <div className="text-center py-2 text-xs text-amber-400/80 animate-pulse">
+                            <Hourglass className="w-3.5 h-3.5 inline ml-1" />
+                            طلبك قيد المراجعة... (في انتظار موافقة {myJoinRequest.captainName})
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="ghost" className="flex-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs"
+                              onClick={() => handleRequestJoinTeam('A')}>
+                              <UserPlus className="w-3 h-3 ml-1" /> الفريق الأحمر
+                            </Button>
+                            <Button size="sm" variant="ghost" className="flex-1 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 text-xs"
+                              onClick={() => handleRequestJoinTeam('B')}>
+                              <UserPlus className="w-3 h-3 ml-1" /> الفريق الأزرق
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
+                {/* Captain Join Requests Panel */}
+                {isCaptain && pendingJoinRequests.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl border-2 border-amber-500/30 bg-amber-500/5 overflow-hidden"
+                  >
+                    <div className="p-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-amber-400" />
+                        <span className="font-bold text-amber-400 text-sm">طلبات الانضمام</span>
+                      </div>
+                      <Badge variant="outline" className="border-amber-500/30 text-amber-400 text-[10px]">
+                        {pendingJoinRequests.length} طلب
+                      </Badge>
+                    </div>
+                    <div className="p-2 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                      {pendingJoinRequests.map(req => (
+                        <JoinRequestCard
+                          key={req.id}
+                          request={req}
+                          onApprove={() => handleJoinRequestResponse(req.id, true)}
+                          onReject={() => handleJoinRequestResponse(req.id, false)}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
 
                 {/* Voice merge button (captains only) */}
                 {isCaptain && !voiceMerged && (
@@ -3068,11 +3364,14 @@ function LobbyScreen() {
                     <div className="flex items-center gap-2">
                       <MessageCircle className="w-4 h-4 text-amber-400" />
                       <span className="text-sm font-bold text-white">محادثة الفريق</span>
+                      {myTeamId === null && (
+                        <Badge className="bg-slate-500/20 text-slate-400 border border-slate-500/30 text-[9px]">عالمي فقط</Badge>
+                      )}
                     </div>
-                    {/* Chat mode selector */}
+                    {/* Chat mode selector - unassigned players can only use global */}
                     <div className="flex gap-1">
                       {([
-                        { value: 'team' as ChatMode, label: 'فريقي' },
+                        ...(myTeamId !== null ? [{ value: 'team' as ChatMode, label: 'فريقي' }] : []),
                         { value: 'global' as ChatMode, label: 'الكل' },
                       ]).map(mode => (
                         <button
@@ -3135,7 +3434,7 @@ function LobbyScreen() {
                           setTeamChatInput('')
                         }
                       }}
-                      placeholder={chatMode === 'team' ? 'اكتب لفريقك...' : 'اكتب للجميع...'}
+                      placeholder={myTeamId === null ? 'اكتب للجميع... (الفرق فقط)' : chatMode === 'team' ? 'اكتب لفريقك...' : 'اكتب للجميع...'}
                       className="flex-1 h-7 text-xs bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-amber-500/30"
                       dir="rtl"
                     />
@@ -3620,7 +3919,7 @@ function AnswerReviewQuestionCard({
                 </span>
               </span>
             )}
-            {'timeTaken' in review && (review as FullAnswerReviewItem).timeTaken > 0 && (
+            {'timeTaken' in review && (review as FullAnswerReviewItem).timeTaken != null && (review as FullAnswerReviewItem).timeTaken! > 0 && (
               <span className="text-slate-600">
                 <Timer className="w-2.5 h-2.5 inline ml-0.5" />
                 {Math.round((review as FullAnswerReviewItem).timeTaken!)}ث
@@ -5179,6 +5478,7 @@ export default function Home() {
   const playerName = useGameStore((s) => s.playerName)
   const gameContent = useGameStore((s) => s.gameContent)
   const restoreState = useGameStore((s) => s.restoreState)
+  const currentRound = useGameStore((s) => s.currentRound)
   const { rejoinRoom } = useGameSocket()
   const [showSplash, setShowSplash] = useState(true)
   const [splashComplete, setSplashComplete] = useState(false)
