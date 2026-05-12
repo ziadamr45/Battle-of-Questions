@@ -58,6 +58,8 @@ import {
   ShieldAlert,
   AlertTriangle,
   ScrollText,
+  UserX,
+  MicOff,
 } from 'lucide-react'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
@@ -68,6 +70,7 @@ import { parseJoinUrl, cleanJoinParams } from '@/lib/share-utils'
 import { BattleHistoryList, BattleDetail } from '@/components/battle-history'
 import { AboutPage } from '@/components/about-page'
 import { battleToast } from '@/lib/battle-toast-store'
+import { usePlayerMuteStore } from '@/lib/player-mute-store'
 import { useOnboardingStore, shouldShowCinematicIntro, shouldShowUIHighlights, shouldShowGameplayHints } from '@/lib/onboarding-store'
 import { CinematicIntro } from '@/components/onboarding/cinematic-intro'
 import { UIHighlights } from '@/components/onboarding/ui-highlights'
@@ -388,6 +391,29 @@ function useGameSocket() {
       store.getState().setGameSettings(data.settings)
     })
 
+    // ─── Host Kick/Mute Events ──────────────────────────────────────
+    socket.on('player-kicked', (data: { reason: string; kickedByName: string }) => {
+      // This client was kicked by the host
+      disconnectGlobalSocket()
+      store.getState().resetGame()
+      clearSessionStorage()
+      usePlayerMuteStore.getState().clearAllMutes()
+      battleToast('kicked', 'تم طردك!', data.reason)
+    })
+
+    socket.on('player-muted', (data: { mutedBy: string; mutedByName: string }) => {
+      // This client was muted by the host — force mute their mic
+      battleToast('muted_by_host', 'تم كتمك!', `${data.mutedByName} كتم صوتك`)
+      // Dispatch event for voice-chat to force-mute the local mic
+      window.dispatchEvent(new CustomEvent('force-local-mic-mute'))
+    })
+
+    socket.on('player-audio-muted', (data: { playerId: string; playerName: string }) => {
+      // A player was host-muted — mute their audio for everyone
+      usePlayerMuteStore.getState().addHostMuted(data.playerId)
+      battleToast('player_audio_muted', 'تم كتم اللاعب', `${data.playerName} تم كتم صوته بواسطة القائد`)
+    })
+
     socket.on('rejoin-success', (data: {
       roomCode: string; players: Player[]; settings: GameSettings; roomType: RoomType; hasPassword: boolean; isHost: boolean;
       status: 'waiting' | 'playing' | 'finished'; gameContent?: GameContent | null; currentRound?: number; totalRounds?: number;
@@ -434,6 +460,8 @@ function useGameSocket() {
   const leaveAndDisconnect = useCallback(() => {
     // Disconnect LiveKit voice chat
     disconnectLiveKit()
+    // Clear per-player mute state
+    usePlayerMuteStore.getState().clearAllMutes()
     if (globalSocket) {
       globalSocket.emit('leave-room')
       const sock = globalSocket
@@ -2561,6 +2589,9 @@ function LobbyScreen() {
                   {players.map((player, i) => {
                     const playerIdentity = player.name.replace(/\s+/g, '_')
                     const isSpeaking = speakingParticipants.includes(playerIdentity) || speakingParticipants.includes(player.name)
+                    const isMuted = usePlayerMuteStore.getState().isPlayerMuted(player.id)
+                    const mySocketId = globalSocket?.id
+                    const isMe = player.id === mySocketId
                     return (
                     <motion.div
                       key={player.id}
@@ -2570,7 +2601,7 @@ function LobbyScreen() {
                       className={`arena-player flex items-center gap-3 p-3 rounded-xl ${isSpeaking ? 'ring-1 ring-green-400/30 bg-green-500/5' : ''}`}
                     >
                       {/* Speaking indicator */}
-                      {isSpeaking && (
+                      {isSpeaking && !isMuted && (
                         <motion.div
                           className="flex items-center gap-0.5"
                           animate={{ opacity: [0.5, 1, 0.5] }}
@@ -2582,11 +2613,82 @@ function LobbyScreen() {
                           <div className="w-1 h-3 bg-green-400 rounded-full" />
                         </motion.div>
                       )}
-                      <span className="font-bold flex-1 text-white">{player.name}</span>
+                      {isMuted && (
+                        <MicOff className="w-4 h-4 text-red-400/60 shrink-0" />
+                      )}
+                      <span className={`font-bold flex-1 ${isMuted ? 'text-slate-500' : 'text-white'}`}>{player.name}</span>
                       {player.isHost && (
                         <Badge className="host-badge text-white border-0 text-xs">
                           <Crown className="w-3 h-3 ml-1 crown-float" />قائد
                         </Badge>
+                      )}
+                      {/* Action buttons — not for self */}
+                      {!isMe && (
+                        <div className="flex items-center gap-1">
+                          {/* Local mute button — available to ALL players */}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="w-7 h-7 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
+                            onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id)}
+                            title={isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
+                          >
+                            {isMuted ? <Volume1 className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+                          </Button>
+                          {/* Host-only: Kick button */}
+                          {isHost && !player.isHost && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="w-7 h-7 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                                  title="طرد اللاعب"
+                                >
+                                  <UserX className="w-3.5 h-3.5" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="bg-[#12121F] border-white/10 text-white" dir="rtl">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="text-white">طرد {player.name}؟</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-slate-400">
+                                    هتطرد {player.name} من الساحة. اللاعب المش هيقدر يرجع غير لو دخل من أول وجديد.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter className="flex gap-2">
+                                  <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-red-600 text-white hover:bg-red-700"
+                                    onClick={() => {
+                                      if (globalSocket) {
+                                        globalSocket.emit('kick-player', { playerId: player.id })
+                                        battleToast('kick_sent', 'تم الطرد', `${player.name} تم طرده من الساحة`)
+                                      }
+                                    }}
+                                  >
+                                    طرد
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                          {/* Host-only: Mute for everyone button */}
+                          {isHost && !player.isHost && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="w-7 h-7 rounded-full text-slate-500 hover:text-orange-400 hover:bg-orange-400/10 transition-all"
+                              onClick={() => {
+                                if (globalSocket) {
+                                  globalSocket.emit('mute-player', { playerId: player.id })
+                                }
+                              }}
+                              title="كتم الصوت للجميع"
+                            >
+                              <VolumeX className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </motion.div>
                     )
@@ -3478,7 +3580,12 @@ function ResultsScreen() {
             <Trophy className="w-4 h-4 text-amber-400" />لوحة المتصدرين
           </h3>
           <div className="space-y-2">
-            {scores.map((player, i) => (
+            {scores.map((player, i) => {
+              const isMuted = usePlayerMuteStore.getState().isPlayerMuted(player.id)
+              const mySocketId = globalSocket?.id
+              const isMe = player.id === mySocketId
+              const isHostPlayer = useGameStore.getState().isHost
+              return (
               <motion.div
                 key={player.id}
                 initial={{ opacity: 0, x: 20 }}
@@ -3489,8 +3596,72 @@ function ResultsScreen() {
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-gradient-to-br ${getMedalColor(i)} text-white`}>
                   {i + 1}
                 </div>
-                <span className="flex-1 text-right font-semibold text-white text-sm">{player.name}</span>
+                {isMuted && <MicOff className="w-3 h-3 text-red-400/60 shrink-0" />}
+                <span className={`flex-1 text-right font-semibold text-sm ${isMuted ? 'text-slate-500' : 'text-white'}`}>{player.name}</span>
                 <div className="flex items-center gap-2">
+                  {/* Mute button for other players — all players can local mute */}
+                  {!isMe && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="w-6 h-6 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
+                      onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id)}
+                      title={isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
+                    >
+                      {isMuted ? <Volume1 className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
+                    </Button>
+                  )}
+                  {/* Host-only: Kick & mute-for-all buttons during game */}
+                  {!isMe && isHostPlayer && !player.isHost && (
+                    <>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="w-6 h-6 rounded-full text-slate-500 hover:text-orange-400 hover:bg-orange-400/10 transition-all"
+                        onClick={() => {
+                          if (globalSocket) {
+                            globalSocket.emit('mute-player', { playerId: player.id })
+                          }
+                        }}
+                        title="كتم الصوت للجميع"
+                      >
+                        <VolumeX className="w-3 h-3" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="w-6 h-6 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                            title="طرد اللاعب"
+                          >
+                            <UserX className="w-3 h-3" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-[#12121F] border-white/10 text-white" dir="rtl">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="text-white">طرد {player.name} من المعركة؟</AlertDialogTitle>
+                            <AlertDialogDescription className="text-slate-400">
+                              هتطرد {player.name} من المعركة. النقاط بتاعته هتتحسب لحد ما اتحسبت.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter className="flex gap-2">
+                            <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-red-600 text-white hover:bg-red-700"
+                              onClick={() => {
+                                if (globalSocket) {
+                                  globalSocket.emit('kick-player', { playerId: player.id })
+                                }
+                              }}
+                            >
+                              طرد
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </>
+                  )}
                   <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs">
                     <Trophy className="w-3 h-3 ml-1" />{player.roundWins || 0}
                   </Badge>
@@ -3498,7 +3669,8 @@ function ResultsScreen() {
                   <span className="text-xs text-slate-500">نقطة</span>
                 </div>
               </motion.div>
-            ))}
+              )
+            })}
           </div>
         </motion.div>
 

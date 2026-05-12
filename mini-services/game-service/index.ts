@@ -1916,6 +1916,120 @@ io.on('connection', (socket: Socket) => {
     }
   })
 
+  // ── kick-player ──────────────────────────────────────────────────────
+  // Host can kick a player from the room (works in lobby AND during game)
+  socket.on('kick-player', (data: { playerId: string }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+
+    const room = rooms.get(roomCode)
+    if (!room) return
+
+    // Validate sender is the host
+    if (room.hostId !== socket.id) {
+      socket.emit('game-error', { message: 'فقط القائد يقدر يطرد لاعب' })
+      return
+    }
+
+    // Can't kick yourself
+    if (data.playerId === socket.id) {
+      socket.emit('game-error', { message: 'مش ممكن تطرد نفسك' })
+      return
+    }
+
+    // Find the player to kick
+    const playerToKick = room.players.get(data.playerId)
+    if (!playerToKick) {
+      socket.emit('game-error', { message: 'اللاعب مش موجود في الساحة' })
+      return
+    }
+
+    console.log(`[kick-player] Host ${socket.id} kicked ${playerToKick.name} from room ${roomCode}`)
+
+    // Notify the kicked player specifically
+    io.to(data.playerId).emit('player-kicked', {
+      reason: 'تم طردك من الساحة بواسطة القائد',
+      kickedByName: room.players.get(socket.id)?.name || 'القائد',
+    })
+
+    // Notify everyone else in the room
+    io.to(roomCode).emit('player-left', {
+      playerId: data.playerId,
+      playerName: playerToKick.name,
+      players: playersToArray(room.players).filter(p => p.id !== data.playerId),
+    })
+
+    // Remove the player from the room
+    room.players.delete(data.playerId)
+    room.playerAnswers.delete(data.playerId)
+
+    // Clean up socketRoomMap
+    socketRoomMap.delete(data.playerId)
+
+    // Make the kicked socket leave the room
+    const kickedSocket = io.sockets.sockets.get(data.playerId)
+    if (kickedSocket) {
+      kickedSocket.leave(roomCode)
+    }
+
+    // If only one active player left during game, end it
+    const activePlayers = Array.from(room.players.values()).filter(p => !p.isDisconnected)
+    if (room.status === 'playing' && activePlayers.length === 1) {
+      const remainingPlayer = activePlayers[0]
+      io.to(roomCode).emit('opponent-left-game', {
+        leftPlayerName: playerToKick.name,
+        winnerName: remainingPlayer.name,
+      })
+      handleGameEnd(roomCode)
+    } else if (activePlayers.length === 0) {
+      deleteRoom(roomCode)
+    }
+
+    broadcastPublicRooms()
+  })
+
+  // ── mute-player (host broadcast mute) ──────────────────────────────────
+  // Host can mute a player for EVERYONE in the room (voice chat)
+  socket.on('mute-player', (data: { playerId: string }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+
+    const room = rooms.get(roomCode)
+    if (!room) return
+
+    // Validate sender is the host
+    if (room.hostId !== socket.id) {
+      socket.emit('game-error', { message: 'فقط القائد يقدر يكتم لاعب' })
+      return
+    }
+
+    // Can't mute yourself
+    if (data.playerId === socket.id) {
+      socket.emit('game-error', { message: 'مش ممكن تكتم نفسك' })
+      return
+    }
+
+    const playerToMute = room.players.get(data.playerId)
+    if (!playerToMute) {
+      socket.emit('game-error', { message: 'اللاعب مش موجود في الساحة' })
+      return
+    }
+
+    console.log(`[mute-player] Host muted ${playerToMute.name} in room ${roomCode}`)
+
+    // Notify the muted player to stop their mic
+    io.to(data.playerId).emit('player-muted', {
+      mutedBy: 'host',
+      mutedByName: room.players.get(socket.id)?.name || 'القائد',
+    })
+
+    // Notify all players in the room to mute this player's audio
+    io.to(roomCode).emit('player-audio-muted', {
+      playerId: data.playerId,
+      playerName: playerToMute.name,
+    })
+  })
+
   // ── disconnect ─────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     const roomCode = socketRoomMap.get(socket.id)

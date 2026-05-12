@@ -7,6 +7,7 @@ import { Mic, MicOff, Volume2, VolumeX, MessageCircle, X, Send } from 'lucide-re
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { usePlayerMuteStore } from '@/lib/player-mute-store'
 
 // ============================================
 // LIVEKIT CONFIG
@@ -73,8 +74,24 @@ function attachAudioTrack(track: RemoteAudioTrack, participantIdentity: string) 
     audioEl.id = `audio-${key}`
     audioElements.set(key, audioEl)
   }
+  // Check if this player is muted (locally or by host) when attaching
+  const muteStore = usePlayerMuteStore.getState()
+  // Extract socket ID from identity (LiveKit identity = playerName with _ for spaces)
+  // We check against all muted player IDs
+  let shouldMute = false
+  const mutedIds = [...muteStore.locallyMutedPlayers, ...muteStore.hostMutedPlayers]
+  for (const mutedId of mutedIds) {
+    if (participantIdentity.includes(mutedId) || mutedId.includes(participantIdentity)) {
+      shouldMute = true
+      break
+    }
+  }
   track.attach(audioEl)
-  console.log(`[VoiceChat] Attached audio track from ${participantIdentity}`)
+  // Apply mute state after attaching
+  if (shouldMute) {
+    audioEl.muted = true
+  }
+  console.log(`[VoiceChat] Attached audio track from ${participantIdentity}${shouldMute ? ' (MUTED)' : ''}`)
 }
 
 function detachAudioTrack(track: RemoteAudioTrack, participantIdentity: string) {
@@ -141,6 +158,41 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
     audioElements.forEach((audioEl) => {
       audioEl.muted = isSpeakerMuted
     })
+  }, [isSpeakerMuted])
+
+  // ─── Per-Player Mute: Listen for mute changes from player-mute-store ───
+  useEffect(() => {
+    const handleMuteChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (!detail?.playerId) return
+      // Mute/unmute the audio element for this specific player
+      const participantIdentity = detail.playerId
+      // Try to find audio elements by participant identity
+      audioElements.forEach((audioEl, key) => {
+        if (key.includes(participantIdentity) || key.startsWith(participantIdentity)) {
+          audioEl.muted = detail.isMuted || isSpeakerMuted
+        }
+      })
+    }
+
+    const handleForceMicMute = async () => {
+      // Host muted this player — force disable their mic
+      const room = roomRef
+      if (!room || room.state !== 'connected') return
+      try {
+        await room.localParticipant.setMicrophoneEnabled(false)
+        setIsMicMuted(true)
+      } catch (err) {
+        console.error('[VoiceChat] Force mic mute error:', err)
+      }
+    }
+
+    window.addEventListener('player-mute-changed', handleMuteChange)
+    window.addEventListener('force-local-mic-mute', handleForceMicMute)
+    return () => {
+      window.removeEventListener('player-mute-changed', handleMuteChange)
+      window.removeEventListener('force-local-mic-mute', handleForceMicMute)
+    }
   }, [isSpeakerMuted])
 
   // Connect to LiveKit room
