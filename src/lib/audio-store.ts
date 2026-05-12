@@ -36,7 +36,7 @@ function loadSettings(): AudioSettings {
       return {
         masterVolume: parsed.masterVolume ?? 1.0,
         sfxVolume: parsed.sfxVolume ?? 1.0,
-        musicVolume: parsed.musicVolume ?? 0.6,
+        musicVolume: parsed.musicVolume ?? 1.0,
         isMuted: parsed.isMuted ?? false,
       }
     }
@@ -44,7 +44,7 @@ function loadSettings(): AudioSettings {
   return {
     masterVolume: 1.0,
     sfxVolume: 1.0,
-    musicVolume: 0.6,
+    musicVolume: 1.0,
     isMuted: false,
   }
 }
