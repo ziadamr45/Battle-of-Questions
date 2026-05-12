@@ -336,7 +336,8 @@ function useGameSocket() {
         store.getState().setPlayerAnswerReviews({})
       }
       // Reset ready status for new round transition
-      store.getState().setReadyStatus(null)
+      // Note: Backend sends initial ready-status-update right after round-end,
+      // so we don't null it here — the backend update will set the correct initial state
       store.getState().setIsPlayerReady(false)
       store.getState().setScreen('round-transition')
       audioEngine.roundEndReveal()
@@ -483,9 +484,9 @@ function useGameSocket() {
     })
 
     socket.on('host-start-rejected', (data: { unreadyPlayers: string[]; readyCount: number; totalActive: number }) => {
-      // Show toast to host with unready player names
+      // Show toast to captain with unready fighter names
       const names = data.unreadyPlayers.join('، ')
-      battleToast('warning', 'مش جاهزين بعد!', `${names} لسه مش جاهزين. استنى لما الكل يبقى جاهز.`)
+      battleToast('warning', 'مقاتلين مش جاهزين!', `${names} لسه مش جاهزين. استنى لما الكل يستعد.`)
     })
 
     socket.on('finished-status-update', (data: FinishedStatus) => {
@@ -4215,12 +4216,20 @@ function RoundTransitionScreen() {
   // Ready status display
   const readyCount = readyStatus?.readyCount ?? 0
   const totalActive = readyStatus?.totalActive ?? players.length
+  const totalFighters = readyStatus?.totalFighters ?? players.length
+  // If no fighters (captain alone), consider all ready so captain can start immediately
+  const allFightersReady = readyStatus?.allFightersReady ?? (totalFighters === 0)
+  const unreadyNames = readyStatus?.unreadyPlayerNames ?? []
+  const readyNames = readyStatus?.readyPlayerNames ?? []
+
+  // Determine if current player is a leader (host in solo, captain in team)
+  const isLeader = (isHost && battleMode !== 'فرق') || (isCaptain && battleMode === 'فرق')
 
   const handleReady = useCallback(() => {
-    if (!globalSocket || isPlayerReady) return
+    if (!globalSocket || isPlayerReady || isLeader) return
     globalSocket.emit('player-ready')
     setIsPlayerReady(true)
-  }, [isPlayerReady, setIsPlayerReady])
+  }, [isPlayerReady, setIsPlayerReady, isLeader])
 
   const handleApprovalResponse = useCallback((approvalId: string, approved: boolean) => {
     if (!globalSocket) return
@@ -4438,48 +4447,155 @@ function RoundTransitionScreen() {
           transition={{ delay: 1.5 }}
           className="mt-6"
         >
-          {/* Ready Button / Status */}
+          {/* Ready Button / Captain Monitoring Panel */}
           {!isLastRound ? (
             <div className="flex flex-col items-center gap-3">
-              {isPlayerReady ? (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-2 text-emerald-400">
-                    <Check className="w-4 h-4" />
-                    <span className="text-sm font-bold">أنت جاهز</span>
-                    <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-2 py-0.5">
-                      {readyCount}/{totalActive} جاهزين
-                    </Badge>
+              {isLeader ? (
+                /* ══════ CAPTAIN/LEADER MONITORING PANEL ══════ */
+                <div className="w-full max-w-sm flex flex-col items-center gap-3">
+                  {/* Arena Status Overview */}
+                  <div className="w-full rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+                    {/* Status Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Crown className="w-4 h-4 text-amber-400" />
+                        <span className="text-sm font-bold text-amber-400">قائد الساحة</span>
+                      </div>
+                      <Badge className={`text-xs px-2.5 py-0.5 ${
+                        allFightersReady
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                      }`}>
+                        {allFightersReady ? 'الكل جاهز ⚔️' : `${readyCount}/${totalFighters} جاهزين`}
+                      </Badge>
+                    </div>
+
+                    {/* Readiness Progress Bar */}
+                    <div className="relative h-2 rounded-full bg-white/5 overflow-hidden">
+                      <motion.div
+                        className={`absolute inset-y-0 right-0 rounded-full transition-colors ${
+                          allFightersReady ? 'bg-emerald-500' : 'bg-amber-500'
+                        }`}
+                        initial={{ width: 0 }}
+                        animate={{ width: totalFighters > 0 ? `${(readyCount / totalFighters) * 100}%` : '0%' }}
+                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                      />
+                    </div>
+
+                    {/* Fighter Status List */}
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                      {players.filter(p => {
+                        // Show non-leader active players
+                        if (p.isDisconnected) return false
+                        if (battleMode === 'فرق') return !p.isCaptain
+                        return !p.isHost
+                      }).map(p => {
+                        const isReady = readyStatus?.readyPlayers.includes(p.id) ?? false
+                        return (
+                          <div key={p.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
+                            isReady ? 'bg-emerald-500/5' : 'bg-white/5'
+                          }`}>
+                            {isReady ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            ) : (
+                              <Hourglass className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
+                            )}
+                            <span className={`flex-1 ${isReady ? 'text-emerald-300' : 'text-slate-400'}`}>
+                              {p.name}
+                            </span>
+                            {p.teamId && (
+                              <div className={`w-2 h-2 rounded-full shrink-0 ${p.teamId === 'A' ? 'bg-red-500' : 'bg-sky-500'}`} />
+                            )}
+                            <span className={`text-[10px] ${isReady ? 'text-emerald-500' : 'text-amber-500'}`}>
+                              {isReady ? 'جاهز' : 'ينتظر'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Disconnected fighters warning */}
+                    {players.filter(p => p.isDisconnected).length > 0 && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/5 border border-red-500/10">
+                        <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
+                        <span className="text-[10px] text-red-400">
+                          {players.filter(p => p.isDisconnected).map(p => p.name).join('، ')} — انقطعوا
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  {/* Host/Captain: Show start battle button after ready */}
-                  {((isHost && battleMode !== 'فرق') || (isCaptain && battleMode === 'فرق')) && (
+
+                  {/* Start Battle Button */}
+                  <motion.div
+                    className="w-full"
+                    whileTap={allFightersReady ? { scale: 0.97 } : {}}
+                  >
                     <Button
                       onClick={() => globalSocket?.emit('host-start-round')}
-                      className="btn-battle rounded-xl gap-2 px-8 py-5 text-base mt-2"
+                      disabled={!allFightersReady}
+                      className={`w-full rounded-xl gap-2 px-8 py-5 text-base font-bold transition-all ${
+                        allFightersReady
+                          ? 'btn-battle shadow-lg shadow-amber-500/20'
+                          : 'bg-white/5 border border-white/10 text-slate-500 hover:bg-white/5 cursor-not-allowed'
+                      }`}
                     >
-                      <Swords className="w-4 h-4" /> ابدأ المعركة
+                      {allFightersReady ? (
+                        <>
+                          <Swords className="w-5 h-5" />
+                          ابدأ الجولة القادمة
+                        </>
+                      ) : unreadyNames.length > 0 ? (
+                        <>
+                          <Hourglass className="w-4 h-4 animate-pulse" />
+                          {unreadyNames.length === 1
+                            ? `بانتظار ${unreadyNames[0]}`
+                            : `${unreadyNames.length} مقاتلين لم يستعدوا بعد`
+                          }
+                        </>
+                      ) : (
+                        <>
+                          <Hourglass className="w-4 h-4 animate-pulse" />
+                          في انتظار المقاتلين...
+                        </>
+                      )}
                     </Button>
-                  )}
+                  </motion.div>
                 </div>
               ) : (
-                <Button
-                  onClick={handleReady}
-                  className="btn-battle rounded-xl gap-2 px-8 py-5 text-base"
-                >
-                  <Target className="w-4 h-4" /> جاهز للجولة القادمة
-                </Button>
-              )}
-              {!isPlayerReady && readyCount > 0 && (
-                <span className="text-xs text-slate-500">
-                  {readyCount}/{totalActive} جاهزين
-                </span>
-              )}
-              {/* Show unready players list to everyone */}
-              {isPlayerReady && readyStatus?.unreadyPlayerNames && readyStatus.unreadyPlayerNames.length > 0 && (
-                <div className="text-center mt-1">
-                  <span className="text-xs text-slate-500">
-                    في انتظار: {readyStatus.unreadyPlayerNames.join('، ')}
-                  </span>
-                </div>
+                /* ══════ NORMAL FIGHTER READY FLOW ══════ */
+                <>
+                  {isPlayerReady ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex items-center gap-2 text-emerald-400">
+                        <Check className="w-4 h-4" />
+                        <span className="text-sm font-bold">أنت جاهز</span>
+                        <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-2 py-0.5">
+                          {readyCount}/{totalFighters} جاهزين
+                        </Badge>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={handleReady}
+                      className="btn-battle rounded-xl gap-2 px-8 py-5 text-base"
+                    >
+                      <Target className="w-4 h-4" /> جاهز للجولة القادمة
+                    </Button>
+                  )}
+                  {!isPlayerReady && readyCount > 0 && (
+                    <span className="text-xs text-slate-500">
+                      {readyCount}/{totalFighters} جاهزين
+                    </span>
+                  )}
+                  {/* Show unready players list to ready fighters */}
+                  {isPlayerReady && unreadyNames.length > 0 && (
+                    <div className="text-center mt-1">
+                      <span className="text-xs text-slate-500">
+                        في انتظار: {unreadyNames.join('، ')}
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -4489,8 +4605,8 @@ function RoundTransitionScreen() {
             </div>
           )}
 
-          {/* Host/Captain controls between rounds */}
-          {((isHost && battleMode !== 'فرق') || (isCaptain && battleMode === 'فرق')) && !isLastRound && (
+          {/* Leader controls between rounds */}
+          {isLeader && !isLastRound && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}

@@ -2627,6 +2627,7 @@ io.on('connection', (socket: Socket) => {
 
   // ── player-ready ────────────────────────────────────────────────────────
   // Player marks themselves as ready for the next round
+  // Captains do NOT need to ready up — they monitor and start the round
   socket.on('player-ready', () => {
     const roomCode = socketRoomMap.get(socket.id)
     if (!roomCode) return
@@ -2634,35 +2635,57 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(roomCode)
     if (!room || room.status !== 'playing') return
 
+    const player = room.players.get(socket.id)
+
+    // Captains/hosts do NOT ready up — their role is to monitor and start
+    const isLeader = player?.isHost || (room.battleMode === 'فرق' && player?.isCaptain)
+    if (isLeader) return // Silently ignore — leaders don't have a ready state
+
     // Add this player to the ready set
     room.readyPlayers.add(socket.id)
 
     // Broadcast ready status to all players (with names for UI display)
+    // Captains are excluded from ready counts — they don't need to ready up
+    const activeNonLeaders = [...room.players.entries()].filter(
+      ([, p]) => !p.isDisconnected && !(p.isHost || (room.battleMode === 'فرق' && p.isCaptain))
+    )
     const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
-    const activePlayerCount = activePlayers.length
     const readyCount = [...room.readyPlayers].filter(id => {
       const p = room.players.get(id)
       return p && !p.isDisconnected
     }).length
+    const nonLeaderCount = activeNonLeaders.length
 
-    // Build list of unready player names for the host to see
-    const unreadyPlayerNames = activePlayers
+    // Build list of unready player names (non-leaders only, leaders don't need to ready)
+    const unreadyPlayerNames = activeNonLeaders
       .filter(([id]) => !room.readyPlayers.has(id))
       .map(([, p]) => p.name)
+
+    // Build list of ready player names for the captain's monitoring panel
+    const readyPlayerNames = activeNonLeaders
+      .filter(([id]) => room.readyPlayers.has(id))
+      .map(([, p]) => p.name)
+
+    // All fighters ready = all non-leaders are in the ready set
+    const allFightersReady = readyCount >= nonLeaderCount
 
     io.to(roomCode).emit('ready-status-update', {
       readyPlayers: [...room.readyPlayers],
       readyCount,
-      totalActive: activePlayerCount,
+      totalActive: activePlayers.length,
+      totalFighters: nonLeaderCount,
       unreadyPlayerNames,
+      readyPlayerNames,
+      allFightersReady,
     })
 
     // NOTE: Round does NOT start automatically when all are ready.
-    // The host must explicitly click "ابدأ المعركة" which emits host-start-round.
+    // The captain must explicitly click "ابدأ المعركة" which emits host-start-round.
   })
 
   // ── host-start-round ──────────────────────────────────────────────────
-  // Host initiates the next round — only works if all active players are ready
+  // Captain initiates the next round — only works if all fighters (non-leaders) are ready
+  // Captains themselves are excluded from the ready requirement
   socket.on('host-start-round', () => {
     const roomCode = socketRoomMap.get(socket.id)
     if (!roomCode) return
@@ -2679,29 +2702,29 @@ io.on('connection', (socket: Socket) => {
       return
     }
 
-    // Check if all active players are ready
-    const activePlayers = [...room.players.entries()].filter(([, p]) => !p.isDisconnected)
-    const activePlayerCount = activePlayers.length
-    const readyCount = [...room.readyPlayers].filter(id => {
-      const p = room.players.get(id)
-      return p && !p.isDisconnected
-    }).length
+    // Check if all active NON-LEADER fighters are ready
+    // Captains/hosts are excluded from the ready requirement
+    const activeNonLeaders = [...room.players.entries()].filter(
+      ([, p]) => !p.isDisconnected && !(p.isHost || (room.battleMode === 'فرق' && p.isCaptain))
+    )
+    const nonLeaderCount = activeNonLeaders.length
+    const readyNonLeaders = activeNonLeaders.filter(([id]) => room.readyPlayers.has(id))
 
-    if (readyCount < activePlayerCount) {
-      // Not all players are ready — tell the host who isn't ready
-      const unreadyNames = activePlayers
+    if (readyNonLeaders.length < nonLeaderCount) {
+      // Not all fighters are ready — tell the captain who isn't ready
+      const unreadyNames = activeNonLeaders
         .filter(([id]) => !room.readyPlayers.has(id))
         .map(([, p]) => p.name)
 
       socket.emit('host-start-rejected', {
         unreadyPlayers: unreadyNames,
-        readyCount,
-        totalActive: activePlayerCount,
+        readyCount: readyNonLeaders.length,
+        totalActive: nonLeaderCount,
       })
       return
     }
 
-    // All players are ready — start the next round
+    // All fighters are ready — start the next round
     startNextRound(roomCode)
   })
 
@@ -4209,6 +4232,22 @@ function handleRoundEnd(roomCode: string) {
   room.readyPlayers = new Set()
   room.finishedPlayers = new Set()
   room.roundEnding = false  // Allow the round-end processing to complete
+
+  // Emit initial ready status so captain immediately sees the monitoring panel
+  const activeNonLeaders = [...room.players.entries()].filter(
+    ([, p]) => !p.isDisconnected && !(p.isHost || (room.battleMode === 'فرق' && p.isCaptain))
+  )
+  const unreadyPlayerNames = activeNonLeaders.map(([, p]) => p.name)
+  io.to(roomCode).emit('ready-status-update', {
+    readyPlayers: [],
+    readyCount: 0,
+    totalActive: [...room.players.entries()].filter(([, p]) => !p.isDisconnected).length,
+    totalFighters: activeNonLeaders.length,
+    unreadyPlayerNames,
+    readyPlayerNames: [],
+    allFightersReady: activeNonLeaders.length === 0,
+  })
+
   // Next round will be started by startNextRoundWhenReady when all players are ready
 }
 

@@ -19,6 +19,7 @@ export interface Player {
   roundWins?: number
   teamId?: TeamId | null
   isCaptain?: boolean
+  isDisconnected?: boolean
 }
 
 export interface Question {
@@ -86,7 +87,10 @@ export interface ReadyStatus {
   readyPlayers: string[]
   readyCount: number
   totalActive: number
+  totalFighters: number       // non-leader fighters (excludes captains/hosts)
   unreadyPlayerNames?: string[]
+  readyPlayerNames?: string[]
+  allFightersReady?: boolean  // true when all non-leader fighters are ready
 }
 
 export interface FinishedStatus {
