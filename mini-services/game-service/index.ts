@@ -236,6 +236,17 @@ let globalJoinCounter = 0
 // Grace period for disconnected players (milliseconds) - they can rejoin within this time
 const DISCONNECT_GRACE_PERIOD = 60000 // 60 seconds
 
+// ─── Rematch Data ─────────────────────────────────────────────────────────
+interface RematchData {
+  players: Map<string, { name: string; oldSocketId: string }>
+  settings: GameSettings
+  roomType: string
+  password: string | null
+  newRoomCode: string | null
+  matchedPlayers: Set<string> // Old socket IDs who already rematched
+}
+const rematchData = new Map<string, RematchData>()
+
 // ─── HTTP Server + Health Check ───────────────────────────────────────────────
 // Railway (and other cloud providers) need a working HTTP endpoint to confirm
 // the container is alive.  Socket.IO responds with 400 on GET / which makes
@@ -2081,6 +2092,142 @@ io.on('connection', (socket: Socket) => {
     })
   })
 
+  // ── request-rematch ────────────────────────────────────────────────────
+  // Player clicks "نعم" to play a similar battle again
+  socket.on('request-rematch', (data: { oldRoomCode: string; playerName: string }) => {
+    const { oldRoomCode, playerName } = data
+    const rData = rematchData.get(oldRoomCode?.toUpperCase())
+    if (!rData) {
+      socket.emit('game-error', { message: 'انتهت صلاحية إعادة المعركة' })
+      return
+    }
+
+    // Check if this player was in the original room
+    const oldSocketId = socket.id // Their current socket ID
+    // Find the player by name in the rematch data (since socket IDs change)
+    let foundPlayer: { name: string; oldSocketId: string } | null = null
+    for (const [, p] of rData.players.entries()) {
+      if (p.name === playerName.trim()) {
+        foundPlayer = p
+        break
+      }
+    }
+
+    if (!foundPlayer) {
+      socket.emit('game-error', { message: 'لم تكن في هذه المعركة' })
+      return
+    }
+
+    // Check if this player already rematched
+    if (rData.matchedPlayers.has(foundPlayer.oldSocketId)) {
+      socket.emit('game-error', { message: 'لقد انضممت بالفعل للمعركة الجديدة' })
+      return
+    }
+
+    // Mark this player as rematched
+    rData.matchedPlayers.add(foundPlayer.oldSocketId)
+
+    // Check if a rematch room already exists for this old room
+    if (rData.newRoomCode) {
+      // Join the existing rematch room
+      const existingRoom = rooms.get(rData.newRoomCode)
+      if (existingRoom && existingRoom.status === 'waiting') {
+        // Add player to existing room
+        const player: Player = {
+          id: socket.id,
+          name: playerName.trim(),
+          score: 0,
+          isHost: false,
+          isReady: false,
+          joinOrder: globalJoinCounter++,
+          roundWins: 0,
+          isDisconnected: false,
+          disconnectedAt: null,
+          oldSocketIds: [],
+        }
+
+        existingRoom.players.set(socket.id, player)
+        socketRoomMap.set(socket.id, rData.newRoomCode)
+        socket.join(rData.newRoomCode)
+
+        socket.emit('game-joined', {
+          roomCode: rData.newRoomCode,
+          players: playersToArray(existingRoom.players),
+          settings: existingRoom.settings,
+          roomType: existingRoom.roomType,
+          hasPassword: !!existingRoom.password,
+        })
+
+        socket.to(rData.newRoomCode).emit('player-joined', {
+          player,
+          players: playersToArray(existingRoom.players),
+        })
+
+        broadcastPublicRooms()
+        console.log(`[request-rematch] ${playerName} joined rematch room ${rData.newRoomCode}`)
+        return
+      }
+    }
+
+    // First player to rematch → create a new room with same settings
+    const newRoomCode = generateRoomCode()
+
+    const player: Player = {
+      id: socket.id,
+      name: playerName.trim(),
+      score: 0,
+      isHost: true, // First player to rematch becomes the new host
+      isReady: true,
+      joinOrder: globalJoinCounter++,
+      roundWins: 0,
+      isDisconnected: false,
+      disconnectedAt: null,
+      oldSocketIds: [],
+    }
+
+    const playersMap = new Map<string, Player>()
+    playersMap.set(socket.id, player)
+
+    const newRoom: GameRoom = {
+      roomCode: newRoomCode,
+      roomType: rData.roomType,
+      password: rData.password,
+      hostId: socket.id,
+      hostName: playerName.trim(),
+      settings: { ...rData.settings },
+      players: playersMap,
+      rounds: [],
+      status: 'waiting',
+      currentRound: 0,
+      playerAnswers: new Map(),
+      roundStartTime: null,
+      roundTimerSeconds: rData.settings.timePerRound * 60,
+      roundResults: new Map(),
+      roundWinners: new Map(),
+      roundEnding: false,
+      earlyEnding: false,
+      gameStartTime: null,
+      readyPlayers: new Set(),
+      finishedPlayers: new Set(),
+    }
+
+    rooms.set(newRoomCode, newRoom)
+    socketRoomMap.set(socket.id, newRoomCode)
+    socket.join(newRoomCode)
+
+    // Store the new room code for other players to join
+    rData.newRoomCode = newRoomCode
+
+    socket.emit('game-created', {
+      roomCode: newRoomCode,
+      roomType: newRoom.roomType,
+      hasPassword: !!newRoom.password,
+    })
+
+    broadcastPublicRooms()
+    console.log(`[request-rematch] ${playerName} created rematch room ${newRoomCode} (from ${oldRoomCode})`)
+  })
+
   // ── explain-answer ─────────────────────────────────────────────────────
   // Player asks AI why an answer is correct/wrong — uses the passage context
   socket.on('explain-answer', async (data: {
@@ -2507,6 +2654,28 @@ function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
   if (!room) return
 
   room.status = 'finished'
+
+  // ─── Track rematch eligibility: store old room's player list + settings ───
+  const rematchPlayers = new Map<string, { name: string; oldSocketId: string }>()
+  for (const [id, p] of room.players.entries()) {
+    if (!p.isDisconnected) {
+      rematchPlayers.set(id, { name: p.name, oldSocketId: id })
+    }
+  }
+  // Store rematch data keyed by old room code
+  rematchData.set(roomCode, {
+    players: rematchPlayers,
+    settings: { ...room.settings },
+    roomType: room.roomType,
+    password: room.password,
+    newRoomCode: null, // Will be set when first player requests rematch
+    matchedPlayers: new Set(), // Old socket IDs of players who already rematched
+  })
+
+  // Set a 60-second timeout to clean up rematch data
+  setTimeout(() => {
+    rematchData.delete(roomCode)
+  }, 120000) // 2 minutes cleanup
 
   // Determine overall winner by round wins (not cumulative score)
   // Include ALL players (even disconnected ones who participated in earlier rounds)

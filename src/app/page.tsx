@@ -70,6 +70,7 @@ import {
   Brain,
   HelpCircle,
   MessageCircle,
+  Home as HomeIcon,
 } from 'lucide-react'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
@@ -342,6 +343,8 @@ function useGameSocket() {
     })
 
     socket.on('game-ended', (data: { scores: Player[]; roundWinners: Record<number, string>; roundResults: Record<number, RoundScore[]>; totalRounds: number; battleData?: any }) => {
+      // Disconnect voice chat when battle ends
+      disconnectLiveKit()
       // Sort a COPY to avoid mutating the socket data in-place
       const sortedScores = [...data.scores].sort((a: Player, b: Player) => b.score - a.score)
       store.getState().setScores(sortedScores)
@@ -3940,8 +3943,32 @@ function ResultsScreen() {
   const playerName = useGameStore((s) => s.playerName)
   const { leaveAndDisconnect } = useGameSocket()
   const [showAnswerReview, setShowAnswerReview] = useState(false)
+  const [showRematchPrompt, setShowRematchPrompt] = useState(false)
+  const [rematchProcessing, setRematchProcessing] = useState(false)
+  const isHost = useGameStore((s) => s.isHost)
 
   const handlePlayAgain = () => { leaveAndDisconnect(); resetGame() }
+
+  // Show rematch prompt after a delay
+  useEffect(() => {
+    const timer = setTimeout(() => setShowRematchPrompt(true), 2000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const handleRematchYes = useCallback(() => {
+    if (rematchProcessing || !globalSocket) return
+    setRematchProcessing(true)
+    // Disconnect voice chat first
+    disconnectLiveKit()
+    // Request rematch with the old room's settings
+    globalSocket.emit('request-rematch', { oldRoomCode: roomCode, playerName })
+  }, [rematchProcessing, roomCode, playerName])
+
+  const handleGoHome = useCallback(() => {
+    disconnectLiveKit()
+    leaveAndDisconnect()
+    resetGame()
+  }, [leaveAndDisconnect, resetGame])
 
   // Get current player's full answer review from battleData
   const myAnswerReview: FullAnswerReviewItem[] = useMemo(() => {
@@ -4269,11 +4296,64 @@ function ResultsScreen() {
           transition={{ delay: 1.5 }}
           className="flex gap-3"
         >
-          <Button className="flex-1 btn-battle rounded-xl py-6 text-lg" onClick={handlePlayAgain}>
-            <Swords className="w-5 h-5 ml-2" />معركة جديدة
+          <Button className="flex-1 btn-battle rounded-xl py-6 text-lg" onClick={handleGoHome}>
+            <HomeIcon className="w-5 h-5 ml-2" />ارجع للصفحة الرئيسية
           </Button>
         </motion.div>
       </div>
+
+      {/* Rematch Prompt Overlay */}
+      <AnimatePresence>
+        {showRematchPrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0, y: 30 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+              className="battle-card-glow rounded-2xl p-8 max-w-sm w-full text-center"
+            >
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-red-500 to-amber-500 flex items-center justify-center"
+              >
+                <Swords className="w-8 h-8 text-white" />
+              </motion.div>
+              <h3 className="text-white font-bold text-xl mb-2">عايز تلعب معركة مشابهه؟</h3>
+              <p className="text-slate-400 text-sm mb-6">
+                نفس الإعدادات، غرفة جديدة، وأول واحد يدوس نعم هيبقى هو القائد
+              </p>
+              <div className="flex flex-col gap-3">
+                <Button
+                  onClick={handleRematchYes}
+                  disabled={rematchProcessing}
+                  className="btn-battle rounded-xl py-5 text-base gap-2"
+                >
+                  {rematchProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  نعم
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => { setShowRematchPrompt(false); handleGoHome() }}
+                  className="border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white rounded-xl py-4"
+                >
+                  ارجع للصفحة الرئيسية
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Full Answer Review Dialog */}
       <Dialog open={showAnswerReview} onOpenChange={setShowAnswerReview}>
