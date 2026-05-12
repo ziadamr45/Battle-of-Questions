@@ -436,7 +436,7 @@ function useGameSocket() {
           s.setCurrentQuestionIndex(next >= total ? total : next)
           for (const [q, a] of Object.entries(data.answers)) s.setAnswer(Number(q), Number(a))
         } else { s.setCurrentQuestionIndex(0); s.resetAnswers() }
-        s.setTimeLeft(data.timeLeft || s.gameSettings.timePerRound * 60); s.setScreen('game')
+        s.setTimeLeft(data.timeLeft != null ? data.timeLeft : s.gameSettings.timePerRound * 60); s.setScreen('game')
       } else if (data.status === 'finished') {
         if (data.gameContent) s.setGameContent(data.gameContent)
         if (data.scores) s.setScores(data.scores)
@@ -3194,6 +3194,7 @@ function GameScreen() {
   const currentRound = useGameStore((s) => s.currentRound)
   const totalRounds = useGameStore((s) => s.totalRounds)
   const gameSettings = useGameStore((s) => s.gameSettings)
+  const roomCode = useGameStore((s) => s.roomCode)
   const [showText, setShowText] = useState(true)
   const [showScrollHint, setShowScrollHint] = useState(true)
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set())
@@ -3230,8 +3231,12 @@ function GameScreen() {
       clearInterval(timerRef.current)
       timerRef.current = null
       audioEngine.timeUp()
+      // Notify server so the round can end
+      if (globalSocket?.connected && roomCode) {
+        globalSocket.emit('round-time-up', { roomCode, roundNumber: currentRound })
+      }
     }
-  }, [timeLeft])
+  }, [timeLeft, roomCode, currentRound])
 
   // Heartbeat when time is running low
   useEffect(() => {
