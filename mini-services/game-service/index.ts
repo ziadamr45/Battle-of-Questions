@@ -566,6 +566,7 @@ function isValidGameContent(obj: unknown): obj is GameContent {
     if (typeof question.text !== 'string') return false
     if (!Array.isArray(question.options) || question.options.length !== 4) return false
     if (typeof question.correctAnswer !== 'number') return false
+    if (question.correctAnswer < 0 || question.correctAnswer > 3) return false
     if (typeof question.explanation !== 'string') return false
   }
   return true
@@ -827,7 +828,6 @@ async function fetchGameContent(
         const validatedQuestions = parsed.questions.map((q, index) => ({
           ...q,
           id: index + 1,
-          correctAnswer: Math.max(0, Math.min(3, q.correctAnswer)),
         }))
 
         return {
@@ -1418,9 +1418,12 @@ io.on('connection', (socket: Socket) => {
         return
       }
 
-      if (room.settings.maxPlayers !== 0 && room.players.size >= room.settings.maxPlayers) {
-        socket.emit('game-error', { message: 'الغرفة ممتلئة' })
-        return
+      if (room.settings.maxPlayers !== 0) {
+        const activePlayers = [...room.players.values()].filter(p => !p.isDisconnected).length
+        if (activePlayers >= room.settings.maxPlayers) {
+          socket.emit('game-error', { message: 'الغرفة ممتلئة' })
+          return
+        }
       }
 
       // Check password for private rooms

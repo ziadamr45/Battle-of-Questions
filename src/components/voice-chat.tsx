@@ -160,7 +160,7 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
       const liveKitIdentity = detail.playerName ? detail.playerName.replace(/\s+/g, '_') : detail.playerId
       // Mute/unmute the audio element for this specific player
       audioElements.forEach((audioEl, key) => {
-        if (key.startsWith(liveKitIdentity + '-') || key.includes(liveKitIdentity)) {
+        if (key.startsWith(liveKitIdentity + '-') || key === liveKitIdentity) {
           audioEl.muted = detail.isMuted || isSpeakerMuted
         }
       })
@@ -285,7 +285,7 @@ export function VoiceChat({ roomCode, playerName, showChat }: VoiceChatProps) {
           // Clean up audio elements for disconnected participant
           const keysToDelete: string[] = []
           audioElements.forEach((_, key) => {
-            if (key.startsWith(participant.identity)) {
+            if (key.startsWith(participant.identity + '-') || key === participant.identity) {
               keysToDelete.push(key)
             }
           })
