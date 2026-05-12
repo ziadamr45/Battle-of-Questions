@@ -43,14 +43,14 @@ export function parseJoinUrl(): { roomCode: string; autoJoin: boolean } | null {
   return null
 }
 
-// Clean join params from URL without reloading
+// Clean join params from URL without reloading (preserves other params)
 export function cleanJoinParams(): void {
   if (typeof window === 'undefined') return
 
   const url = new URL(window.location.href)
   if (url.searchParams.has('join')) {
     url.searchParams.delete('join')
-    window.history.replaceState({}, '', url.pathname)
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''))
   }
 }
 
@@ -147,12 +147,13 @@ export function shareTelegram(info: ShareRoomInfo): ShareResult {
 
 export function shareMessenger(info: ShareRoomInfo): ShareResult {
   try {
-    // Facebook Messenger share
+    // Use Facebook share dialog (works without app_id for link sharing)
     const encodedUrl = encodeURIComponent(info.joinUrl)
-    window.open(`https://www.facebook.com/dialog/send?link=${encodedUrl}&app_id=0&redirect_uri=${encodedUrl}`, '_blank', 'noopener,noreferrer')
+    const encodedQuote = encodeURIComponent(generateShortInvite(info))
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodedQuote}`, '_blank', 'noopener,noreferrer')
     return { success: true, channel: 'messenger' }
   } catch (err: any) {
-    return { success: false, channel: 'messenger', message: err?.message || 'Failed to open Messenger' }
+    return { success: false, channel: 'messenger', message: err?.message || 'Failed to open Facebook' }
   }
 }
 

@@ -48,7 +48,6 @@ import {
   Medal,
   Award,
   Skull,
-  SwordsIcon,
   Volume2,
   VolumeX,
   Volume1,
@@ -379,6 +378,12 @@ function useGameSocket() {
     })
 
     socket.on('public-rooms-update', (data: { rooms: RoomInfo[] }) => { store.getState().setPublicRooms(data.rooms) })
+
+    socket.on('player-name-updated', (data: { playerId: string; oldName: string; newName: string; players: Player[] }) => {
+      store.getState().setPlayers(data.players)
+      store.getState().setPlayerName(data.newName) // Update local name in case it was us
+      battleToast('name_updated', 'اسم جديد', `${data.oldName} غيّر اسمه لـ ${data.newName}`)
+    })
 
     socket.on('settings-updated', (data: { settings: GameSettings; updatedBy: string; changes: string[] }) => {
       store.getState().setGameSettings(data.settings)
@@ -3004,6 +3009,8 @@ function GameScreen() {
 
   // Timer
   useEffect(() => {
+    // Don't start interval if time is already up
+    if (timeLeft <= 0) return
     timerRef.current = setInterval(() => { decrementTime() }, 1000)
     // Start ambient tension on game screen
     audioEngine.startAmbient()
@@ -3018,6 +3025,7 @@ function GameScreen() {
   useEffect(() => {
     if (timeLeft <= 0 && timerRef.current) {
       clearInterval(timerRef.current)
+      timerRef.current = null
       audioEngine.timeUp()
     }
   }, [timeLeft])
@@ -3844,6 +3852,18 @@ export default function Home() {
       setPlayerName(guest.displayName)
     }
   }, [guest?.displayName, playerName, setPlayerName])
+
+  // Listen for name change events from EditNameModal and forward to game server
+  useEffect(() => {
+    const onNameChanged = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.newName && globalSocket?.connected) {
+        globalSocket.emit('update-name', { newName: detail.newName })
+      }
+    }
+    window.addEventListener('player-name-changed', onNameChanged)
+    return () => window.removeEventListener('player-name-changed', onNameChanged)
+  }, [])
 
   const handleSplashComplete = useCallback(() => {
     setSplashComplete(true)

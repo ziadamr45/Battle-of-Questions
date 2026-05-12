@@ -1170,6 +1170,30 @@ io.on('connection', (socket: Socket) => {
     removePlayerFromRoom(socket.id, 'leave')
   })
 
+  // ── update-name ──────────────────────────────────────────────────────────
+  // Player changed their display name — update in room and broadcast to others
+  socket.on('update-name', (data: { newName: string }) => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode || !data.newName?.trim()) return
+
+    const room = rooms.get(roomCode)
+    if (!room) return
+
+    const player = room.players.find((p: any) => p.id === socket.id)
+    if (!player) return
+
+    const oldName = player.name
+    player.name = data.newName.trim()
+
+    // Broadcast updated player list to everyone in the room
+    io.to(roomCode).emit('player-name-updated', {
+      playerId: socket.id,
+      oldName,
+      newName: player.name,
+      players: room.players,
+    })
+  })
+
   // ── early-end-game ─────────────────────────────────────────────────────
   // Host can end the game early, subject to round-player restriction rules
   socket.on(

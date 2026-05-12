@@ -326,6 +326,8 @@ export function EditNameModal() {
         const updated = await res.json()
         setGuest({ ...guest, displayName: updated.displayName })
         setShowEditModal(false)
+        // Notify game server so other players see the new name
+        window.dispatchEvent(new CustomEvent('player-name-changed', { detail: { newName: updated.displayName } }))
       }
     } catch {
       // Ignore

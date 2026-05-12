@@ -320,14 +320,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ players })
     setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
   },
-  addPlayer: (player) =>
+  addPlayer: (player) => {
     set((state) => ({
       players: [...state.players, player],
-    })),
-  removePlayer: (playerId) =>
+    }))
+    setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
+  },
+  removePlayer: (playerId) => {
     set((state) => ({
       players: state.players.filter((p) => p.id !== playerId),
-    })),
+    }))
+    setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
+  },
 
   gameContent: null,
   setGameContent: (content) => {
@@ -340,10 +344,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ currentQuestionIndex: index })
     setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
   },
-  nextQuestion: () =>
+  nextQuestion: () => {
     set((state) => ({
       currentQuestionIndex: state.currentQuestionIndex + 1,
-    })),
+    }))
+    setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
+  },
 
   answers: {},
   setAnswer: (questionIndex, answerIndex) =>
@@ -356,7 +362,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setTimeLeft: (time) => set({ timeLeft: time }),
   decrementTime: () =>
     set((state) => ({
-      timeLeft: Math.max(0, state.timeLeft - 1),
+      timeLeft: state.timeLeft > 0 ? state.timeLeft - 1 : 0,
     })),
 
   scores: [],
