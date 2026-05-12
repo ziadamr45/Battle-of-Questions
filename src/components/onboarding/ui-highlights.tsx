@@ -33,19 +33,19 @@ const HIGHLIGHT_STEPS: HighlightStep[] = [
   {
     targetSelector: '[data-onboarding="create-room"]',
     title: 'أنشئ ساحتك الخاصة',
-    description: 'أنشئ ساحتك الخاصة وادعو أصدقائك للتحدي',
+    description: 'أنشئ ساحة معركة واختر بين الوضع الفردي أو وضع الفرق مع أصدقائك',
     icon: Swords,
   },
   {
     targetSelector: '[data-onboarding="join-room"]',
     title: 'انضم لساحة جاهزة',
-    description: 'انضم لساحة جاهزة وبدأ المعركة',
+    description: 'ادخل كود الساحة أو اختر من الساحات العامة وانضم لفريق',
     icon: Shield,
   },
   {
     targetSelector: '[data-onboarding="battle-history"]',
     title: 'سجل المعارك',
-    description: 'تابع سجل معاركك السابقة',
+    description: 'تابع كل معاركك السابقة ونتائجك وتعلّم من أخطائك',
     icon: ScrollText,
   },
 ]
@@ -292,7 +292,7 @@ export function UIHighlights({ isActive, onComplete }: UIHighlightsProps) {
 
   return (
     <AnimatePresence>
-      {overlayVisible && (
+      {overlayVisible && bounds && (
         <motion.div
           className="fixed inset-0 z-[80]"
           initial={{ opacity: 0 }}

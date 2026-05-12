@@ -52,6 +52,30 @@ const HINT_CONFIG: Record<GameplayHintType, HintConfig> = {
     isDramatic: true,
     glowClass: 'shadow-red-500/20',
   },
+  captainMonitor: {
+    text: 'أنت القائد… راقب استعداد فريقك وابدأ الجولة لما الكل يكون جاهز',
+    duration: 5000,
+    isDramatic: false,
+    glowClass: 'shadow-emerald-500/15',
+  },
+  teamChat: {
+    text: 'الدردشة متاحة… تواصل مع فريقك بالدردشة العامة أو الخاصة بفريقك',
+    duration: 4500,
+    isDramatic: false,
+    glowClass: 'shadow-violet-500/10',
+  },
+  teamScore: {
+    text: 'نتيجة فريقك تظهر هنا… كل إجابة صحيحة تضيف لرصيد الفريق',
+    duration: 4500,
+    isDramatic: false,
+    glowClass: 'shadow-amber-500/10',
+  },
+  joinRequest: {
+    text: 'للانضمام لفريق… اضغط على الفريق وأرسل طلب للقائد',
+    duration: 5000,
+    isDramatic: false,
+    glowClass: 'shadow-cyan-500/10',
+  },
 }
 
 // ─── Hint Queue State (module-level, not React state) ─────────────────────────
@@ -91,6 +115,10 @@ function enqueueHint(type: GameplayHintType): void {
     leaderboard: 'leaderboardHintShown',
     roundTransition: 'roundTransitionHintShown',
     noImmediateAnswers: 'noImmediateAnswersHintShown',
+    captainMonitor: 'captainMonitorHintShown',
+    teamChat: 'teamChatHintShown',
+    teamScore: 'teamScoreHintShown',
+    joinRequest: 'joinRequestHintShown',
   }
   const key = keyMap[type]
   if (state[key]) return // Already shown

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Swords, BookOpen, Zap, ShieldAlert } from 'lucide-react'
+import { Swords, BookOpen, Zap, ShieldAlert, Shield, Users } from 'lucide-react'
 import { useOnboardingStore } from '@/lib/onboarding-store'
 import { audioEngine } from '@/lib/audio-engine'
 
@@ -56,13 +56,33 @@ const STEPS: StepConfig[] = [
   },
   {
     id: 3,
-    text: 'في معركة الأسئلة… الحقيقة لا تظهر إلا بعد انتهاء الجولة',
+    text: 'الحقيقة لا تظهر إلا بعد انتهاء الجولة',
     Icon: ShieldAlert,
     iconColor: '#F59E0B',
     glowColor: 'rgba(245, 158, 11, 0.5)',
     accentColor: '#DC2626',
-    duration: 4000,
+    duration: 3500,
     dramaticPause: 600,
+  },
+  {
+    id: 4,
+    text: 'في وضع الفرق… القائد يوجّه والفريق يقاتل',
+    Icon: Shield,
+    iconColor: '#10B981',
+    glowColor: 'rgba(16, 185, 129, 0.5)',
+    accentColor: '#06B6D4',
+    duration: 3000,
+    dramaticPause: 400,
+  },
+  {
+    id: 5,
+    text: 'تواصل مع فريقك… التنسق سلاحك',
+    Icon: Users,
+    iconColor: '#8B5CF6',
+    glowColor: 'rgba(139, 92, 246, 0.5)',
+    accentColor: '#F59E0B',
+    duration: 2800,
+    dramaticPause: 300,
   },
 ]
 

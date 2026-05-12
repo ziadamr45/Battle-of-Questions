@@ -15,6 +15,13 @@ export type NarrationEvent =
   | 'last_seconds'
   | 'new_host'
   | 'player_reconnected'
+  | 'team_formed'           // Both teams have at least one player
+  | 'captain_takeover'      // A new captain takes over
+  | 'join_request_arrived'  // A join request is waiting for captain
+  | 'team_ready'            // An entire team is ready
+  | 'all_fighters_ready'    // All fighters across teams are ready
+  | 'voice_merged'          // Voice channels merged between teams
+  | 'settings_change'       // Settings changed during battle
 
 // ─── Narration Texts ──────────────────────────────────────────────────────────
 
@@ -48,6 +55,29 @@ const NARRATION_TEXTS: Record<NarrationEvent, string[]> = {
   ],
   player_reconnected: [
     'المحارب عاد إلى الساحة',
+  ],
+  team_formed: [
+    'الفرق جاهزة… المعركة على الأبواب',
+    'كلا الفريقين جاهزان للقتال',
+  ],
+  captain_takeover: [
+    'قائد جديد يتولى قيادة الفريق',
+    'القيادة انتقلت… القائد الجديد جاهز',
+  ],
+  join_request_arrived: [
+    'طلب انضمام ينتظر الموافقة',
+  ],
+  team_ready: [
+    'فريق كامل جاهز للقتال',
+  ],
+  all_fighters_ready: [
+    'كل المقاتلين جاهزون… في انتظار القائد',
+  ],
+  voice_merged: [
+    'المحادثة الصوتية دُمجت بين الفريقين',
+  ],
+  settings_change: [
+    'الإعدادات تغيّرت… استعدوا للمعركة',
   ],
 }
 

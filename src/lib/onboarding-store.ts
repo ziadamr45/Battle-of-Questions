@@ -11,6 +11,21 @@ export type GameplayHintType =
   | 'leaderboard'
   | 'roundTransition'
   | 'noImmediateAnswers'
+  | 'captainMonitor'      // Captain sees monitoring panel, not ready button
+  | 'teamChat'            // Team chat is available during battle
+  | 'teamScore'           // Team scores shown in round transition
+  | 'joinRequest'         // How to join a team
+
+export type ContextualTutorialType =
+  | 'teamMode'            // First time entering team mode lobby
+  | 'becameCaptain'       // First time becoming a captain
+  | 'captainApproval'     // First time receiving approval request as captain
+  | 'joinRequestSent'     // First time sending a join/switch request
+  | 'voiceChatAvailable'  // First time voice chat is available
+  | 'chatModes'           // First time chat modes are available (team/global/private)
+  | 'teamSwitch'          // First time team switching is available
+  | 'settingsEdit'        // First time editing settings during battle
+  | 'teamRename'          // First time team rename is available (captain)
 
 // ─── Persistence helpers ───────────────────────────────────────────────────────
 
@@ -27,7 +42,7 @@ function saveToLocalStorage(state: Partial<OnboardingState>) {
       'completeOnboarding', 'completeCinematicIntro', 'setCinematicIntroStep',
       'startUIHighlight', 'completeUIHighlight', 'setUIHighlightStep',
       'markFirstBattlePlayed', 'showGameplayHint', 'incrementTipsSeen',
-      'resetOnboarding',
+      'resetOnboarding', 'markContextualTutorialShown', 'markFeatureDiscovered',
     ])
     for (const [key, value] of Object.entries(merged)) {
       if (!actionKeys.has(key)) {
@@ -70,12 +85,36 @@ interface OnboardingData {
   cinematicIntroCompleted: boolean
   uiHighlightStep: number
   uiHighlightActive: boolean
+
+  // Gameplay hints (shown once during first battle)
   timerHintShown: boolean
   readingAreaHintShown: boolean
   answerAreaHintShown: boolean
   leaderboardHintShown: boolean
   roundTransitionHintShown: boolean
   noImmediateAnswersHintShown: boolean
+  captainMonitorHintShown: boolean
+  teamChatHintShown: boolean
+  teamScoreHintShown: boolean
+  joinRequestHintShown: boolean
+
+  // Contextual tutorials (shown once on first encounter)
+  teamModeTutorialShown: boolean
+  becameCaptainTutorialShown: boolean
+  captainApprovalTutorialShown: boolean
+  joinRequestSentTutorialShown: boolean
+  voiceChatAvailableTutorialShown: boolean
+  chatModesTutorialShown: boolean
+  teamSwitchTutorialShown: boolean
+  settingsEditTutorialShown: boolean
+  teamRenameTutorialShown: boolean
+
+  // Feature discovery (tracks which features user has used)
+  teamModeUsed: boolean
+  chatUsed: boolean
+  voiceChatUsed: boolean
+
+  // Tips rotation
   tipsSeenCount: number
   currentTipIndex: number
 }
@@ -88,12 +127,32 @@ const defaultData: OnboardingData = {
   cinematicIntroCompleted: false,
   uiHighlightStep: 0,
   uiHighlightActive: false,
+
   timerHintShown: false,
   readingAreaHintShown: false,
   answerAreaHintShown: false,
   leaderboardHintShown: false,
   roundTransitionHintShown: false,
   noImmediateAnswersHintShown: false,
+  captainMonitorHintShown: false,
+  teamChatHintShown: false,
+  teamScoreHintShown: false,
+  joinRequestHintShown: false,
+
+  teamModeTutorialShown: false,
+  becameCaptainTutorialShown: false,
+  captainApprovalTutorialShown: false,
+  joinRequestSentTutorialShown: false,
+  voiceChatAvailableTutorialShown: false,
+  chatModesTutorialShown: false,
+  teamSwitchTutorialShown: false,
+  settingsEditTutorialShown: false,
+  teamRenameTutorialShown: false,
+
+  teamModeUsed: false,
+  chatUsed: false,
+  voiceChatUsed: false,
+
   tipsSeenCount: 0,
   currentTipIndex: 0,
 }
@@ -115,6 +174,24 @@ const HINT_KEY_MAP: Record<GameplayHintType, keyof OnboardingData> = {
   leaderboard: 'leaderboardHintShown',
   roundTransition: 'roundTransitionHintShown',
   noImmediateAnswers: 'noImmediateAnswersHintShown',
+  captainMonitor: 'captainMonitorHintShown',
+  teamChat: 'teamChatHintShown',
+  teamScore: 'teamScoreHintShown',
+  joinRequest: 'joinRequestHintShown',
+}
+
+// ─── Contextual tutorial key mapping ──────────────────────────────────────────
+
+const CONTEXTUAL_TUTORIAL_KEY_MAP: Record<ContextualTutorialType, keyof OnboardingData> = {
+  teamMode: 'teamModeTutorialShown',
+  becameCaptain: 'becameCaptainTutorialShown',
+  captainApproval: 'captainApprovalTutorialShown',
+  joinRequestSent: 'joinRequestSentTutorialShown',
+  voiceChatAvailable: 'voiceChatAvailableTutorialShown',
+  chatModes: 'chatModesTutorialShown',
+  teamSwitch: 'teamSwitchTutorialShown',
+  settingsEdit: 'settingsEditTutorialShown',
+  teamRename: 'teamRenameTutorialShown',
 }
 
 // ─── Store interface ───────────────────────────────────────────────────────────
@@ -131,6 +208,9 @@ interface OnboardingState extends OnboardingData {
   showGameplayHint: (hint: GameplayHintType) => void
   incrementTipsSeen: () => void
   resetOnboarding: () => void
+  markContextualTutorialShown: (tutorial: ContextualTutorialType) => void
+  shouldShowContextualTutorial: (tutorial: ContextualTutorialType) => boolean
+  markFeatureDiscovered: (feature: 'teamMode' | 'chat' | 'voiceChat') => void
 }
 
 // ─── Store ─────────────────────────────────────────────────────────────────────
@@ -214,6 +294,32 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     set({ ...defaultData })
     removeFromLocalStorage()
   },
+
+  markContextualTutorialShown: (tutorial: ContextualTutorialType) => {
+    const key = CONTEXTUAL_TUTORIAL_KEY_MAP[tutorial]
+    if (get()[key]) return // Already shown
+    const update = { [key]: true } as Partial<OnboardingData>
+    set(update)
+    saveToLocalStorage(update)
+  },
+
+  shouldShowContextualTutorial: (tutorial: ContextualTutorialType) => {
+    const key = CONTEXTUAL_TUTORIAL_KEY_MAP[tutorial]
+    return !get()[key]
+  },
+
+  markFeatureDiscovered: (feature: 'teamMode' | 'chat' | 'voiceChat') => {
+    const keyMap: Record<string, keyof OnboardingData> = {
+      teamMode: 'teamModeUsed',
+      chat: 'chatUsed',
+      voiceChat: 'voiceChatUsed',
+    }
+    const key = keyMap[feature]
+    if (get()[key]) return
+    const update = { [key]: true } as Partial<OnboardingData>
+    set(update)
+    saveToLocalStorage(update)
+  },
 }))
 
 // ─── Helper functions ──────────────────────────────────────────────────────────
@@ -254,4 +360,19 @@ export function shouldShowGameplayHints(): boolean {
   if (typeof window === 'undefined') return false
   const state = useOnboardingStore.getState()
   return !state.firstBattlePlayed
+}
+
+/**
+ * Returns true if a specific contextual tutorial should be shown (first-time only).
+ */
+export function shouldShowContextualTutorial(tutorial: ContextualTutorialType): boolean {
+  if (typeof window === 'undefined') return false
+  return useOnboardingStore.getState().shouldShowContextualTutorial(tutorial)
+}
+
+/**
+ * Mark a contextual tutorial as shown.
+ */
+export function markContextualTutorial(tutorial: ContextualTutorialType): void {
+  useOnboardingStore.getState().markContextualTutorialShown(tutorial)
 }

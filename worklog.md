@@ -466,3 +466,94 @@ Stage Summary:
 - Non-repetitive logic, audio feedback, micro-animations
 - Names feel: powerful, competitive, cinematic, modern Arabic battle factions
 - Optional convenience — captain retains full manual naming freedom
+
+---
+Task ID: 9
+Agent: Main Coordinator (Direct)
+Task: Comprehensive Onboarding/Tutorial System Update
+
+Work Log:
+- Analyzed existing onboarding system (6 files: onboarding-store, cinematic-intro, ui-highlights, gameplay-hints, arena-tips, arena-narrator)
+- Identified gaps: team system, captain role, chat modes, voice chat, ready system changes, approval system not covered
+- Designed comprehensive update with 8 modified/created files
+
+**1. Updated onboarding-store.ts:**
+- Added 4 new GameplayHintTypes: captainMonitor, teamChat, teamScore, joinRequest
+- Added 9 ContextualTutorialTypes: teamMode, becameCaptain, captainApproval, joinRequestSent, voiceChatAvailable, chatModes, teamSwitch, settingsEdit, teamRename
+- Added contextual tutorial tracking fields (9 booleans, one per tutorial type)
+- Added feature discovery tracking (teamModeUsed, chatUsed, voiceChatUsed)
+- Added markContextualTutorialShown(), shouldShowContextualTutorial(), markFeatureDiscovered()
+- Added shouldShowContextualTutorial() and markContextualTutorial() helper functions
+
+**2. Updated cinematic-intro.tsx:**
+- Added 2 new steps (total now 6): step 4 (team mode & captain) and step 5 (chat & coordination)
+- Step 4: Shield icon, green accent, "في وضع الفرق… القائد يوجّه والفريق يقاتل"
+- Step 5: Users icon, violet accent, "تواصل مع فريقك… التنسق سلاحك"
+- Maintained same cinematic style (word reveal, glow pulse, floating embers)
+
+**3. Updated ui-highlights.tsx:**
+- Kept 3 home screen steps (create-room, join-room, battle-history)
+- Updated descriptions to mention team mode capabilities
+- Removed non-existent element steps (auto-skip was too complex and had flashing issues)
+- Team/captain/chat guidance handled by contextual tutorials instead
+
+**4. Updated gameplay-hints.tsx:**
+- Added 4 new hint types: captainMonitor, teamChat, teamScore, joinRequest
+- Each with appropriate duration, text, and dramatic/regular styling
+- captainMonitor: emerald glow, "أنت القائد… راقب استعداد فريقك"
+- teamChat: violet glow, "الدردشة متاحة… تواصل مع فريقك"
+- teamScore: amber glow, "نتيجة فريقك تظهر هنا"
+- joinRequest: cyan glow, "للانضمام لفريق… اضغط على الفريق وأرسل طلب"
+
+**5. Expanded arena-tips.tsx:**
+- Grew from 20 tips to 55+ tips across all contexts
+- Added mode-aware filtering (solo/team/any) via `mode` field
+- New categories: Team System (11 tips), Captain-Specific (4), Chat & Communication (5), Voice Chat (3), Ready System (4), Settings & Approval (3), Battle History (2), Core Philosophy (4)
+- ArenaTips component now accepts optional battleMode prop
+- Team tips only show in team mode, solo tips only in solo mode
+- Context-aware rotation with battleMode dependency
+
+**6. Updated arena-narrator.tsx:**
+- Added 6 new NarrationEvents: team_formed, captain_takeover, join_request_arrived, team_ready, all_fighters_ready, voice_merged, settings_change
+- Each with 1-2 atmospheric Arabic narration texts
+- All maintain the cinematic narrator style
+
+**7. Created contextual-tutorial.tsx (NEW):**
+- New ContextualTutorialProvider component wrapping the app
+- 9 tutorial configurations with unique icons, colors, descriptions
+- Each tutorial: auto-dismiss with progress bar, hover-pause, dismiss button
+- Cinematic design: gradient backgrounds, glow effects, accent colors per tutorial
+- Position: top-center, z-[85], doesn't overlap gameplay
+- showContextualTutorial() imperative API for triggering from socket events
+- First-time-only: each tutorial shows once per user (tracked in localStorage)
+- Queue system: max 2 tutorials, deduplication, graceful ordering
+
+**8. Updated page.tsx integration:**
+- Imported ContextualTutorialProvider and showContextualTutorial
+- Added ContextualTutorialProvider wrapping ArenaNarratorProvider
+- Added battleMode to main component scope for ArenaTips
+- Passed battleMode prop to all ArenaTips instances
+- Added contextual tutorial triggers at key events:
+  - game-created with teams → teamMode + becameCaptain tutorials
+  - game-joined with teams → teamMode tutorial (+ becameCaptain if captain)
+  - team-captain-changed → becameCaptain tutorial
+  - leadership-received → becameCaptain tutorial
+  - approval-requested → captainApproval tutorial
+  - join-request-sent → joinRequestSent tutorial
+- Added team gameplay hints in round-start handler:
+  - teamChat hint at 9s delay
+  - captainMonitor hint at 4s delay (captain only)
+- Added teamScore hint in round-end handler (team mode + teamRoundScores)
+- Added voice_merged narration when voice channels merge
+
+Stage Summary:
+- Complete onboarding overhaul covering all new systems
+- Cinematic intro expanded from 4→6 steps (team + coordination)
+- 55+ context-aware tips (up from 20) with team mode filtering
+- 10 gameplay hints (up from 6) covering captain, chat, team score
+- 13 narration events (up from 8) covering team milestones
+- NEW contextual tutorial system: 9 first-time tutorials triggered at key moments
+- All tutorials are: light, interactive, cinematic, fast, game-like, non-intrusive
+- Player learns through experience, not through reading manuals
+- First-time detection prevents annoyance for returning users
+- All changes lint-clean, dev server running without errors

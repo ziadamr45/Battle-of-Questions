@@ -92,12 +92,13 @@ import { BattleHistoryList, BattleDetail } from '@/components/battle-history'
 import { AboutPage } from '@/components/about-page'
 import { battleToast } from '@/lib/battle-toast-store'
 import { usePlayerMuteStore } from '@/lib/player-mute-store'
-import { useOnboardingStore, shouldShowCinematicIntro, shouldShowUIHighlights, shouldShowGameplayHints } from '@/lib/onboarding-store'
+import { useOnboardingStore, shouldShowCinematicIntro, shouldShowUIHighlights, shouldShowGameplayHints, shouldShowContextualTutorial, markContextualTutorial } from '@/lib/onboarding-store'
 import { CinematicIntro } from '@/components/onboarding/cinematic-intro'
 import { UIHighlights } from '@/components/onboarding/ui-highlights'
 import { GameplayHintsProvider, showGameplayHint } from '@/components/onboarding/gameplay-hints'
 import { ArenaTips } from '@/components/onboarding/arena-tips'
 import { ArenaNarratorProvider, showNarration } from '@/components/onboarding/arena-narrator'
+import { ContextualTutorialProvider, showContextualTutorial } from '@/components/onboarding/contextual-tutorial'
 
 // ============================================
 // GLOBAL SOCKET MANAGEMENT
@@ -309,6 +310,13 @@ function useGameSocket() {
       if (shouldShowGameplayHints()) {
         setTimeout(() => showGameplayHint('timer'), 1500)
         setTimeout(() => showGameplayHint('readingArea'), 6000)
+        // Team mode hints
+        if (store.getState().battleMode === 'فرق') {
+          setTimeout(() => showGameplayHint('teamChat'), 9000)
+          if (store.getState().isCaptain) {
+            setTimeout(() => showGameplayHint('captainMonitor'), 4000)
+          }
+        }
       }
     })
 
@@ -345,6 +353,10 @@ function useGameSocket() {
       showNarration('round_ending')
       if (shouldShowGameplayHints()) {
         setTimeout(() => showGameplayHint('roundTransition'), 800)
+        // Team score hint in first battle
+        if (store.getState().battleMode === 'فرق' && data.teamRoundScores) {
+          setTimeout(() => showGameplayHint('teamScore'), 2500)
+        }
       }
     })
 
@@ -579,6 +591,8 @@ function useGameSocket() {
       if (data.newCaptainId === socket.id) {
         store.getState().setIsCaptain(true)
         battleToast('captain_promoted', 'أنت القائد الجديد!', `بقيت قائد ${teamName}`)
+        // Contextual tutorial: first time becoming captain
+        setTimeout(() => showContextualTutorial('becameCaptain'), 1000)
       } else {
         battleToast('captain_changed', 'قائد جديد', `${data.newCaptainName} بقى قائد ${teamName}`)
       }
@@ -590,6 +604,8 @@ function useGameSocket() {
       if (data.type === 'captain') {
         store.getState().setIsCaptain(true)
         battleToast('captain_received', 'أنت القائد الجديد! 👑', `${data.transferredByName} غيّرلك القيادة${data.teamName ? ` في ${data.teamName}` : ''}`)
+        // Contextual tutorial: first time becoming captain
+        setTimeout(() => showContextualTutorial('becameCaptain'), 1000)
       } else {
         store.getState().setIsHost(true)
         battleToast('host_received', 'أنت القائد الجديد! 🏠', `${data.transferredByName} غيّرلك إدارة الساحة`)
@@ -634,6 +650,8 @@ function useGameSocket() {
         captainName: data.captainName,
       })
       battleToast('join_request_sent', 'تم إرسال الطلب 📤', `في انتظار موافقة ${data.captainName}...`)
+      // Contextual tutorial: first time sending join request
+      setTimeout(() => showContextualTutorial('joinRequestSent'), 500)
     })
 
     // Join request approved
@@ -684,6 +702,8 @@ function useGameSocket() {
     socket.on('approval-requested', (data: ApprovalRequestState) => {
       store.getState().setPendingApproval(data)
       audioEngine.error() // Use error sound as attention-grabbing notification
+      // Contextual tutorial: first time receiving approval request
+      setTimeout(() => showContextualTutorial('captainApproval'), 500)
     })
 
     socket.on('approval-sent', (data: { approvalId: string; targetCaptainName: string }) => {
@@ -711,6 +731,7 @@ function useGameSocket() {
       store.getState().setVoiceMerged(data.merged)
       if (data.merged) {
         battleToast('voice_merged', 'تم دمج المحادثة الصوتية! 🔊', `${data.approvedByName} وافق على دمج المحادثة بين الفريقين`)
+        showNarration('voice_merged')
       }
     })
 
@@ -756,6 +777,10 @@ function useGameSocket() {
         // Creator is always Team A captain
         store.getState().setMyTeamId('A')
         store.getState().setIsCaptain(true)
+        // Contextual tutorial: first time entering team mode
+        setTimeout(() => showContextualTutorial('teamMode'), 800)
+        // Contextual tutorial: first time becoming captain
+        setTimeout(() => showContextualTutorial('becameCaptain'), 2500)
       }
       store.getState().setIsLoading(false)
       store.getState().setScreen('lobby')
@@ -777,6 +802,12 @@ function useGameSocket() {
         if (myPlayer) {
           store.getState().setMyTeamId(myPlayer.teamId || null)
           store.getState().setIsCaptain(!!myPlayer.isCaptain)
+        }
+        // Contextual tutorial: first time entering team mode
+        setTimeout(() => showContextualTutorial('teamMode'), 800)
+        // If captain, show captain tutorial too
+        if (myPlayer?.isCaptain) {
+          setTimeout(() => showContextualTutorial('becameCaptain'), 2500)
         }
       }
       if ((data as any).pendingJoinRequests) {
@@ -6123,6 +6154,7 @@ export default function Home() {
   const gameContent = useGameStore((s) => s.gameContent)
   const restoreState = useGameStore((s) => s.restoreState)
   const currentRound = useGameStore((s) => s.currentRound)
+  const battleMode = useGameStore((s) => s.battleMode)
   const { rejoinRoom } = useGameSocket()
   const [showSplash, setShowSplash] = useState(true)
   const [splashComplete, setSplashComplete] = useState(false)
@@ -6351,6 +6383,7 @@ export default function Home() {
   }
 
   return (
+    <ContextualTutorialProvider>
     <ArenaNarratorProvider>
       <GameplayHintsProvider>
         <main className="min-h-screen flex flex-col">
@@ -6412,10 +6445,10 @@ export default function Home() {
           )}
 
           {/* Arena Tips - context-aware rotating tips */}
-          {!showSplash && screen === 'loading' && <div className="py-4"><ArenaTips context="loading" /></div>}
-          {!showSplash && screen === 'lobby' && <div className="py-2"><ArenaTips context="lobby" /></div>}
-          {!showSplash && screen === 'results' && <div className="py-4"><ArenaTips context="results" /></div>}
-          {!showSplash && screen === 'round-transition' && <div className="py-4"><ArenaTips context="round-transition" /></div>}
+          {!showSplash && screen === 'loading' && <div className="py-4"><ArenaTips context="loading" battleMode={battleMode} /></div>}
+          {!showSplash && screen === 'lobby' && <div className="py-2"><ArenaTips context="lobby" battleMode={battleMode} /></div>}
+          {!showSplash && screen === 'results' && <div className="py-4"><ArenaTips context="results" battleMode={battleMode} /></div>}
+          {!showSplash && screen === 'round-transition' && <div className="py-4"><ArenaTips context="round-transition" battleMode={battleMode} /></div>}
 
           {/* Voice Chat - persists across screens, chat only in lobby */}
           {!showSplash && (screen === 'lobby' || screen === 'game' || screen === 'loading' || screen === 'round-transition') && roomCode && playerName && (
@@ -6428,5 +6461,6 @@ export default function Home() {
         </main>
       </GameplayHintsProvider>
     </ArenaNarratorProvider>
+    </ContextualTutorialProvider>
   )
 }
