@@ -3360,7 +3360,7 @@ function GameScreen() {
         <div className="flex gap-2 mb-4 justify-center">
           <Button size="sm" onClick={() => setShowText(true)}
             className={`rounded-lg ${showText ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}>
-            <BookOpen className="w-4 h-4 ml-1" />النص
+            <BookOpen className="w-4 h-4 ml-1" />{gameSettings.gameType === 'قراءة متحررة' ? 'القطعة' : 'النص'}
           </Button>
           <Button size="sm" onClick={() => setShowText(false)}
             className={`rounded-lg ${!showText ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-500/20' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}>
@@ -3487,7 +3487,7 @@ function GameScreen() {
                   className="text-slate-400 hover:text-white hover:bg-white/5"
                 >
                   <BookOpen className="w-4 h-4 ml-1" />
-                  ارجع للنص
+                  ارجع لل{gameSettings.gameType === 'قراءة متحررة' ? 'قطعة' : 'نص'}
                 </Button>
                 {!isLastQuestion && (
                   <Button
