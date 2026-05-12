@@ -3052,7 +3052,7 @@ function LobbyScreen() {
   }, [countdown, startGame])
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 relative overflow-hidden safe-bottom">
       <BattleBackground />
 
       {/* Countdown overlay */}
@@ -3070,7 +3070,7 @@ function LobbyScreen() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 2, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              className="text-9xl font-black text-red-500 count-bounce"
+              className="text-7xl sm:text-9xl font-black text-red-500 count-bounce"
               style={{ textShadow: '0 0 40px rgba(220,38,38,0.6), 0 0 80px rgba(220,38,38,0.3)' }}
             >
               {countdown}
@@ -3082,64 +3082,53 @@ function LobbyScreen() {
       <motion.div initial="initial" animate="animate" exit="exit" variants={pageVariants} transition={{ duration: 0.5 }} className="w-full max-w-lg relative z-10">
         <div className="battle-card-glow rounded-2xl overflow-hidden">
           {/* Arena header */}
-          <div className="p-6 text-center border-b border-white/5 relative overflow-hidden">
+          <div className="p-4 sm:p-6 text-center border-b border-white/5 relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-red-900/10 to-transparent" />
             <div className="relative">
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                className="mx-auto mb-3 relative"
+                className="mx-auto mb-2 sm:mb-3 relative"
               >
                 <BattleLogo size="md" />
               </motion.div>
-              <h2 className="text-2xl font-black text-white mb-2">ساحة الانتظار</h2>
+              <h2 className="text-xl sm:text-2xl font-black text-white mb-1.5 sm:mb-2">ساحة الانتظار</h2>
 
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <Badge className={`${roomType === 'عامة' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'} border`}>
+              <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+                <Badge className={`${roomType === 'عامة' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'} border text-[11px] sm:text-xs`}>
                   {roomType === 'عامة' ? <Globe className="w-3 h-3 ml-1" /> : <Lock className="w-3 h-3 ml-1" />}{roomType}
                 </Badge>
-                {roomPassword && <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 border"><Lock className="w-3 h-3 ml-1" />محمية</Badge>}
+                {roomPassword && <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 border text-[11px] sm:text-xs"><Lock className="w-3 h-3 ml-1" />محمية</Badge>}
               </div>
 
-              {/* Room code */}
-              <div className="flex items-center justify-center gap-3">
-                <div className="px-8 py-3 rounded-xl bg-black/40 border border-red-500/20">
-                  <span className="font-mono text-3xl tracking-[0.3em] font-black text-red-400 text-glow-red">{roomCode}</span>
+              {/* Room code + invite actions — responsive redesign */}
+              <div className="space-y-2.5">
+                {/* Room code — full width, centered */}
+                <div className="px-4 sm:px-8 py-2.5 sm:py-3 rounded-xl bg-black/40 border border-red-500/20 inline-block">
+                  <span className="font-mono text-xl sm:text-3xl tracking-[0.2em] sm:tracking-[0.3em] font-black text-red-400 text-glow-red">{roomCode}</span>
                 </div>
-                <AnimatePresence mode="wait">
-                  {canInvite && (
-                    <motion.div
-                      key="copy-btn"
-                      initial={{ opacity: 0, scale: 0.8, width: 0 }}
-                      animate={{ opacity: 1, scale: 1, width: 'auto' }}
-                      exit={{ opacity: 0, scale: 0.8, width: 0 }}
-                      transition={{ duration: 0.3, ease: 'easeInOut' }}
-                      className="overflow-hidden"
-                    >
-                      <Button size="icon" variant="outline" onClick={copyCode} className="rounded-xl border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 h-12 w-12">
-                        {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
-                      </Button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                <AnimatePresence mode="wait">
-                  {canInvite && (
-                    <motion.div
-                      key="share-btn"
-                      initial={{ opacity: 0, scale: 0.8, width: 0 }}
-                      animate={{ opacity: 1, scale: 1, width: 'auto' }}
-                      exit={{ opacity: 0, scale: 0.8, width: 0 }}
-                      transition={{ duration: 0.3, ease: 'easeInOut', delay: 0.05 }}
-                      className="overflow-hidden"
-                    >
-                      <Button size="icon" variant="outline" onClick={() => setShowShareModal(true)} className="rounded-xl border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 h-12 w-12">
-                        <Share2 className="w-5 h-5" />
-                      </Button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+
+                {/* Invite action buttons — grouped row below code */}
+                {canInvite && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="flex items-center justify-center gap-2"
+                  >
+                    <Button size="sm" variant="outline" onClick={copyCode} className="rounded-xl border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 h-10 px-4 gap-2">
+                      {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                      <span className="text-xs">{copied ? 'تم النسخ' : 'نسخ الكود'}</span>
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShowShareModal(true)} className="rounded-xl border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 h-10 px-4 gap-2">
+                      <Share2 className="w-4 h-4" />
+                      <span className="text-xs">مشاركة</span>
+                    </Button>
+                  </motion.div>
+                )}
               </div>
+
               {/* Dynamic invite status message */}
               <AnimatePresence mode="wait">
                 {canInvite ? (
@@ -3148,7 +3137,7 @@ function LobbyScreen() {
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 5 }}
-                    className="text-sm text-slate-500 mt-2"
+                    className="text-xs sm:text-sm text-slate-500 mt-2"
                   >
                     شارك الكود أو الرابط مع المقاتلين
                   </motion.p>
@@ -3164,16 +3153,16 @@ function LobbyScreen() {
                       <Users className="w-3 h-3 ml-1" />
                       الساحة اكتملت
                     </Badge>
-                    <span className="text-xs text-slate-500">تم إيقاف الدعوات مؤقتًا</span>
+                    <span className="text-[11px] sm:text-xs text-slate-500">تم إيقاف الدعوات مؤقتًا</span>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
           </div>
 
-          <div className="p-6 space-y-6">
+          <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
             {/* Settings badges */}
-            <div className="flex flex-wrap gap-2 justify-center">
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-center">
               {[
                 { icon: BookOpen, text: gameSettings.gameType },
                 ...(gameSettings.gameType === 'قراءة متحررة' && gameSettings.passageType ? [{ icon: gameSettings.passageType === 'علمي' ? Microscope : gameSettings.passageType === 'أدبي' ? PenTool : Shuffle, text: gameSettings.passageType }] : []),
@@ -3182,7 +3171,7 @@ function LobbyScreen() {
                 { icon: RotateCcw, text: `${gameSettings.numberOfRounds} جولات` },
                 { icon: isOpen ? Globe : Users, text: isOpen ? `${players.length} مفتوح` : `${players.length}/${maxPlayers}` },
               ].map((badge, i) => (
-                <Badge key={i} className="bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10">
+                <Badge key={i} className="bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 text-[11px] sm:text-xs">
                   <badge.icon className="w-3 h-3 ml-1" />{badge.text}
                 </Badge>
               ))}
@@ -3190,16 +3179,16 @@ function LobbyScreen() {
 
             {/* Team Mode Lobby */}
             {battleMode === 'فرق' && teams ? (
-              <div className="space-y-4">
-                {/* Team columns */}
-                <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-3 sm:space-y-4">
+                {/* Team columns — single column on mobile, 2 cols on sm+ */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Team A - Red */}
                   <div className="rounded-xl border-2 border-red-500/30 bg-red-500/5 overflow-hidden">
-                    <div className="p-3 bg-red-500/10 border-b border-red-500/20 flex items-center justify-between">
+                    <div className="p-2.5 sm:p-3 bg-red-500/10 border-b border-red-500/20 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50" />
                         {renamingTeam === 'A' ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 min-w-0 flex-1">
                             <Input
                               value={renameInput}
                               onChange={(e) => setRenameInput(e.target.value)}
@@ -3208,21 +3197,21 @@ function LobbyScreen() {
                                 if (e.key === 'Escape') { setRenamingTeam(null); setRenameInput('') }
                               }}
                               placeholder={teams.teamA.customName || 'الفريق الأحمر'}
-                              className="h-6 w-28 text-xs bg-red-500/10 border-red-500/30 text-red-400 placeholder:text-red-400/40"
+                              className="h-6 w-full min-w-0 text-xs bg-red-500/10 border-red-500/30 text-red-400 placeholder:text-red-400/40"
                               dir="rtl"
                               autoFocus
                               maxLength={20}
                             />
-                            <button onClick={() => handleRenameTeam('A')} className="text-green-400 hover:text-green-300 text-xs">✓</button>
-                            <button onClick={() => { setRenamingTeam(null); setRenameInput('') }} className="text-red-400/60 hover:text-red-400 text-xs">✕</button>
+                            <button onClick={() => handleRenameTeam('A')} className="text-green-400 hover:text-green-300 text-xs shrink-0">✓</button>
+                            <button onClick={() => { setRenamingTeam(null); setRenameInput('') }} className="text-red-400/60 hover:text-red-400 text-xs shrink-0">✕</button>
                           </div>
                         ) : (
                           <>
-                            <span className="font-bold text-red-400 text-sm">{teams.teamA.customName || 'الفريق الأحمر'}</span>
+                            <span className="font-bold text-red-400 text-xs sm:text-sm truncate">{teams.teamA.customName || 'الفريق الأحمر'}</span>
                             {isCaptain && myTeamId === 'A' && (
                               <button
                                 onClick={() => { setRenamingTeam('A'); setRenameInput(teams.teamA.customName || '') }}
-                                className="w-5 h-5 rounded flex items-center justify-center text-red-400/40 hover:text-red-400 hover:bg-red-500/20 transition-all"
+                                className="w-6 h-6 rounded flex items-center justify-center text-red-400/40 hover:text-red-400 hover:bg-red-500/20 transition-all shrink-0"
                                 title="غيّر اسم الفريق"
                               >
                                 <PenTool className="w-3 h-3" />
@@ -3231,32 +3220,32 @@ function LobbyScreen() {
                           </>
                         )}
                       </div>
-                      <Badge variant="outline" className="border-red-500/30 text-red-400 text-[10px]">
+                      <Badge variant="outline" className="border-red-500/30 text-red-400 text-[10px] shrink-0">
                         {teams.teamA.playerIds.length} مقاتل
                       </Badge>
                     </div>
-                    <div className="p-2 space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                    <div className="p-1.5 sm:p-2 space-y-1 sm:space-y-1.5 max-h-36 sm:max-h-48 overflow-y-auto custom-scrollbar">
                       {teams.teamA.playerIds.map(playerId => {
                         const p = players.find(pl => pl.id === playerId)
                         if (!p) return null
                         const isTeamCaptain = teams.teamA.captainId === p.id
                         const isMe = p.id === globalSocket?.id
                         return (
-                          <div key={p.id} className={`flex items-center gap-2 p-2 rounded-lg ${isMe ? 'bg-red-500/10 border border-red-500/20' : 'bg-white/5'}`}>
+                          <div key={p.id} className={`flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg ${isMe ? 'bg-red-500/10 border border-red-500/20' : 'bg-white/5'}`}>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                {isTeamCaptain && <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-                                <span className="text-sm text-white truncate">{p.name}</span>
-                                {isMe && <span className="text-[10px] text-red-400">(أنت)</span>}
+                              <div className="flex items-center gap-1 sm:gap-1.5">
+                                {isTeamCaptain && <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />}
+                                <span className="text-xs sm:text-sm text-white truncate">{p.name}</span>
+                                {isMe && <span className="text-[9px] sm:text-[10px] text-red-400">(أنت)</span>}
                               </div>
-                              {isTeamCaptain && <span className="text-[10px] text-amber-400/80">قائد الفريق</span>}
+                              {isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-amber-400/80">قائد الفريق</span>}
                             </div>
-                            {p.isReady && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                            {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
                           </div>
                         )
                       })}
                       {teams.teamA.playerIds.length === 0 && (
-                        <div className="text-center text-xs text-slate-500 py-4">لا يوجد مقاتلين</div>
+                        <div className="text-center text-[11px] sm:text-xs text-slate-500 py-3 sm:py-4">لا يوجد مقاتلين</div>
                       )}
                     </div>
                     {/* Request to join/switch to Team A */}
@@ -3283,11 +3272,11 @@ function LobbyScreen() {
 
                   {/* Team B - Blue */}
                   <div className="rounded-xl border-2 border-sky-500/30 bg-sky-500/5 overflow-hidden">
-                    <div className="p-3 bg-sky-500/10 border-b border-sky-500/20 flex items-center justify-between">
+                    <div className="p-2.5 sm:p-3 bg-sky-500/10 border-b border-sky-500/20 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-sky-500 shadow-lg shadow-sky-500/50" />
                         {renamingTeam === 'B' ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 min-w-0 flex-1">
                             <Input
                               value={renameInput}
                               onChange={(e) => setRenameInput(e.target.value)}
@@ -3296,21 +3285,21 @@ function LobbyScreen() {
                                 if (e.key === 'Escape') { setRenamingTeam(null); setRenameInput('') }
                               }}
                               placeholder={teams.teamB.customName || 'الفريق الأزرق'}
-                              className="h-6 w-28 text-xs bg-sky-500/10 border-sky-500/30 text-sky-400 placeholder:text-sky-400/40"
+                              className="h-6 w-full min-w-0 text-xs bg-sky-500/10 border-sky-500/30 text-sky-400 placeholder:text-sky-400/40"
                               dir="rtl"
                               autoFocus
                               maxLength={20}
                             />
-                            <button onClick={() => handleRenameTeam('B')} className="text-green-400 hover:text-green-300 text-xs">✓</button>
-                            <button onClick={() => { setRenamingTeam(null); setRenameInput('') }} className="text-red-400/60 hover:text-red-400 text-xs">✕</button>
+                            <button onClick={() => handleRenameTeam('B')} className="text-green-400 hover:text-green-300 text-xs shrink-0">✓</button>
+                            <button onClick={() => { setRenamingTeam(null); setRenameInput('') }} className="text-red-400/60 hover:text-red-400 text-xs shrink-0">✕</button>
                           </div>
                         ) : (
                           <>
-                            <span className="font-bold text-sky-400 text-sm">{teams.teamB.customName || 'الفريق الأزرق'}</span>
+                            <span className="font-bold text-sky-400 text-xs sm:text-sm truncate">{teams.teamB.customName || 'الفريق الأزرق'}</span>
                             {isCaptain && myTeamId === 'B' && (
                               <button
                                 onClick={() => { setRenamingTeam('B'); setRenameInput(teams.teamB.customName || '') }}
-                                className="w-5 h-5 rounded flex items-center justify-center text-sky-400/40 hover:text-sky-400 hover:bg-sky-500/20 transition-all"
+                                className="w-6 h-6 rounded flex items-center justify-center text-sky-400/40 hover:text-sky-400 hover:bg-sky-500/20 transition-all shrink-0"
                                 title="غيّر اسم الفريق"
                               >
                                 <PenTool className="w-3 h-3" />
@@ -3319,32 +3308,32 @@ function LobbyScreen() {
                           </>
                         )}
                       </div>
-                      <Badge variant="outline" className="border-sky-500/30 text-sky-400 text-[10px]">
+                      <Badge variant="outline" className="border-sky-500/30 text-sky-400 text-[10px] shrink-0">
                         {teams.teamB.playerIds.length} مقاتل
                       </Badge>
                     </div>
-                    <div className="p-2 space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                    <div className="p-1.5 sm:p-2 space-y-1 sm:space-y-1.5 max-h-36 sm:max-h-48 overflow-y-auto custom-scrollbar">
                       {teams.teamB.playerIds.map(playerId => {
                         const p = players.find(pl => pl.id === playerId)
                         if (!p) return null
                         const isTeamCaptain = teams.teamB.captainId === p.id
                         const isMe = p.id === globalSocket?.id
                         return (
-                          <div key={p.id} className={`flex items-center gap-2 p-2 rounded-lg ${isMe ? 'bg-sky-500/10 border border-sky-500/20' : 'bg-white/5'}`}>
+                          <div key={p.id} className={`flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg ${isMe ? 'bg-sky-500/10 border border-sky-500/20' : 'bg-white/5'}`}>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                {isTeamCaptain && <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-                                <span className="text-sm text-white truncate">{p.name}</span>
-                                {isMe && <span className="text-[10px] text-sky-400">(أنت)</span>}
+                              <div className="flex items-center gap-1 sm:gap-1.5">
+                                {isTeamCaptain && <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />}
+                                <span className="text-xs sm:text-sm text-white truncate">{p.name}</span>
+                                {isMe && <span className="text-[9px] sm:text-[10px] text-sky-400">(أنت)</span>}
                               </div>
-                              {isTeamCaptain && <span className="text-[10px] text-amber-400/80">قائد الفريق</span>}
+                              {isTeamCaptain && <span className="text-[9px] sm:text-[10px] text-amber-400/80">قائد الفريق</span>}
                             </div>
-                            {p.isReady && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                            {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
                           </div>
                         )
                       })}
                       {teams.teamB.playerIds.length === 0 && (
-                        <div className="text-center text-xs text-slate-500 py-4">لا يوجد مقاتلين</div>
+                        <div className="text-center text-[11px] sm:text-xs text-slate-500 py-3 sm:py-4">لا يوجد مقاتلين</div>
                       )}
                     </div>
                     {/* Request to join/switch to Team B */}
@@ -3377,54 +3366,54 @@ function LobbyScreen() {
                     animate={{ opacity: 1, y: 0 }}
                     className="rounded-xl border-2 border-slate-500/30 bg-slate-500/5 overflow-hidden"
                   >
-                    <div className="p-3 bg-slate-500/10 border-b border-slate-500/20 flex items-center justify-between">
+                    <div className="p-2.5 sm:p-3 bg-slate-500/10 border-b border-slate-500/20 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-slate-400 shadow-lg shadow-slate-400/50 animate-pulse" />
-                        <span className="font-bold text-slate-400 text-sm">الغير مصنف</span>
+                        <span className="font-bold text-slate-400 text-xs sm:text-sm">الغير مصنف</span>
                       </div>
                       <Badge variant="outline" className="border-slate-500/30 text-slate-400 text-[10px]">
                         {(teams.unassignedPlayerIds || []).length} لاعب
                       </Badge>
                     </div>
-                    <div className="p-2 space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                    <div className="p-1.5 sm:p-2 space-y-1 sm:space-y-1.5 max-h-28 sm:max-h-32 overflow-y-auto custom-scrollbar">
                       {(teams.unassignedPlayerIds || []).map(playerId => {
                         const p = players.find(pl => pl.id === playerId)
                         if (!p) return null
                         const isMe = p.id === globalSocket?.id
                         return (
-                          <div key={p.id} className={`flex items-center gap-2 p-2 rounded-lg ${isMe ? 'bg-slate-500/10 border border-slate-500/20' : 'bg-white/5'}`}>
+                          <div key={p.id} className={`flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg ${isMe ? 'bg-slate-500/10 border border-slate-500/20' : 'bg-white/5'}`}>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <UserCog className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span className="text-sm text-white truncate">{p.name}</span>
-                                {isMe && <span className="text-[10px] text-slate-400">(أنت)</span>}
+                              <div className="flex items-center gap-1 sm:gap-1.5">
+                                <UserCog className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 shrink-0" />
+                                <span className="text-xs sm:text-sm text-white truncate">{p.name}</span>
+                                {isMe && <span className="text-[9px] sm:text-[10px] text-slate-400">(أنت)</span>}
                               </div>
                             </div>
-                            {p.isReady && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                            {p.isReady && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 shrink-0" />}
                           </div>
                         )
                       })}
                       {(teams.unassignedPlayerIds || []).length === 0 && (
-                        <div className="text-center text-xs text-slate-500 py-2">لا يوجد لاعبين غير مصنفين</div>
+                        <div className="text-center text-[11px] sm:text-xs text-slate-500 py-2">لا يوجد لاعبين غير مصنفين</div>
                       )}
                     </div>
                     {/* Join request buttons for unassigned current player */}
                     {myTeamId === null && (
                       <div className="p-2 border-t border-slate-500/10">
                         {myJoinRequest ? (
-                          <div className="text-center py-2 text-xs text-amber-400/80 animate-pulse">
-                            <Hourglass className="w-3.5 h-3.5 inline ml-1" />
+                          <div className="text-center py-2 text-[11px] sm:text-xs text-amber-400/80 animate-pulse">
+                            <Hourglass className="w-3 h-3 sm:w-3.5 sm:h-3.5 inline ml-1" />
                             طلبك قيد المراجعة... (في انتظار موافقة {myJoinRequest.captainName})
                           </div>
                         ) : (
                           <div className="flex gap-2">
-                            <Button size="sm" variant="ghost" className="flex-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs"
+                            <Button size="sm" variant="ghost" className="flex-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 text-[11px] sm:text-xs h-9"
                               onClick={() => handleRequestJoinTeam('A')}>
-                              <UserPlus className="w-3 h-3 ml-1" /> {teams.teamA.customName || 'الفريق الأحمر'}
+                              <UserPlus className="w-3 h-3 sm:w-3.5 sm:h-3.5 ml-1" /> {teams.teamA.customName || 'الأحمر'}
                             </Button>
-                            <Button size="sm" variant="ghost" className="flex-1 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 text-xs"
+                            <Button size="sm" variant="ghost" className="flex-1 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 text-[11px] sm:text-xs h-9"
                               onClick={() => handleRequestJoinTeam('B')}>
-                              <UserPlus className="w-3 h-3 ml-1" /> {teams.teamB.customName || 'الفريق الأزرق'}
+                              <UserPlus className="w-3 h-3 sm:w-3.5 sm:h-3.5 ml-1" /> {teams.teamB.customName || 'الأزرق'}
                             </Button>
                           </div>
                         )}
@@ -3440,16 +3429,16 @@ function LobbyScreen() {
                     animate={{ opacity: 1, y: 0 }}
                     className="rounded-xl border-2 border-amber-500/30 bg-amber-500/5 overflow-hidden"
                   >
-                    <div className="p-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
+                    <div className="p-2.5 sm:p-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Shield className="w-4 h-4 text-amber-400" />
-                        <span className="font-bold text-amber-400 text-sm">طلبات الانضمام</span>
+                        <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                        <span className="font-bold text-amber-400 text-xs sm:text-sm">طلبات الانضمام</span>
                       </div>
-                      <Badge variant="outline" className="border-amber-500/30 text-amber-400 text-[10px]">
+                      <Badge variant="outline" className="border-amber-500/30 text-amber-400 text-[10px] shrink-0">
                         {pendingJoinRequests.length} طلب
                       </Badge>
                     </div>
-                    <div className="p-2 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                    <div className="p-1.5 sm:p-2 space-y-2 max-h-36 sm:max-h-48 overflow-y-auto custom-scrollbar">
                       {pendingJoinRequests.map(req => (
                         <JoinRequestCard
                           key={req.id}
@@ -3479,12 +3468,12 @@ function LobbyScreen() {
 
                 {/* Team Chat Section */}
                 <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
-                  <div className="p-3 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-slate-900/50 to-slate-800/30">
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4 text-amber-400" />
-                      <span className="text-sm font-bold text-white">محادثة الفريق</span>
+                  <div className="p-2.5 sm:p-3 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-slate-900/50 to-slate-800/30">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                      <span className="text-xs sm:text-sm font-bold text-white">محادثة الفريق</span>
                       {myTeamId === null && (
-                        <Badge className="bg-slate-500/20 text-slate-400 border border-slate-500/30 text-[9px]">عالمي فقط</Badge>
+                        <Badge className="bg-slate-500/20 text-slate-400 border border-slate-500/30 text-[8px] sm:text-[9px]">عالمي فقط</Badge>
                       )}
                     </div>
                     {/* Chat mode selector - unassigned players can only use global */}
@@ -3496,7 +3485,7 @@ function LobbyScreen() {
                         <button
                           key={mode.value}
                           onClick={() => setChatMode(mode.value)}
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                          className={`px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold transition-all ${
                             chatMode === mode.value
                               ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                               : 'text-slate-500 hover:text-slate-300'
@@ -3508,7 +3497,7 @@ function LobbyScreen() {
                     </div>
                   </div>
                   {/* Chat messages */}
-                  <div className="h-32 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
+                  <div className="h-28 sm:h-32 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
                     {chatMessages
                       .filter(m => chatMode === 'global' ? m.mode === 'global' : m.mode === 'team' && m.teamId === myTeamId)
                       .length === 0 && (
@@ -3536,7 +3525,7 @@ function LobbyScreen() {
                       })}
                   </div>
                   {/* Chat input */}
-                  <div className="p-2 border-t border-white/10 flex gap-1.5">
+                  <div className="p-1.5 sm:p-2 border-t border-white/10 flex gap-1.5">
                     <Input
                       value={teamChatInput}
                       onChange={(e) => setTeamChatInput(e.target.value)}
@@ -3553,13 +3542,13 @@ function LobbyScreen() {
                           setTeamChatInput('')
                         }
                       }}
-                      placeholder={myTeamId === null ? 'اكتب للجميع... (الفرق فقط)' : chatMode === 'team' ? 'اكتب لفريقك...' : 'اكتب للجميع...'}
-                      className="flex-1 h-7 text-xs bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-amber-500/30"
+                      placeholder={myTeamId === null ? 'اكتب للجميع...' : chatMode === 'team' ? 'اكتب لفريقك...' : 'اكتب للجميع...'}
+                      className="flex-1 h-8 sm:h-9 text-[11px] sm:text-xs bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-amber-500/30"
                       dir="rtl"
                     />
                     <Button
                       size="icon"
-                      className="w-7 h-7 bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                      className="w-8 h-8 sm:w-9 sm:h-9 bg-amber-600 hover:bg-amber-700 text-white shrink-0"
                       disabled={!teamChatInput.trim()}
                       onClick={() => {
                         if (globalSocket && teamChatInput.trim()) {
@@ -3580,12 +3569,12 @@ function LobbyScreen() {
             ) : (
             /* Original solo player list */
             <div className="space-y-2">
-              <Label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                <Flame className="w-4 h-4 text-red-400" />
+              <Label className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center gap-2">
+                <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />
                 المقاتلون ({players.length})
               </Label>
-              <ScrollArea className="max-h-64">
-                <div className="space-y-2">
+              <ScrollArea className="max-h-48 sm:max-h-64">
+                <div className="space-y-1.5 sm:space-y-2">
                   {players.map((player, i) => {
                     const playerIdentity = player.name.replace(/\s+/g, '_')
                     const isSpeaking = speakingParticipants.includes(playerIdentity) || speakingParticipants.includes(player.name)
@@ -3598,7 +3587,7 @@ function LobbyScreen() {
                       initial={{ opacity: 0, x: 30, scale: 0.9 }}
                       animate={{ opacity: 1, x: 0, scale: 1 }}
                       transition={{ delay: i * 0.08, type: 'spring', stiffness: 200 }}
-                      className={`arena-player flex items-center gap-3 p-3 rounded-xl ${isSpeaking ? 'ring-1 ring-green-400/30 bg-green-500/5' : ''}`}
+                      className={`arena-player flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl ${isSpeaking ? 'ring-1 ring-green-400/30 bg-green-500/5' : ''}`}
                     >
                       {/* Speaking indicator */}
                       {isSpeaking && !isMuted && (
@@ -3614,22 +3603,22 @@ function LobbyScreen() {
                         </motion.div>
                       )}
                       {isMuted && (
-                        <MicOff className="w-4 h-4 text-red-400/60 shrink-0" />
+                        <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400/60 shrink-0" />
                       )}
-                      <span className={`font-bold flex-1 ${isMuted ? 'text-slate-500' : 'text-white'}`}>{player.name}</span>
+                      <span className={`font-bold flex-1 text-xs sm:text-sm min-w-0 truncate ${isMuted ? 'text-slate-500' : 'text-white'}`}>{player.name}</span>
                       {player.isHost && (
-                        <Badge className="host-badge text-white border-0 text-xs">
+                        <Badge className="host-badge text-white border-0 text-[10px] sm:text-xs shrink-0">
                           <Crown className="w-3 h-3 ml-1 crown-float" />قائد
                         </Badge>
                       )}
                       {/* Action buttons — not for self */}
                       {!isMe && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
                           {/* Local mute button — available to ALL players */}
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="w-7 h-7 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
+                            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-amber-400 hover:bg-amber-400/10 transition-all"
                             onClick={() => usePlayerMuteStore.getState().toggleLocalMute(player.id, player.name)}
                             title={isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
                           >
@@ -3642,13 +3631,13 @@ function LobbyScreen() {
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="w-7 h-7 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
                                   title="طرد اللاعب"
                                 >
                                   <UserX className="w-3.5 h-3.5" />
                                 </Button>
                               </AlertDialogTrigger>
-                              <AlertDialogContent className="bg-[#12121F] border-white/10 text-white" dir="rtl">
+                              <AlertDialogContent className="bg-[#12121F] border-white/10 text-white max-w-[calc(100vw-2rem)]" dir="rtl">
                                 <AlertDialogHeader>
                                   <AlertDialogTitle className="text-white">طرد {player.name}؟</AlertDialogTitle>
                                   <AlertDialogDescription className="text-slate-400">
@@ -3677,7 +3666,7 @@ function LobbyScreen() {
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="w-7 h-7 rounded-full text-slate-500 hover:text-orange-400 hover:bg-orange-400/10 transition-all"
+                              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-slate-500 hover:text-orange-400 hover:bg-orange-400/10 transition-all"
                               onClick={() => {
                                 if (globalSocket) {
                                   globalSocket.emit('mute-player', { playerId: player.id })
@@ -3700,30 +3689,30 @@ function LobbyScreen() {
 
             {/* Player status */}
             {isOpen ? (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-3">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                  <Globe className="w-4 h-4 text-amber-400" />
-                  <span className="text-amber-300 font-bold">الساحة مفتوحة</span>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-2 sm:py-3">
+                <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                  <span className="text-amber-300 font-bold text-xs sm:text-sm">الساحة مفتوحة</span>
                 </div>
-                <p className="text-sm text-slate-400 mt-2">
+                <p className="text-xs sm:text-sm text-slate-400 mt-1.5 sm:mt-2">
                   {activePlayers === 0 ? 'لسه محدش دخل...' : activePlayers === 1 ? 'محارب واحد مستني...' : `${activePlayers} لاعبين داخل المعركة`}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">المضيف يحدد وقت البداية</p>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-1">المضيف يحدد وقت البداية</p>
               </motion.div>
             ) : (
               <>
                 {players.length < 2 && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-4">
-                    <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-red-500" />
-                    <p className="text-sm text-slate-400">بانتظار مقاتلين آخرين...</p>
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-3 sm:py-4">
+                    <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 animate-spin text-red-500" />
+                    <p className="text-xs sm:text-sm text-slate-400">بانتظار مقاتلين آخرين...</p>
                   </motion.div>
                 )}
                 <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-slate-500">
+                  <div className="flex justify-between text-[11px] sm:text-xs text-slate-500">
                     <span>المقاتلون</span>
                     <span>{players.length}/{maxPlayers}</span>
                   </div>
-                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div className="h-1.5 sm:h-2 rounded-full bg-white/5 overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${(players.length / maxPlayers) * 100}%` }}
@@ -3735,42 +3724,68 @@ function LobbyScreen() {
               </>
             )}
 
-            <div className="border-t border-white/5 pt-4 flex gap-3">
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" className="flex-1 border-white/10 bg-white/5 text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 rounded-xl h-12">
-                    <LogOut className="w-4 h-4 ml-2" />انسحب
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent className="battle-card-glow">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle className="text-white">متأكد إنك عايز تنسحب؟</AlertDialogTitle>
-                    <AlertDialogDescription className="text-slate-400">لو خرجت مش هتقدر ترجع للساحة دي تاني</AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleLeave} className="btn-battle">انسحب</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-              {isHost && (
-                <>
-                  <Button variant="outline" className="flex-1 border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 rounded-xl h-12"
-                    onClick={() => setShowEditSettings(true)}>
-                    <Zap className="w-4 h-4 ml-2" />تعديل
-                  </Button>
-                  <Button className="flex-1 btn-battle rounded-xl h-12"
+            <div className="border-t border-white/5 pt-3 sm:pt-4 space-y-3">
+              {/* Primary actions — Start Battle (host only) or waiting message */}
+              {isHost ? (
+                <div className="space-y-2">
+                  <Button className="w-full btn-battle rounded-xl h-12 sm:h-14 text-base"
                     onClick={handleStartWithCountdown} disabled={startDisabled}
                     title={startValidationError}>
-                    <Flame className="w-4 h-4 ml-2" />ابدأ المعركة!
+                    <Flame className="w-5 h-5 ml-2" />ابدأ المعركة!
                   </Button>
-                </>
+                  {/* Secondary actions row */}
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1 border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 rounded-xl h-10 sm:h-11 text-xs sm:text-sm"
+                      onClick={() => setShowEditSettings(true)}>
+                      <Zap className="w-4 h-4 ml-1.5" />تعديل الإعدادات
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="outline" className="flex-1 border-white/10 bg-white/5 text-slate-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 rounded-xl h-10 sm:h-11 text-xs sm:text-sm">
+                          <LogOut className="w-4 h-4 ml-1.5" />انسحب
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="battle-card-glow max-w-[calc(100vw-2rem)]">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle className="text-white">متأكد إنك عايز تنسحب؟</AlertDialogTitle>
+                          <AlertDialogDescription className="text-slate-400">لو خرجت مش هتقدر ترجع للساحة دي تاني</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleLeave} className="btn-battle">انسحب</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 text-center">
+                    <p className="text-xs sm:text-sm text-slate-500">في انتظار القائد يبدأ المعركة...</p>
+                  </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" className="border-white/10 bg-white/5 text-slate-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 rounded-xl h-10 px-3 text-xs sm:text-sm shrink-0">
+                        <LogOut className="w-4 h-4 sm:ml-1.5" /><span className="hidden sm:inline">انسحب</span>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="battle-card-glow max-w-[calc(100vw-2rem)]">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-white">متأكد إنك عايز تنسحب؟</AlertDialogTitle>
+                        <AlertDialogDescription className="text-slate-400">لو خرجت مش هتقدر ترجع للساحة دي تاني</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">إلغاء</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleLeave} className="btn-battle">انسحب</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               )}
-            </div>
-            {!isHost && <p className="text-center text-sm text-slate-500">في انتظار القائد يبدأ المعركة...</p>}
       {isHost && startValidationError && activePlayers >= 2 && (
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-xs text-red-400 mt-1">{startValidationError}</motion.p>
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-[11px] sm:text-xs text-red-400">{startValidationError}</motion.p>
       )}
+            </div>
           </div>
         </div>
       </motion.div>
@@ -3795,27 +3810,27 @@ function LobbyScreen() {
           initial={{ opacity: 0, y: 50, x: -20 }}
           animate={{ opacity: 1, y: 0, x: 0 }}
           exit={{ opacity: 0, y: 50, x: -20 }}
-          className="fixed bottom-4 left-4 z-50 max-w-sm"
+          className="fixed bottom-4 left-4 right-4 sm:left-4 sm:right-auto z-50 sm:max-w-sm"
         >
-          <div className="battle-card-glow rounded-xl p-4 border-2 border-amber-500/30 bg-slate-900/95 backdrop-blur-sm">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5 text-amber-400" />
+          <div className="battle-card-glow rounded-xl p-3 sm:p-4 border-2 border-amber-500/30 bg-slate-900/95 backdrop-blur-sm">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-white text-sm">طلب موافقة</h4>
-                <p className="text-xs text-slate-400 mt-0.5">{pendingApproval.requestedByName} ({pendingApproval.requestedByTeam === 'A' ? (teams?.teamA.customName || 'الفريق الأحمر') : (teams?.teamB.customName || 'الفريق الأزرق')})</p>
-                <p className="text-sm text-amber-300 mt-2">{pendingApproval.description}</p>
+                <h4 className="font-bold text-white text-xs sm:text-sm">طلب موافقة</h4>
+                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">{pendingApproval.requestedByName} ({pendingApproval.requestedByTeam === 'A' ? (teams?.teamA.customName || 'الفريق الأحمر') : (teams?.teamB.customName || 'الفريق الأزرق')})</p>
+                <p className="text-xs sm:text-sm text-amber-300 mt-1.5 sm:mt-2">{pendingApproval.description}</p>
                 {/* Countdown timer */}
                 <ApprovalTimer expiresAt={pendingApproval.expiresAt} />
               </div>
             </div>
-            <div className="flex gap-2 mt-3">
-              <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+            <div className="flex gap-2 mt-2.5 sm:mt-3">
+              <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white h-9 sm:h-10"
                 onClick={() => handleApprovalResponse(pendingApproval.approvalId, true)}>
                 ✅ موافقة
               </Button>
-              <Button size="sm" variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10"
+              <Button size="sm" variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 h-9 sm:h-10"
                 onClick={() => handleApprovalResponse(pendingApproval.approvalId, false)}>
                 ❌ رفض
               </Button>

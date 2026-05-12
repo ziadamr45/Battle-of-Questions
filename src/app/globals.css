@@ -785,3 +785,36 @@ textarea,
 .arena-depth-glow-bottom {
   background: radial-gradient(ellipse at bottom center, rgba(245, 158, 11, 0.04) 0%, transparent 60%);
 }
+
+/* ═══════════════════════════════════════════ */
+/* MOBILE SAFE AREA & RESPONSIVE UTILITIES     */
+/* ═══════════════════════════════════════════ */
+
+/* Safe area bottom padding for iOS notch/home indicator */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Custom scrollbar for small containers */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Prevent iOS bounce scroll on fixed overlays */
+.fixed-scroll-lock {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
