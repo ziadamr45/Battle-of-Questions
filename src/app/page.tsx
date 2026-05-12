@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType } from '@/lib/game-store'
+import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType, type AnswerReviewItem, type FullAnswerReviewItem, type ReadyStatus } from '@/lib/game-store'
 import { audioEngine } from '@/lib/audio-engine'
 import { useAudioStore } from '@/lib/audio-store'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -61,6 +62,14 @@ import {
   UserX,
   MicOff,
   Settings,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  CheckCircle2,
+  XCircle,
+  Brain,
+  HelpCircle,
+  MessageCircle,
 } from 'lucide-react'
 import { BattleLogo } from '@/components/battle-logo'
 import { VoiceChat, disconnectLiveKit } from '@/components/voice-chat'
@@ -286,11 +295,20 @@ function useGameSocket() {
       store.getState().setScreen('loading')
     })
 
-    socket.on('round-end', (data: { roundNumber: number; totalRounds: number; roundScores: RoundScore[]; roundWinner: RoundScore | null; isLastRound: boolean }) => {
+    socket.on('round-end', (data: { roundNumber: number; totalRounds: number; roundScores: RoundScore[]; roundWinner: RoundScore | null; isLastRound: boolean; playerAnswerReviews?: Record<string, AnswerReviewItem[]> }) => {
       store.getState().setLastRoundScores(data.roundScores)
       store.getState().setLastRoundWinner(data.roundWinner)
       store.getState().setCurrentRound(data.roundNumber)
       store.getState().setTotalRounds(data.totalRounds)
+      // Store answer reviews if provided
+      if (data.playerAnswerReviews) {
+        store.getState().setPlayerAnswerReviews(data.playerAnswerReviews)
+      } else {
+        store.getState().setPlayerAnswerReviews({})
+      }
+      // Reset ready status for new round transition
+      store.getState().setReadyStatus(null)
+      store.getState().setIsPlayerReady(false)
       store.getState().setScreen('round-transition')
       audioEngine.roundEndReveal()
       showNarration('round_ending')
@@ -327,6 +345,10 @@ function useGameSocket() {
       if (data.roundWinners) store.getState().setRoundWinners(data.roundWinners)
       if (data.roundResults) store.getState().setRoundResults(data.roundResults)
       store.getState().setEarlyEndProcessing(false)
+      // Store battleData for answer review in results screen
+      if (data.battleData) {
+        store.getState().setBattleData(data.battleData)
+      }
       store.getState().setScreen('results')
       showNarration('battle_ending')
       // Mark first battle as played after game ends
@@ -416,6 +438,15 @@ function useGameSocket() {
       // A player was host-muted — mute their audio for everyone
       usePlayerMuteStore.getState().addHostMuted(data.playerId, data.playerName)
       battleToast('player_audio_muted', 'تم كتم اللاعب', `${data.playerName} تم كتم صوته بواسطة القائد`)
+    })
+
+    // ─── Ready Status & Answer Explanation Events ──────────────────────
+    socket.on('ready-status-update', (data: ReadyStatus) => {
+      store.getState().setReadyStatus(data)
+    })
+
+    socket.on('answer-explanation', (data: { roundNumber: number; questionIndex: number; explanation: string }) => {
+      store.getState().setAnswerExplanation(data.roundNumber, data.questionIndex, data.explanation)
     })
 
     socket.on('rejoin-success', (data: {
@@ -2991,6 +3022,163 @@ function LoadingScreen() {
 }
 
 // ============================================
+// ANSWER REVIEW COMPONENT (shared between Round Transition & Results)
+// ============================================
+const ARABIC_OPTION_LETTERS = ['أ', 'ب', 'ج', 'د']
+
+function AnswerReviewQuestionCard({
+  review,
+  roundNumber,
+  roomCode,
+  showAiExplanation = true,
+}: {
+  review: AnswerReviewItem | FullAnswerReviewItem
+  roundNumber: number
+  roomCode: string
+  showAiExplanation?: boolean
+}) {
+  const answerExplanations = useGameStore((s) => s.answerExplanations)
+  const [showExplanation, setShowExplanation] = useState(false)
+  const [requestedExplanation, setRequestedExplanation] = useState(false)
+
+  const explanationKey = `${roundNumber}-${review.questionIndex}`
+  const cachedExplanation = answerExplanations[explanationKey]
+  const isLoadingExplanation = requestedExplanation && !cachedExplanation
+
+  // Show explanation if user toggled it on, OR if they requested it and it just arrived
+  const isExplanationVisible = showExplanation || (requestedExplanation && !!cachedExplanation)
+
+  const handleRequestExplanation = useCallback(() => {
+    if (!globalSocket) return
+    if (cachedExplanation) {
+      setShowExplanation(prev => !prev)
+      return
+    }
+    setRequestedExplanation(true)
+    globalSocket.emit('explain-answer', { roomCode, roundNumber, questionIndex: review.questionIndex })
+  }, [roomCode, roundNumber, review.questionIndex, cachedExplanation])
+
+  return (
+    <div
+      className={`rounded-lg p-3 border ${
+        review.isCorrect
+          ? 'bg-emerald-500/5 border-emerald-500/20'
+          : 'bg-red-500/5 border-red-500/20'
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        {review.isCorrect ? (
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+        ) : (
+          <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-slate-300 mb-2 leading-relaxed">
+            {review.question}
+          </div>
+
+          {/* Options with color coding */}
+          <div className="space-y-1 mb-2">
+            {review.options.map((option, idx) => {
+              const isPlayerAnswer = idx === review.playerAnswer
+              const isCorrectAnswer = idx === review.correctAnswer
+              const letter = ARABIC_OPTION_LETTERS[idx] || `${idx + 1}`
+
+              let optionClass = 'bg-white/[0.03] border-white/5 text-slate-400'
+              if (isCorrectAnswer) {
+                optionClass = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              } else if (isPlayerAnswer && !review.isCorrect) {
+                optionClass = 'bg-red-500/10 border-red-500/30 text-red-300'
+              }
+
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-2 text-[11px] px-2.5 py-1.5 rounded-md border ${optionClass} transition-colors`}
+                >
+                  <span className="font-bold shrink-0">{letter}</span>
+                  <span className="flex-1">{option}</span>
+                  {isCorrectAnswer && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
+                  {isPlayerAnswer && !review.isCorrect && <X className="w-3 h-3 text-red-400 shrink-0" />}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Player answer summary */}
+          <div className="flex items-center gap-2 text-[10px] mb-1">
+            <span className="text-slate-500">
+              إجابتك: <span className={review.isCorrect ? 'text-emerald-400' : 'text-red-400'}>
+                {review.playerAnswer >= 0 ? `${ARABIC_OPTION_LETTERS[review.playerAnswer] || (review.playerAnswer + 1)} - ${review.options[review.playerAnswer] || `خيار ${review.playerAnswer + 1}`}` : 'لم تجب'}
+              </span>
+            </span>
+            {!review.isCorrect && (
+              <span className="text-slate-500">
+                الصحيح: <span className="text-emerald-400">
+                  {`${ARABIC_OPTION_LETTERS[review.correctAnswer] || (review.correctAnswer + 1)} - ${review.options[review.correctAnswer] || `خيار ${review.correctAnswer + 1}`}`}
+                </span>
+              </span>
+            )}
+            {'timeTaken' in review && (review as FullAnswerReviewItem).timeTaken > 0 && (
+              <span className="text-slate-600">
+                <Timer className="w-2.5 h-2.5 inline ml-0.5" />
+                {Math.round((review as FullAnswerReviewItem).timeTaken!)}ث
+              </span>
+            )}
+          </div>
+
+          {/* Built-in explanation (shown for wrong answers) */}
+          {review.explanation && !review.isCorrect && (
+            <div className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+              {review.explanation}
+            </div>
+          )}
+
+          {/* AI Explanation button */}
+          {showAiExplanation && (
+            <div className="mt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRequestExplanation}
+                disabled={isLoadingExplanation}
+                className="h-6 px-2 text-[10px] rounded-md bg-purple-500/5 border border-purple-500/20 text-purple-400 hover:bg-purple-500/15 hover:text-purple-300 gap-1"
+              >
+                {isLoadingExplanation ? (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                ) : (
+                  <Brain className="w-2.5 h-2.5" />
+                )}
+                لماذا؟
+              </Button>
+              <AnimatePresence>
+                {isExplanationVisible && cachedExplanation && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-2 p-2 rounded-md bg-purple-500/5 border border-purple-500/10 text-[10px] text-slate-300 leading-relaxed">
+                      <div className="flex items-center gap-1 mb-1 text-purple-400 font-bold">
+                        <Sparkles className="w-2.5 h-2.5" />
+                        شرح الذكاء الاصطناعي
+                      </div>
+                      {cachedExplanation}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
 // ROUND TRANSITION SCREEN
 // ============================================
 function RoundTransitionScreen() {
@@ -3005,10 +3193,30 @@ function RoundTransitionScreen() {
   const players = useGameStore((s) => s.players)
   const roomCode = useGameStore((s) => s.roomCode)
   const earlyEndProcessing = useGameStore((s) => s.earlyEndProcessing)
+  const playerAnswerReviews = useGameStore((s) => s.playerAnswerReviews)
+  const readyStatus = useGameStore((s) => s.readyStatus)
+  const isPlayerReady = useGameStore((s) => s.isPlayerReady)
+  const setIsPlayerReady = useGameStore((s) => s.setIsPlayerReady)
   const [showEditSettings, setShowEditSettings] = useState(false)
   const [showEarlyEndModal, setShowEarlyEndModal] = useState(false)
+  const [showAnswerReview, setShowAnswerReview] = useState(false)
   const { requestEarlyEnd } = useGameSocket()
   const isOpen = gameSettings.playerMode === 'open' || gameSettings.maxPlayers === 0
+
+  // Get current player's answer reviews
+  const mySocketId = globalSocket?.id
+  const myReviews = mySocketId ? playerAnswerReviews[mySocketId] || [] : []
+  const hasReviews = myReviews.length > 0
+
+  // Ready status display
+  const readyCount = readyStatus?.readyCount ?? 0
+  const totalActive = readyStatus?.totalActive ?? players.length
+
+  const handleReady = useCallback(() => {
+    if (!globalSocket || isPlayerReady) return
+    globalSocket.emit('player-ready')
+    setIsPlayerReady(true)
+  }, [isPlayerReady, setIsPlayerReady])
 
   // Send settings update to server (host only)
   const handleUpdateSettings = useCallback((newSettings: Partial<typeof gameSettings>) => {
@@ -3113,17 +3321,66 @@ function RoundTransitionScreen() {
           </div>
         </motion.div>
 
-        {/* Next round indicator */}
+        {/* Answer Review Button */}
+        {hasReviews && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.2 }}
+            className="mt-4"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAnswerReview(true)}
+              className="border-cyan-500/30 bg-cyan-500/5 text-cyan-400 hover:bg-cyan-500/15 hover:text-cyan-300 rounded-xl gap-1.5"
+            >
+              <Eye className="w-3.5 h-3.5" /> إظهار الإجابات وتصحيحها
+              <Badge className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px] px-1.5 py-0">
+                {myReviews.filter(r => r.isCorrect).length}/{myReviews.length}
+              </Badge>
+            </Button>
+          </motion.div>
+        )}
+
+        {/* Next round controls */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.5 }}
           className="mt-6"
         >
-          <div className="flex items-center justify-center gap-2 text-slate-400">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="text-sm">{isLastRound ? 'جاري إعلان النتائج النهائية...' : 'جاري تحضير الجولة التالية...'}</span>
-          </div>
+          {/* Ready Button / Status */}
+          {!isLastRound ? (
+            <div className="flex flex-col items-center gap-3">
+              {isPlayerReady ? (
+                <div className="flex items-center gap-2 text-emerald-400">
+                  <Check className="w-4 h-4" />
+                  <span className="text-sm font-bold">أنت جاهز</span>
+                  <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-2 py-0.5">
+                    {readyCount}/{totalActive} جاهزين
+                  </Badge>
+                </div>
+              ) : (
+                <Button
+                  onClick={handleReady}
+                  className="btn-battle rounded-xl gap-2 px-8 py-5 text-base"
+                >
+                  <Target className="w-4 h-4" /> جاهز للجولة القادمة
+                </Button>
+              )}
+              {!isPlayerReady && readyCount > 0 && (
+                <span className="text-xs text-slate-500">
+                  {readyCount}/{totalActive} جاهزين
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2 text-slate-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="text-sm">جاري إعلان النتائج النهائية...</span>
+            </div>
+          )}
 
           {/* Host controls between rounds */}
           {isHost && !isLastRound && (
@@ -3154,6 +3411,31 @@ function RoundTransitionScreen() {
           )}
         </motion.div>
       </motion.div>
+
+      {/* Answer Review Dialog */}
+      <Dialog open={showAnswerReview} onOpenChange={setShowAnswerReview}>
+        <DialogContent className="bg-[#12121F] border-white/10 text-white max-w-lg max-h-[85vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-right flex items-center gap-2 text-base">
+              <Eye className="w-4 h-4 text-cyan-400" />
+              مراجعة إجابات الجولة {currentRound + 1}
+            </DialogTitle>
+            <DialogDescription className="text-right text-xs text-slate-500">
+              {myReviews.filter(r => r.isCorrect).length} إجابة صحيحة من {myReviews.length}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            {myReviews.map((review, idx) => (
+              <AnswerReviewQuestionCard
+                key={idx}
+                review={review}
+                roundNumber={currentRound}
+                roomCode={roomCode}
+              />
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Settings Modal for between rounds */}
       <EditSettingsModal
@@ -3537,9 +3819,40 @@ function ResultsScreen() {
   const wasEarlyEnd = useGameStore((s) => s.wasEarlyEnd)
   const completedRounds = useGameStore((s) => s.completedRounds)
   const resetGame = useGameStore((s) => s.resetGame)
+  const battleData = useGameStore((s) => s.battleData)
+  const roomCode = useGameStore((s) => s.roomCode)
+  const playerName = useGameStore((s) => s.playerName)
   const { leaveAndDisconnect } = useGameSocket()
+  const [showAnswerReview, setShowAnswerReview] = useState(false)
 
   const handlePlayAgain = () => { leaveAndDisconnect(); resetGame() }
+
+  // Get current player's full answer review from battleData
+  const myAnswerReview: FullAnswerReviewItem[] = useMemo(() => {
+    if (!battleData?.participants) return []
+    const mySocketId = globalSocket?.id
+    // Try to find by socket ID first, then by name
+    let myParticipant = battleData.participants.find((p: any) => p.playerId === mySocketId || p.id === mySocketId)
+    if (!myParticipant) {
+      myParticipant = battleData.participants.find((p: any) => p.playerName === playerName || p.name === playerName)
+    }
+    if (!myParticipant?.answerReview) return []
+    return myParticipant.answerReview as FullAnswerReviewItem[]
+  }, [battleData, playerName])
+
+  // Group answer reviews by round
+  const reviewsByRound = useMemo(() => {
+    if (myAnswerReview.length === 0) return {}
+    return myAnswerReview.reduce((acc: Record<number, FullAnswerReviewItem[]>, review) => {
+      const round = review.roundNumber
+      if (!acc[round]) acc[round] = []
+      acc[round].push(review)
+      return acc
+    }, {})
+  }, [myAnswerReview])
+
+  const totalCorrect = myAnswerReview.filter(a => a.isCorrect).length
+  const totalQuestions = myAnswerReview.length
 
   const getMedalColor = (i: number) => {
     if (i === 0) return 'from-amber-400 to-amber-600'
@@ -3812,6 +4125,27 @@ function ResultsScreen() {
           </motion.div>
         )}
 
+        {/* Full Answer Review Button */}
+        {myAnswerReview.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.3 }}
+            className="mb-6"
+          >
+            <Button
+              variant="outline"
+              onClick={() => setShowAnswerReview(true)}
+              className="w-full border-cyan-500/30 bg-cyan-500/5 text-cyan-400 hover:bg-cyan-500/15 hover:text-cyan-300 rounded-xl gap-2 py-4"
+            >
+              <Eye className="w-4 h-4" /> تفاصيل الإجابات وتصحيحها
+              <Badge className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs px-2 py-0.5">
+                {totalCorrect}/{totalQuestions}
+              </Badge>
+            </Button>
+          </motion.div>
+        )}
+
         {/* Action buttons */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -3824,6 +4158,47 @@ function ResultsScreen() {
           </Button>
         </motion.div>
       </div>
+
+      {/* Full Answer Review Dialog */}
+      <Dialog open={showAnswerReview} onOpenChange={setShowAnswerReview}>
+        <DialogContent className="bg-[#12121F] border-white/10 text-white max-w-lg max-h-[85vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-right flex items-center gap-2 text-base">
+              <Brain className="w-4 h-4 text-purple-400" />
+              تفاصيل الإجابات وتصحيحها
+            </DialogTitle>
+            <DialogDescription className="text-right text-xs text-slate-500">
+              {totalCorrect} إجابة صحيحة من {totalQuestions} — {totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0}% دقة
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {Object.entries(reviewsByRound)
+              .sort(([a], [b]) => Number(a) - Number(b))
+              .map(([roundNum, reviews]) => (
+                <div key={roundNum}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge className="bg-red-500/10 text-red-400 border border-red-500/30 text-xs px-2 py-0.5">
+                      الجولة {Number(roundNum) + 1}
+                    </Badge>
+                    <span className="text-[10px] text-slate-500">
+                      {reviews.filter(r => r.isCorrect).length}/{reviews.length} صحيح
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {reviews.map((review, idx) => (
+                      <AnswerReviewQuestionCard
+                        key={idx}
+                        review={review}
+                        roundNumber={Number(roundNum)}
+                        roomCode={roomCode}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

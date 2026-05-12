@@ -61,6 +61,27 @@ export interface RoundScore {
   totalQuestions: number
 }
 
+export interface AnswerReviewItem {
+  questionIndex: number
+  question: string
+  options: string[]
+  playerAnswer: number
+  correctAnswer: number
+  isCorrect: boolean
+  explanation: string
+}
+
+export interface FullAnswerReviewItem extends AnswerReviewItem {
+  roundNumber: number
+  timeTaken?: number
+}
+
+export interface ReadyStatus {
+  readyPlayers: string[]
+  readyCount: number
+  totalActive: number
+}
+
 // ─── Session Storage Helpers ──────────────────────────────────────────────────
 
 const SESSION_KEY = 'maaraka-session'
@@ -222,6 +243,24 @@ interface GameState {
   setCompletedRounds: (rounds: number) => void
   earlyEndProcessing: boolean
   setEarlyEndProcessing: (processing: boolean) => void
+
+  // Answer reviews (per-round, from round-end event)
+  playerAnswerReviews: Record<string, AnswerReviewItem[]>
+  setPlayerAnswerReviews: (reviews: Record<string, AnswerReviewItem[]>) => void
+
+  // Ready status for next round
+  readyStatus: ReadyStatus | null
+  setReadyStatus: (status: ReadyStatus | null) => void
+  isPlayerReady: boolean
+  setIsPlayerReady: (ready: boolean) => void
+
+  // AI answer explanations (keyed by "round-questionIndex")
+  answerExplanations: Record<string, string>
+  setAnswerExplanation: (roundNumber: number, questionIndex: number, explanation: string) => void
+
+  // Battle data from game-ended (for full answer review in results)
+  battleData: any
+  setBattleData: (data: any) => void
 
   resetGame: () => void
   restoreState: (state: PersistedState) => void
@@ -436,6 +475,22 @@ export const useGameStore = create<GameState>((set, get) => ({
   earlyEndProcessing: false,
   setEarlyEndProcessing: (processing) => set({ earlyEndProcessing: processing }),
 
+  playerAnswerReviews: {},
+  setPlayerAnswerReviews: (reviews) => set({ playerAnswerReviews: reviews }),
+
+  readyStatus: null,
+  setReadyStatus: (status) => set({ readyStatus: status }),
+  isPlayerReady: false,
+  setIsPlayerReady: (ready) => set({ isPlayerReady: ready }),
+
+  answerExplanations: {},
+  setAnswerExplanation: (roundNumber, questionIndex, explanation) => set((state) => ({
+    answerExplanations: { ...state.answerExplanations, [`${roundNumber}-${questionIndex}`]: explanation },
+  })),
+
+  battleData: null,
+  setBattleData: (data) => set({ battleData: data }),
+
   resetGame: () => {
     set({
       screen: 'home',
@@ -464,6 +519,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       wasEarlyEnd: false,
       completedRounds: 0,
       earlyEndProcessing: false,
+      playerAnswerReviews: {},
+      readyStatus: null,
+      isPlayerReady: false,
+      answerExplanations: {},
+      battleData: null,
     })
     clearSessionStorage()
   },

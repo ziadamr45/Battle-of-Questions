@@ -206,6 +206,7 @@ interface GameRoom {
   roundEnding: boolean            // true if round-end processing has started (prevents double calls)
   earlyEnding: boolean            // true if early-end-game processing has started (prevents duplicate requests)
   gameStartTime: number | null    // timestamp when the game first started (for accurate duration)
+  readyPlayers: Set<string>       // player IDs who marked ready for next round
 }
 
 // Info sent to clients about public rooms
@@ -1370,6 +1371,7 @@ io.on('connection', (socket: Socket) => {
         roundEnding: false,
         earlyEnding: false,
         gameStartTime: null,
+        readyPlayers: new Set(),
       }
 
       rooms.set(roomCode, room)
@@ -1929,6 +1931,122 @@ io.on('connection', (socket: Socket) => {
     }
   })
 
+  // ── player-ready ────────────────────────────────────────────────────────
+  // Player marks themselves as ready for the next round
+  socket.on('player-ready', () => {
+    const roomCode = socketRoomMap.get(socket.id)
+    if (!roomCode) return
+
+    const room = rooms.get(roomCode)
+    if (!room || room.status !== 'playing') return
+
+    // Add this player to the ready set
+    room.readyPlayers.add(socket.id)
+
+    // Broadcast ready status to all players
+    const activePlayerCount = [...room.players.values()].filter(p => !p.isDisconnected).length
+    const readyCount = [...room.readyPlayers].filter(id => {
+      const p = room.players.get(id)
+      return p && !p.isDisconnected
+    }).length
+
+    io.to(roomCode).emit('ready-status-update', {
+      readyPlayers: [...room.readyPlayers],
+      readyCount,
+      totalActive: activePlayerCount,
+    })
+
+    // If all active players are ready, start the next round
+    if (readyCount >= activePlayerCount && activePlayerCount >= 2) {
+      startNextRound(roomCode)
+    }
+  })
+
+  // ── explain-answer ─────────────────────────────────────────────────────
+  // Player asks AI why an answer is correct/wrong — uses the passage context
+  socket.on('explain-answer', async (data: {
+    roomCode: string
+    roundNumber: number
+    questionIndex: number
+  }) => {
+    const { roomCode, roundNumber, questionIndex } = data
+    const room = rooms.get(roomCode?.toUpperCase())
+    if (!room) return
+
+    const roundContent = room.rounds[roundNumber]
+    if (!roundContent) return
+
+    const question = roundContent.content.questions[questionIndex]
+    if (!question) return
+
+    const playerId = socket.id
+    const playerAnswers = room.playerAnswers.get(playerId)
+    const roundAnswers = playerAnswers?.get(roundNumber)
+    const answer = roundAnswers?.get(questionIndex)
+
+    try {
+      const prompt = `أنت معلم ذكي يتحدث العربية. لقد قرأ الطالب القطعة التالية ثم أجاب على سؤال.
+
+--- القطعة ---
+${roundContent.content.text}
+
+--- السؤال ---
+${question.text}
+
+--- الخيارات ---
+${question.options.map((o: string, i: number) => `${['أ','ب','ج','د'][i]}) ${o}`).join('\n')}
+
+--- إجابة الطالب ---
+${answer ? `${['أ','ب','ج','د'][answer.answerIndex]}) ${question.options[answer.answerIndex]}` : 'لم يُجب'}
+
+--- الإجابة الصحيحة ---
+${['أ','ب','ج','د'][question.correctAnswer]}) ${question.options[question.correctAnswer]}
+
+${question.explanation ? `--- التفسير المُعطى ---\n${question.explanation}` : ''}
+
+${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجاب إجابة خاطئة. اشرح له بلطف واختصار (3-4 جمل) لماذا إجابته خاطئة ولماذا الإجابة الصحيحة هي الصحيحة، مع الإشارة للقطعة إن أمكن.' : 'اشرح بلطف واختصار (3-4 جمل) لماذا الإجابة الصحيحة هي الصحيحة، مع الإشارة للقطعة إن أمكن.'}
+
+⚠️ اكتب بالعربية الفصحى البسيطة. كن مختصراً ودوداً.`
+
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://maaraka.app',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.0-flash-001',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 300,
+          temperature: 0.7,
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        const explanation = result.choices?.[0]?.message?.content?.trim() || 'لم أستطع توليد تفسير.'
+        socket.emit('answer-explanation', {
+          roundNumber,
+          questionIndex,
+          explanation,
+        })
+      } else {
+        socket.emit('answer-explanation', {
+          roundNumber,
+          questionIndex,
+          explanation: 'حدث خطأ في توليد التفسير.',
+        })
+      }
+    } catch {
+      socket.emit('answer-explanation', {
+        roundNumber,
+        questionIndex,
+        explanation: 'حدث خطأ في توليد التفسير.',
+      })
+    }
+  })
+
   // ── kick-player ──────────────────────────────────────────────────────
   // Host can kick a player from the room (works in lobby AND during game)
   socket.on('kick-player', (data: { playerId: string }) => {
@@ -2128,6 +2246,41 @@ function handleRoundEnd(roomCode: string) {
     player.score = 0
   }
 
+  // Build per-player answer review for this round
+  const roundContent = room.rounds[currentRound]
+  const playerAnswerReviews: Record<string, Array<{
+    questionIndex: number
+    question: string
+    options: string[]
+    playerAnswer: number
+    correctAnswer: number
+    isCorrect: boolean
+    explanation: string
+  }>> = {}
+
+  if (roundContent) {
+    for (const [playerId, player] of room.players.entries()) {
+      if (player.isDisconnected) continue
+      const playerAnswers = room.playerAnswers.get(playerId)
+      const roundAnswers = playerAnswers?.get(currentRound)
+      const reviews: typeof playerAnswerReviews[string] = []
+      for (let qIdx = 0; qIdx < roundContent.content.questions.length; qIdx++) {
+        const q = roundContent.content.questions[qIdx]
+        const answer = roundAnswers?.get(qIdx)
+        reviews.push({
+          questionIndex: qIdx,
+          question: q.text,
+          options: q.options,
+          playerAnswer: answer ? answer.answerIndex : -1,
+          correctAnswer: q.correctAnswer,
+          isCorrect: answer ? q.correctAnswer === answer.answerIndex : false,
+          explanation: q.explanation,
+        })
+      }
+      playerAnswerReviews[playerId] = reviews
+    }
+  }
+
   // Check if this was the last round
   if (currentRound >= totalRounds - 1) {
     // Game over! Send round-end first, then game-ended
@@ -2137,6 +2290,7 @@ function handleRoundEnd(roomCode: string) {
       roundScores,
       roundWinner: roundScores[0] || null,
       isLastRound: true,
+      playerAnswerReviews,
     })
 
     // Small delay before showing final results
@@ -2146,72 +2300,84 @@ function handleRoundEnd(roomCode: string) {
     return
   }
 
-  // Send round-end event with scores
+  // Send round-end event with scores + per-player answer review
   io.to(roomCode).emit('round-end', {
     roundNumber: currentRound,
     totalRounds,
     roundScores,
     roundWinner: roundScores[0] || null,
     isLastRound: false,
+    playerAnswerReviews,
   })
 
-  // Move to next round after a brief delay for showing round results
-  setTimeout(() => {
-    const r = rooms.get(roomCode)
-    if (!r || r.status !== 'playing') return
+  // Wait for all players to be ready instead of auto-advancing
+  // Reset ready state for the new round transition
+  room.readyPlayers = new Set()
+  room.roundEnding = false  // Allow the round-end processing to complete
+  // Next round will be started by startNextRoundWhenReady when all players are ready
+}
 
-    r.currentRound = currentRound + 1
+// ─── Start next round (called when all players are ready) ──────────────────
+function startNextRound(roomCode: string) {
+  const room = rooms.get(roomCode)
+  if (!room || room.status !== 'playing') return
 
-    // Check if next round content is ready
-    const nextRound = r.rounds[r.currentRound]
-    if (!nextRound) {
-      // Content not ready yet, show loading
-      console.log(`[handleRoundEnd] Round ${r.currentRound + 1} content not ready for room ${roomCode}, waiting...`)
-      io.to(roomCode).emit('round-loading', {
-        roundNumber: r.currentRound,
-        totalRounds,
-      })
+  const currentRound = room.currentRound
+  const totalRounds = room.settings.numberOfRounds
 
-      // Poll for content
-      const checkInterval = setInterval(() => {
-        const rr = rooms.get(roomCode)
-        if (!rr || rr.status !== 'playing') {
-          clearInterval(checkInterval)
-          return
-        }
-        const nextR = rr.rounds[rr.currentRound]
-        if (nextR) {
-          clearInterval(checkInterval)
-          rr.roundStartTime = Date.now()
-          rr.roundTimerSeconds = rr.settings.timePerRound * 60
-          rr.roundEnding = false  // Reset for the new round
-          io.to(roomCode).emit('round-start', {
-            roundNumber: rr.currentRound,
-            totalRounds: rr.settings.numberOfRounds,
-            content: nextR.content,
-            timePerRound: rr.roundTimerSeconds,
-          })
-          console.log(`[handleRoundEnd] Delayed round ${rr.currentRound + 1} started in room ${roomCode}`)
-        }
-      }, 2000)
+  room.currentRound = currentRound + 1
 
-      return
-    }
-
-    // Start next round
-    r.roundStartTime = Date.now()
-    r.roundTimerSeconds = r.settings.timePerRound * 60
-    r.roundEnding = false  // Reset for the new round
-
-    io.to(roomCode).emit('round-start', {
-      roundNumber: r.currentRound,
+  // Check if next round content is ready
+  const nextRound = room.rounds[room.currentRound]
+  if (!nextRound) {
+    // Content not ready yet, show loading
+    console.log(`[startNextRound] Round ${room.currentRound + 1} content not ready for room ${roomCode}, waiting...`)
+    io.to(roomCode).emit('round-loading', {
+      roundNumber: room.currentRound,
       totalRounds,
-      content: nextRound.content,
-      timePerRound: r.roundTimerSeconds,
     })
 
-    console.log(`[handleRoundEnd] Round ${r.currentRound + 1} started in room ${roomCode}. Timer: ${r.roundTimerSeconds}s`)
-  }, 5000) // 5 second delay between rounds to show round results
+    // Poll for content
+    const checkInterval = setInterval(() => {
+      const rr = rooms.get(roomCode)
+      if (!rr || rr.status !== 'playing') {
+        clearInterval(checkInterval)
+        return
+      }
+      const nextR = rr.rounds[rr.currentRound]
+      if (nextR) {
+        clearInterval(checkInterval)
+        rr.roundStartTime = Date.now()
+        rr.roundTimerSeconds = rr.settings.timePerRound * 60
+        rr.roundEnding = false
+        rr.readyPlayers = new Set()
+        io.to(roomCode).emit('round-start', {
+          roundNumber: rr.currentRound,
+          totalRounds: rr.settings.numberOfRounds,
+          content: nextR.content,
+          timePerRound: rr.roundTimerSeconds,
+        })
+        console.log(`[startNextRound] Delayed round ${rr.currentRound + 1} started in room ${roomCode}`)
+      }
+    }, 2000)
+
+    return
+  }
+
+  // Start next round
+  room.roundStartTime = Date.now()
+  room.roundTimerSeconds = room.settings.timePerRound * 60
+  room.roundEnding = false
+  room.readyPlayers = new Set()
+
+  io.to(roomCode).emit('round-start', {
+    roundNumber: room.currentRound,
+    totalRounds,
+    content: nextRound.content,
+    timePerRound: room.roundTimerSeconds,
+  })
+
+  console.log(`[startNextRound] Round ${room.currentRound + 1} started in room ${roomCode}. Timer: ${room.roundTimerSeconds}s`)
 }
 
 function handleGameEnd(roomCode: string, wasEarlyEnd: boolean = false) {
