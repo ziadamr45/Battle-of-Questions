@@ -372,3 +372,28 @@ Stage Summary:
 - Players now control when they're done via "خلصت؟" button (after 3 min)
 - Waiting overlay shows who hasn't finished, with option to go back
 - Round ends when all players finish OR timer expires
+
+---
+Task ID: 3
+Agent: Main
+Task: Add rematch system + voice chat disconnect on game end
+
+Work Log:
+- Added rematch data tracking in game service (RematchData interface, rematchData Map)
+- Added request-rematch socket event: first player creates new room, others join it
+- New room uses same game settings as the previous battle
+- First player to click "نعم" becomes the new host
+- Rematch data stored for 2 minutes after game ends, then cleaned up
+- Added voice chat disconnect (disconnectLiveKit) when game-ended event fires
+- Added rematch prompt overlay in ResultsScreen after 2 second delay
+- Prompt shows "عايز تلعب معركة مشابهه؟" with "نعم" and "ارجع للصفحة الرئيسية" buttons
+- "نعم" emits request-rematch and navigates to new lobby
+- "ارجع" disconnects and goes to home screen
+- Replaced old "معركة جديدة" button with "ارجع للصفحة الرئيسية" button
+- Build succeeds, lint passes
+
+Stage Summary:
+- Rematch system fully implemented (server + client)
+- Voice chat auto-disconnects when battle ends
+- Players can rematch with same settings in a new room
+- First player to rematch becomes the new host
