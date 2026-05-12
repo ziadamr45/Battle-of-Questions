@@ -190,13 +190,6 @@ const socialLinks = [
     color: '#00C7B7',
     icon: 'globe',
   },
-  {
-    name: 'الموقع البديل',
-    nameEn: 'Website (Vercel)',
-    url: 'https://ziadamrme.vercel.app',
-    color: '#FFFFFF',
-    icon: 'globe',
-  },
 ]
 
 /* ─── Social Icon Renderer ─── */
