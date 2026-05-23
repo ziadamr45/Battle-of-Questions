@@ -1,5 +1,10 @@
 <div align="center">
 
+
+## 📸 معاينة | Screenshot
+
+![Screenshot](public/logo-new.png)
+
 # ⚔️ معركة الأسئلة | Battle of Questions
 
 ### لعبة أسئلة تفاعلية متعددة اللاعبين مع غرف مباشرة وفرق
