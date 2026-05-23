@@ -17,7 +17,7 @@
 
 ---
 
-## 📖 نبذة | Overview
+## 📖 نبذة
 
 <div dir="rtl">
 
@@ -27,30 +27,126 @@
 
 </div>
 
+## ✨ المميزات
+
+| الميزة | الوصف |
+|--------|-------|
+| ⚔️ معارك أسئلة في الوقت الحقيقي | تنافس مع لاعبين آخرين مباشرة |
+| 🏠 غرف لعب عامة وخاصة | أنشئ أو انضم لغرف اللعب |
+| 👥 وضع الفرق والتحديات الفردية | تحديات 1 ضد 1 أو فرق ضد فرق |
+| 📊 نظام تسجيل نقاط مباشر | تابع نقاطك في الوقت الحقيقي |
+| 🎯 مستويات صعوبة متعددة | سهل، متوسط، وصعب |
+| 📝 أنواع أسئلة متنوعة | اختيار من متعدد، صح/خطأ، والمزيد |
+| 🔊 مؤثرات صوتية | أصوت وتأثيرات تفاعلية |
+| 🐳 دعم Docker للنشر | نشر سهل باستخدام الحاويات |
+| 📱 تصميم متجاوب | يعمل على جميع الأجهزة |
+| 🌙 وضع داكن/فاتح | اختر المظهر المناسب لك |
+
+## 🛠️ التقنيات
+
+| التقنية | الاستخدام |
+|---------|-----------|
+| ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white) | إطار العمل الكامل |
+| ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) | تطوير آمن بالأنواع |
+| ![Socket.io](https://img.shields.io/badge/Socket.io-010101?style=flat&logo=socket.io&logoColor=white) | الاتصال الفوري |
+| ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white) | التصميم |
+| ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-000000?style=flat) | مكونات واجهة المستخدم |
+| ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat&logo=prisma&logoColor=white) | ORM لقاعدة البيانات |
+| ![Framer Motion](https://img.shields.io/badge/Framer_Motion-0055FF?style=flat&logo=framer&logoColor=white) | الحركات والأنيميشن |
+| ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) | الحاويات |
+| ![Railway](https://img.shields.io/badge/Railway-0B0D0E?style=flat&logo=railway&logoColor=white) | النشر والاستضافة |
+
+## 🚀 التشغيل
+
+### المتطلبات
+
+- Node.js 18+ أو Bun
+- npm أو yarn أو bun
+- Docker (اختياري، للنشر بالحاويات)
+
+### التثبيت
+
+```bash
+# استنساخ المستودع
+git clone https://github.com/ziadamr45/Battle-of-Questions.git
+cd Battle-of-Questions
+
+# تثبيت التبعيات
+npm install
+# أو
+bun install
+
+# إعداد متغيرات البيئة
+cp .env.example .env
+# عدّل ملف .env بالإعدادات الخاصة بك
+
+# تشغيل تهجيرات قاعدة البيانات
+npx prisma migrate dev
+
+# تشغيل خادم التطوير
+npm run dev
+```
+
+### النشر باستخدام Docker
+
+```bash
+# بناء وتشغيل باستخدام Docker
+docker build -t battle-of-questions .
+docker run -p 3000:3000 battle-of-questions
+
+# أو استخدم سكربت التشغيل
+./start-all.sh
+```
+
+التطبيق سيعمل على `http://localhost:3000`
+
+## 🎮 أوضاع اللعب
+
+| الوضع | الوصف |
+|-------|-------|
+| 🗡️ تحدي فردي | معركة أسئلة 1 ضد 1 |
+| ⚔️ معركة فرق | منافسة فريق ضد فريق |
+| 🎯 مخصص | إعدادات لعب قابلة للتخصيص |
+| 📖 مراجعة الإجابات | مراجعة الإجابات الصحيحة بعد اللعبة |
+
+---
+
+<div align="center">
+
+Made with ❤️ by [Ziad Amr](https://github.com/ziadamr45)
+
+</div>
+
+---
+
+## ⚠️ رخصة عرض المصدر
+
+هذا المشروع متاح **للعرض والاطلاع فقط**. لا يمكن نسخ الكود أو إعادة إنتاجه أو استخدامه في مشاريع أخرى. راجع [LICENSE.md](./LICENSE.md) للتفاصيل الكاملة.
+
+---
+
+## English
+
 **Battle of Questions** is an interactive web game that allows players to compete in real-time quiz battles. Players can create private or public game rooms, engage in individual or team challenges, with live scoring and a diverse range of question types and difficulty levels.
 
 The game uses Socket.io for real-time communication and includes multiple game modes such as solo challenges, team battles, and custom modes.
 
----
+### Features
 
-## ✨ المميزات | Features
+| Feature | Description |
+|---------|-------------|
+| ⚔️ Real-time quiz battles | Compete with other players live |
+| 🏠 Public & private game rooms | Create or join game rooms |
+| 👥 Team mode & solo challenges | 1v1 or team vs team challenges |
+| 📊 Live scoring system | Track your score in real time |
+| 🎯 Multiple difficulty levels | Easy, medium, and hard |
+| 📝 Diverse question types | Multiple choice, true/false, and more |
+| 🔊 Sound effects | Interactive audio and effects |
+| 🐳 Docker support for deployment | Easy containerized deployment |
+| 📱 Responsive design | Works on all devices |
+| 🌙 Dark/Light mode | Choose your preferred theme |
 
-| الميزة | Feature |
-|--------|---------|
-| ⚔️ معارك أسئلة في الوقت الحقيقي | Real-time quiz battles |
-| 🏠 غرف لعب عامة وخاصة | Public & private game rooms |
-| 👥 وضع الفرق والتحديات الفردية | Team mode & solo challenges |
-| 📊 نظام تسجيل نقاط مباشر | Live scoring system |
-| 🎯 مستويات صعوبة متعددة | Multiple difficulty levels |
-| 📝 أنواع أسئلة متنوعة | Diverse question types |
-| 🔊 مؤثرات صوتية | Sound effects & audio engine |
-| 🐳 دعم Docker للنشر | Docker support for deployment |
-| 📱 تصميم متجاوب | Responsive design |
-| 🌙 وضع داكن/فاتح | Dark/Light mode |
-
----
-
-## 🛠️ التقنيات | Tech Stack
+### Tech Stack
 
 | Technology | Purpose |
 |------------|---------|
@@ -64,17 +160,15 @@ The game uses Socket.io for real-time communication and includes multiple game m
 | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) | Containerization |
 | ![Railway](https://img.shields.io/badge/Railway-0B0D0E?style=flat&logo=railway&logoColor=white) | Deployment |
 
----
+### Getting Started
 
-## 🚀 التشغيل | Getting Started
-
-### المتطلبات | Prerequisites
+#### Prerequisites
 
 - Node.js 18+ or Bun
 - npm, yarn, or bun
 - Docker (optional, for containerized deployment)
 
-### التثبيت | Installation
+#### Installation
 
 ```bash
 # Clone the repository
@@ -97,7 +191,7 @@ npx prisma migrate dev
 npm run dev
 ```
 
-### Docker Deployment
+#### Docker Deployment
 
 ```bash
 # Build and run with Docker
@@ -110,16 +204,14 @@ docker run -p 3000:3000 battle-of-questions
 
 The app will be available at `http://localhost:3000`
 
----
+### Game Modes
 
-## 🎮 أوضاع اللعب | Game Modes
-
-| الوضع | Mode | Description |
-|-------|------|-------------|
-| 🗡️ تحدي فردي | Solo Challenge | 1v1 quiz battle |
-| ⚔️ معركة فرق | Team Battle | Team vs team competition |
-| 🎯 مخصص | Custom | Customizable game settings |
-| 📖 مراجعة الإجابات | Answer Review | Review correct answers after game |
+| Mode | Description |
+|------|-------------|
+| 🗡️ Solo Challenge | 1v1 quiz battle |
+| ⚔️ Team Battle | Team vs team competition |
+| 🎯 Custom | Customizable game settings |
+| 📖 Answer Review | Review correct answers after game |
 
 ---
 
@@ -129,11 +221,8 @@ Made with ❤️ by [Ziad Amr](https://github.com/ziadamr45)
 
 </div>
 
-
 ---
 
-## ⚠️ Source Available License | رخصة عرض المصدر
+## ⚠️ Source Available License
 
 This project is available for **viewing and reference only**. The code cannot be copied, reproduced, or used in other projects. See [LICENSE.md](./LICENSE.md) for full details.
-
-هذا المشروع متاح **للعرض والاطلاع فقط**. لا يمكن نسخ الكود أو إعادة إنتاجه أو استخدامه في مشاريع أخرى. راجع [LICENSE.md](./LICENSE.md) للتفاصيل الكاملة.
