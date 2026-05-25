@@ -119,12 +119,11 @@ Ziad Amr
 
 ---
 
-## ⚠️ رخصة عرض المصدر
+### 📜 الرخصة
 
 هذا المشروع متاح **للعرض والاطلاع فقط**. لا يمكن نسخ الكود أو إعادة إنتاجه أو استخدامه في مشاريع أخرى. راجع [LICENSE.md](./LICENSE.md) للتفاصيل الكاملة.
 
 ---
-
 
 
 ### 👨‍💻 المطور
@@ -145,6 +144,7 @@ Ziad Amr
 ---
 
 ## English
+
 
 **Battle of Questions** is an interactive web game that allows players to compete in real-time quiz battles. Players can create private or public game rooms, engage in individual or team challenges, with live scoring and a diverse range of question types and difficulty levels.
 
@@ -243,7 +243,6 @@ Ziad Amr
 ---
 
 
-
 ### 👨‍💻 Developer
 
 **Ziad Amr**
@@ -259,6 +258,6 @@ Ziad Amr
 - 💼 LinkedIn: [ziad-amr](https://www.linkedin.com/in/ziad-amr-44633a411)
 - 📧 Email: ziad90216@gmail.com
 
-## ⚠️ Source Available License
+### ⚠️ Source Available License
 
 This project is available for **viewing and reference only**. The code cannot be copied, reproduced, or used in other projects. See [LICENSE.md](./LICENSE.md) for full details.
