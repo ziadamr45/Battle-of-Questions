@@ -1,75 +1,114 @@
+<div align="center">
+
+
+## 📸 لقطات الشاشة | Screenshots
+
+![Screenshot](screenshot.png)
+
 # ⚔️ معركة الأسئلة | Battle of Questions
 
-[![License](https://img.shields.io/badge/License-Source_Available-blue)](LICENSE.md)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue)]()
-[![Website](https://img.shields.io/website?url=https://battle-of-questions.vercel.app)](https://battle-of-questions.vercel.app)
+### لعبة أسئلة تفاعلية متعددة اللاعبين مع غرف مباشرة وفرق
+### Multiplayer quiz battle game with real-time rooms, team modes & live scoring
 
-> لعبة أسئلة تفاعلية متعددة اللاعبين مع غرف مباشرة وفرق
-> Multiplayer quiz battle game with real-time rooms, team modes & live scoring
+[![Live Demo](https://img.shields.io/badge/Live-Demo-0a5c5c?style=for-the-badge&logo=vercel&logoColor=white)](https://battle-of-questions.vercel.app)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/ziadamr45/Battle-of-Questions)
 
-![Battle of Questions Screenshot](screenshot.png)
+</div>
 
 ---
 
-## 🇪🇬 العربية
+## 📖 نبذة
 
-### المميزات
+<div dir="rtl">
 
-- ⚔️ **معارك أسئلة في الوقت الحقيقي** — تنافس مع لاعبين آخرين مباشرة
-- 🏠 **غرف لعب عامة وخاصة** — أنشئ أو انضم لغرف اللعب
-- 👥 **وضع الفرق والتحديات الفردية** — تحديات 1 ضد 1 أو فرق ضد فرق
-- 📊 **نظام تسجيل نقاط مباشر** — تابع نقاطك في الوقت الحقيقي
-- 🎯 **مستويات صعوبة متعددة** — سهل، متوسط، وصعب
-- 📝 **أنواع أسئلة متنوعة** — اختيار من متعدد، صح/خطأ، والمزيد
-- 🔊 **مؤثرات صوتية** — أصوات وتأثيرات تفاعلية
-- 🐳 **دعم Docker للنشر** — نشر سهل باستخدام الحاويات
-- 📱 **تصميم متجاوب** — يعمل على جميع الأجهزة
-- 🌙 **وضع داكن/فاتح** — اختر المظهر المناسب لك
+**معركة الأسئلة** هي لعبة أسئلة تفاعلية متعددة اللاعبين تتيح للاعبين التنافس في معارك أسئلة في الوقت الحقيقي. تدعم اللعبة غرف لعب عامة وخاصة، وضع الفرق والتحديات الفردية، مع نظام تسجيل نقاط مباشر ومستويات صعوبة متعددة وأنواع أسئلة متنوعة. التطبيق مبني بتقنيات Next.js و Socket.io لضمان تجربة لعب فورية ومباشرة في جو مليء بالإثارة والمنافسة.
 
-### أوضاع اللعب
+</div>
+
+## ✨ المميزات
+
+| الميزة | الوصف |
+|--------|-------|
+| ⚔️ معارك أسئلة في الوقت الحقيقي | تنافس مباشر مع لاعبين آخرين |
+| 🏠 غرف لعب عامة وخاصة | أنشئ غرفك أو انضم لغرف عامة |
+| 👥 وضع الفرق والتحديات الفردية | العب بفريق أو بشكل فردي |
+| 📊 نظام تسجيل نقاط مباشر | تتبع النقاط في الوقت الحقيقي |
+| 🎯 مستويات صعوبة متعددة | اختبر معلوماتك بمستويات مختلفة |
+| 📝 أنواع أسئلة متنوعة | أسئلة متعددة الخيارات وصح/خطأ والمزيد |
+| 🔊 مؤثرات صوتية | أصوات تفاعلية تزيد من الإثارة |
+| 🐳 دعم Docker للنشر | نشر سهل وسريع عبر Docker |
+| 📱 تصميم متجاوب | يعمل على جميع الأجهزة |
+| 🌙 وضع داكن/فاتح | اختر المظهر المناسب لك |
+
+## 🎮 أوضاع اللعب
 
 | الوضع | الوصف |
 |-------|-------|
-| 🗡️ تحدي فردي | معركة أسئلة 1 ضد 1 |
-| ⚔️ معركة فرق | منافسة فريق ضد فريق |
-| 🎯 مخصص | إعدادات لعب قابلة للتخصيص |
-| 📖 مراجعة الإجابات | مراجعة الإجابات الصحيحة بعد اللعبة |
+| ⚔️ معركة فردية | تنافس 1 ضد 1 في معركة أسئلة مباشرة |
+| 👥 معركة فرق | شكّل فريقاً وتنافس ضد فرق أخرى |
+| 🏠 غرف عامة | انضم لأي غرفة مفتوحة والعب مع لاعبين جدد |
+| 🔒 غرف خاصة | أنشئ غرفة خاصة وألعب مع أصدقائك |
 
-### التقنيات
+## 🛠️ التقنيات
 
-- Next.js، TypeScript، Socket.io، Tailwind CSS، shadcn/ui، Prisma، Framer Motion، Docker، Railway
+| التقنية | الاستخدام |
+|---------|-----------|
+| ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white) | إطار العمل الكامل |
+| ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) | تطوير آمن بالأنواع |
+| ![Socket.io](https://img.shields.io/badge/Socket.io-010101?style=flat&logo=socket.io&logoColor=white) | اتصال في الوقت الحقيقي |
+| ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white) | التصميم |
+| ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-000000?style=flat) | مكونات واجهة المستخدم |
+| ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat&logo=prisma&logoColor=white) | ORM لقاعدة البيانات |
+| ![Framer Motion](https://img.shields.io/badge/Framer_Motion-0055FF?style=flat&logo=framer&logoColor=white) | الحركات والأنيميشن |
+| ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) | النشر والحاويات |
+| ![Railway](https://img.shields.io/badge/Railway-0B0D0E?style=flat&logo=railway&logoColor=white) | استضافة الخادم |
+
+## 🚀 التشغيل
+
+### المتطلبات
+
+- Node.js 18+
+- npm أو yarn أو bun
+- Docker (اختياري للنشر)
 
 ### التثبيت
 
 ```bash
+# استنساخ المستودع
 git clone https://github.com/ziadamr45/Battle-of-Questions.git
 cd Battle-of-Questions
+
+# تثبيت التبعيات
 npm install
-# إعداد .env من .env.example
+# أو
+bun install
+
+# إعداد متغيرات البيئة
+cp .env.example .env
+# عدّل ملف .env بإعدادات قاعدة البيانات
+
+# تشغيل تهجيرات قاعدة البيانات
 npx prisma migrate dev
+
+# تشغيل خادم التطوير
 npm run dev
 ```
 
-#### النشر باستخدام Docker
+التطبيق سيعمل على `http://localhost:3000`
+
+### النشر عبر Docker
 
 ```bash
+# بناء الصورة
 docker build -t battle-of-questions .
-docker run -p 3000:3000 battle-of-questions
-# أو استخدم سكربت التشغيل
-./start-all.sh
+
+# تشغيل الحاوية
+docker run -p 3000:3000 --env-file .env battle-of-questions
 ```
 
-### تجربة مباشرة
+### 📜 الرخصة
 
-[battle-of-questions.vercel.app](https://battle-of-questions.vercel.app)
-
-### المساهمة
-
-راجع [CONTRIBUTING.md](CONTRIBUTING.md)
-
-### الرخصة
-
-هذا المشروع يستخدم [رخصة عرض المصدر](LICENSE.md) — © 2026 زياد عمرو
+هذا المشروع متاح **للعرض والاطلاع فقط**. لا يمكن نسخ الكود أو إعادة إنتاجه أو استخدامه في مشاريع أخرى.
 
 ---
 
@@ -96,65 +135,95 @@ docker run -p 3000:3000 battle-of-questions
 
 ---
 
-## 🌐 English
+## English
+
+
+**Battle of Questions** is a multiplayer interactive quiz game that allows players to compete in real-time quiz battles. The game supports public and private game rooms, team mode and solo challenges, with a live scoring system, multiple difficulty levels, and diverse question types. Built with Next.js and Socket.io for an instant and direct gameplay experience in an atmosphere full of excitement and competition.
 
 ### Features
 
-- ⚔️ **Real-time quiz battles** — Compete with other players live
-- 🏠 **Public & private game rooms** — Create or join game rooms
-- 👥 **Team mode & solo challenges** — 1v1 or team vs team challenges
-- 📊 **Live scoring system** — Track your score in real time
-- 🎯 **Multiple difficulty levels** — Easy, medium, and hard
-- 📝 **Diverse question types** — Multiple choice, true/false, and more
-- 🔊 **Sound effects** — Interactive audio and effects
-- 🐳 **Docker support for deployment** — Easy containerized deployment
-- 📱 **Responsive design** — Works on all devices
-- 🌙 **Dark/Light mode** — Choose your preferred theme
+| Feature | Description |
+|---------|-------------|
+| ⚔️ Real-time quiz battles | Compete directly with other players |
+| 🏠 Public & private game rooms | Create your room or join public ones |
+| 👥 Team mode & solo challenges | Play as a team or individually |
+| 📊 Live scoring system | Track scores in real-time |
+| 🎯 Multiple difficulty levels | Test your knowledge at different levels |
+| 📝 Diverse question types | Multiple choice, true/false, and more |
+| 🔊 Sound effects | Interactive sounds that add excitement |
+| 🐳 Docker support for deployment | Easy and fast deployment via Docker |
+| 📱 Responsive design | Works on all devices |
+| 🌙 Dark/Light mode | Choose your preferred theme |
 
 ### Game Modes
 
 | Mode | Description |
 |------|-------------|
-| 🗡️ Solo Challenge | 1v1 quiz battle |
-| ⚔️ Team Battle | Team vs team competition |
-| 🎯 Custom | Customizable game settings |
-| 📖 Answer Review | Review correct answers after game |
+| ⚔️ Solo Battle | Compete 1v1 in a live quiz battle |
+| 👥 Team Battle | Form a team and compete against other teams |
+| 🏠 Public Rooms | Join any open room and play with new players |
+| 🔒 Private Rooms | Create a private room and play with friends |
 
-### Technologies
+### Tech Stack
 
-- Next.js, TypeScript, Socket.io, Tailwind CSS, shadcn/ui, Prisma, Framer Motion, Docker, Railway
+| Technology | Purpose |
+|------------|---------|
+| ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white) | Fullstack Framework |
+| ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) | Type-safe Development |
+| ![Socket.io](https://img.shields.io/badge/Socket.io-010101?style=flat&logo=socket.io&logoColor=white) | Real-time Communication |
+| ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white) | Styling |
+| ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-000000?style=flat) | UI Components |
+| ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat&logo=prisma&logoColor=white) | Database ORM |
+| ![Framer Motion](https://img.shields.io/badge/Framer_Motion-0055FF?style=flat&logo=framer&logoColor=white) | Animations |
+| ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) | Deployment & Containers |
+| ![Railway](https://img.shields.io/badge/Railway-0B0D0E?style=flat&logo=railway&logoColor=white) | Server Hosting |
 
-### Installation
+### Getting Started
+
+#### Prerequisites
+
+- Node.js 18+ or Bun
+- npm, yarn, or bun
+- Docker (optional for deployment)
+
+#### Installation
 
 ```bash
+# Clone the repository
 git clone https://github.com/ziadamr45/Battle-of-Questions.git
 cd Battle-of-Questions
+
+# Install dependencies
 npm install
-# Set up .env from .env.example
+# or
+bun install
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your database configuration
+
+# Run database migrations
 npx prisma migrate dev
+
+# Start development server
 npm run dev
 ```
+
+The app will be available at `http://localhost:3000`
 
 #### Docker Deployment
 
 ```bash
+# Build the image
 docker build -t battle-of-questions .
-docker run -p 3000:3000 battle-of-questions
-# Or use the start script
-./start-all.sh
+
+# Run the container
+docker run -p 3000:3000 --env-file .env battle-of-questions
 ```
-
-### Live Demo
-
-[battle-of-questions.vercel.app](https://battle-of-questions.vercel.app)
-
-### Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ### License
 
-This project uses [Source Available License](LICENSE.md) — © 2026 Ziad Amr
+This project is available for **viewing and reference only**. The code cannot be copied, reproduced, or used in other projects.
 
 ---
 
