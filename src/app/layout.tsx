@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cairo } from "next/font/google";
 import "./globals.css";
 import { BattleToastProvider } from "@/components/battle-toast";
@@ -10,19 +10,20 @@ const cairo = Cairo({
   display: "swap",
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
   title: "معركة الأسئلة - تحدي القراءة المتحررة والنصوص",
   description: "ادخل ساحة المعركة وتنافس مع أصدقائك في تحديات القراءة المتحررة والنصوص! معركة مسابقات جماعية أونلاين بالذكاء الاصطناعي.",
   keywords: ["معركة الأسئلة", "قراءة متحررة", "نصوص", "تحدي", "معركة تعليمية", "عربي", "مسابقات"],
   icons: {
     icon: "/logo.svg",
-  },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-    viewportFit: "cover",
   },
 };
 
