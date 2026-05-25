@@ -10,7 +10,7 @@
 ### لعبة أسئلة تفاعلية متعددة اللاعبين مع غرف مباشرة وفرق
 ### Multiplayer quiz battle game with real-time rooms, team modes & live scoring
 
-[![Live Demo](https://img.shields.io/badge/Live-Demo-0a5c5c?style=for-the-badge&logo=vercel&logoColor=white)](https://battle-of-questions.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-0a5c5c?style=for-the-badge&logo=vercel&logoColor=white)](https://ma3raka.vercel.app/)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/ziadamr45/Battle-of-Questions)
 
 </div>
