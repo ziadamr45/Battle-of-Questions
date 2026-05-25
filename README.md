@@ -125,6 +125,25 @@ Ziad Amr
 
 ---
 
+
+
+### 👨‍💻 المطور
+
+**زياد عمرو (Ziad Amr)**
+
+- 🌐 الموقع الشخصي: [ziadamrme.vercel.app](https://ziadamrme.vercel.app)
+- 💼 GitHub: [ziadamr45](https://github.com/ziadamr45)
+- 📘 Facebook: [ziad7mr](https://www.facebook.com/ziad7mr)
+- 💬 Telegram: [@ziadamr](https://t.me/ziadamr)
+- 📸 Instagram: [ziadamr455](https://www.instagram.com/ziadamr455/)
+- 🧵 Threads: [@ziadamr455](https://www.threads.com/@ziadamr455)
+- 🐦 X: [@ziad90216](https://x.com/ziad90216)
+- 🎥 YouTube: [@alhayat_ala_eltarek](https://youtube.com/@alhayat_ala_eltarek?si=pcsc_31Kcv3Jym14)
+- 💼 LinkedIn: [ziad-amr](https://www.linkedin.com/in/ziad-amr-44633a411)
+- 📧 Email: ziad90216@gmail.com
+
+---
+
 ## English
 
 **Battle of Questions** is an interactive web game that allows players to compete in real-time quiz battles. Players can create private or public game rooms, engage in individual or team challenges, with live scoring and a diverse range of question types and difficulty levels.
@@ -222,6 +241,23 @@ Ziad Amr
 </div>
 
 ---
+
+
+
+### 👨‍💻 Developer
+
+**Ziad Amr**
+
+- 🌐 Portfolio: [ziadamrme.vercel.app](https://ziadamrme.vercel.app)
+- 💼 GitHub: [ziadamr45](https://github.com/ziadamr45)
+- 📘 Facebook: [ziad7mr](https://www.facebook.com/ziad7mr)
+- 💬 Telegram: [@ziadamr](https://t.me/ziadamr)
+- 📸 Instagram: [ziadamr455](https://www.instagram.com/ziadamr455/)
+- 🧵 Threads: [@ziadamr455](https://www.threads.com/@ziadamr455)
+- 🐦 X: [@ziad90216](https://x.com/ziad90216)
+- 🎥 YouTube: [@alhayat_ala_eltarek](https://youtube.com/@alhayat_ala_eltarek?si=pcsc_31Kcv3Jym14)
+- 💼 LinkedIn: [ziad-amr](https://www.linkedin.com/in/ziad-amr-44633a411)
+- 📧 Email: ziad90216@gmail.com
 
 ## ⚠️ Source Available License
 
