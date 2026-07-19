@@ -144,13 +144,17 @@ docker run -p 3000:3000 --env-file .env battle-of-questions
 
 - 🌐 الموقع الشخصي: [ziadamrme.vercel.app](https://ziadamrme.vercel.app)
 - 💼 جيت هاب: [ziadamr45](https://github.com/ziadamr45)
-- 📘 فيسبوك: [ziad7mr](https://www.facebook.com/ziad7mr)
+- 📘 فيسبوك: [ziadamr.me](https://www.facebook.com/ziadamr.me)
+- 💬 واتساب: [+201152978155](https://wa.me/+201152978155)
 - 💬 تيليجرام: [@ziadamr](https://t.me/ziadamr)
-- 📸 انستجرام: [ziadamr455](https://www.instagram.com/ziadamr455/)
-- 🧵 ثريدز: [@ziadamr455](https://www.threads.com/@ziadamr455)
-- 🐦 إكس: [@ziad90216](https://x.com/ziad90216)
+- 📸 انستجرام: [ziadamr.me](https://www.instagram.com/ziadamr.me/)
+- 🧵 ثريدز: [@ziadamr.me](https://www.threads.com/@ziadamr.me)
+- 🐦 إكس: [@ziadamrme](https://x.com/ziadamrme)
 - 🎥 يوتيوب: [@alhayat_ala_eltarek](https://youtube.com/@alhayat_ala_eltarek?si=pcsc_31Kcv3Jym14)
+- 🎵 تيك توك: [حساب تيك توك](https://vm.tiktok.com/ZS9rjN7J3b6WU-LATna/)
+- 👻 سناب شات: [ziad7mr](https://www.snapchat.com/add/ziad7mr?share_id=bQA1QOucAd8&locale=ar-EG)
 - 💼 لينكد إن: [ziad-amr](https://www.linkedin.com/in/ziad-amr-44633a411)
+- 💻 ديف تو: [ziad_amr](https://dev.to/ziad_amr_0e76916f10a8563a)
 - 📧 البريد الإلكتروني: ziad90216@gmail.com
 
 ---
@@ -285,13 +289,17 @@ This project is available for **viewing and reference only**. The code cannot be
 
 - 🌐 Portfolio: [ziadamrme.vercel.app](https://ziadamrme.vercel.app)
 - 💼 GitHub: [ziadamr45](https://github.com/ziadamr45)
-- 📘 Facebook: [ziad7mr](https://www.facebook.com/ziad7mr)
+- 📘 Facebook: [ziadamr.me](https://www.facebook.com/ziadamr.me)
+- 💬 WhatsApp: [+201152978155](https://wa.me/+201152978155)
 - 💬 Telegram: [@ziadamr](https://t.me/ziadamr)
-- 📸 Instagram: [ziadamr455](https://www.instagram.com/ziadamr455/)
-- 🧵 Threads: [@ziadamr455](https://www.threads.com/@ziadamr455)
-- 🐦 X: [@ziad90216](https://x.com/ziad90216)
+- 📸 Instagram: [ziadamr.me](https://www.instagram.com/ziadamr.me/)
+- 🧵 Threads: [@ziadamr.me](https://www.threads.com/@ziadamr.me)
+- 🐦 X: [@ziadamrme](https://x.com/ziadamrme)
 - 🎥 YouTube: [@alhayat_ala_eltarek](https://youtube.com/@alhayat_ala_eltarek?si=pcsc_31Kcv3Jym14)
+- 🎵 TikTok: [TikTok](https://vm.tiktok.com/ZS9rjN7J3b6WU-LATna/)
+- 👻 Snapchat: [ziad7mr](https://www.snapchat.com/add/ziad7mr?share_id=bQA1QOucAd8&locale=ar-EG)
 - 💼 LinkedIn: [ziad-amr](https://www.linkedin.com/in/ziad-amr-44633a411)
+- 💻 Dev.to: [ziad_amr](https://dev.to/ziad_amr_0e76916f10a8563a)
 - 📧 Email: ziad90216@gmail.com
 
 ---

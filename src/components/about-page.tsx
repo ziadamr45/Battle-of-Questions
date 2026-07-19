@@ -27,6 +27,8 @@ import {
   Youtube,
   Twitter,
   Instagram,
+  MessageCircle,
+  Linkedin,
 } from 'lucide-react'
 
 interface AboutPageProps {
@@ -130,9 +132,16 @@ const socialLinks = [
   {
     name: 'فيسبوك',
     nameEn: 'Facebook',
-    url: 'https://www.facebook.com/ziad7mr',
+    url: 'https://www.facebook.com/ziadamr.me',
     color: '#1877F2',
     icon: 'facebook',
+  },
+  {
+    name: 'واتساب',
+    nameEn: 'WhatsApp',
+    url: 'https://wa.me/+201152978155',
+    color: '#25D366',
+    icon: 'message-circle',
   },
   {
     name: 'تيليجرام',
@@ -158,23 +167,51 @@ const socialLinks = [
   {
     name: 'إنستاجرام',
     nameEn: 'Instagram',
-    url: 'https://www.instagram.com/ziadamr455/',
+    url: 'https://www.instagram.com/ziadamr.me/',
     color: '#E4405F',
     icon: 'instagram',
   },
   {
     name: 'ثريدز',
     nameEn: 'Threads',
-    url: 'https://www.threads.com/@ziadamr455',
+    url: 'https://www.threads.com/@ziadamr.me',
     color: '#FFFFFF',
     icon: 'at-sign',
   },
   {
     name: 'إكس',
     nameEn: 'X / Twitter',
-    url: 'https://x.com/ziad90216',
+    url: 'https://x.com/ziadamrme',
     color: '#1DA1F2',
     icon: 'twitter',
+  },
+  {
+    name: 'تيك توك',
+    nameEn: 'TikTok',
+    url: 'https://vm.tiktok.com/ZS9rjN7J3b6WU-LATna/',
+    color: '#000000',
+    icon: 'music',
+  },
+  {
+    name: 'سناب شات',
+    nameEn: 'Snapchat',
+    url: 'https://www.snapchat.com/add/ziad7mr?share_id=bQA1QOucAd8&locale=ar-EG',
+    color: '#FFFC00',
+    icon: 'ghost',
+  },
+  {
+    name: 'لينكد إن',
+    nameEn: 'LinkedIn',
+    url: 'https://www.linkedin.com/in/ziad-amr-44633a411',
+    color: '#0A66C2',
+    icon: 'linkedin',
+  },
+  {
+    name: 'ديف تو',
+    nameEn: 'Dev.to',
+    url: 'https://dev.to/ziad_amr_0e76916f10a8563a',
+    color: '#0A0A0A',
+    icon: 'code',
   },
   {
     name: 'غيتهب',
@@ -214,6 +251,24 @@ function SocialIcon({ icon, size = 20 }: { icon: string; size?: number }) {
       return <span className="font-black text-lg leading-none">@</span>
     case 'twitter':
       return <Twitter {...props} />
+    case 'message-circle':
+      return <MessageCircle {...props} />
+    case 'music':
+      return (
+        <svg {...props} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.15-.01-8.3.02-12.44z" />
+        </svg>
+      )
+    case 'ghost':
+      return (
+        <svg {...props} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C7.589 2 4 5.589 4 9.996V22l2-2 2 2 2-2 2 2 2-2 2 2V9.996C16 5.589 12.411 2 12 2zm0 2c2.309 0 4 1.691 4 3.996V17H8V7.996C8 5.691 9.691 4 12 4zm-2.5 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm5 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z" />
+        </svg>
+      )
+    case 'linkedin':
+      return <Linkedin {...props} />
+    case 'code':
+      return <Code2 {...props} />
     case 'github':
       return <Github {...props} />
     case 'globe':
