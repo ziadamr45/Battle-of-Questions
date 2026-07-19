@@ -37,7 +37,7 @@ const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'deepseek-ai/deepseek-v4-flash'
 // ─── OpenRouter (Fallback - ONLY used if NVIDIA fails completely) ────────
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-flash'
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001'
 
 // ─── Other config ────────────────────────────────────────────────────────
 const NEXT_APP_URL = process.env.NEXT_APP_URL || ''

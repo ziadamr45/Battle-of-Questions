@@ -13,7 +13,7 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
-        value: deepseek/deepseek-v4-flash
+        value: google/gemini-2.0-flash-001
       - key: NEXT_APP_URL
         value: https://ma3raka.vercel.app
       - key: NODE_ENV
