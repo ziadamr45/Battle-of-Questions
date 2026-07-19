@@ -456,7 +456,24 @@ const rematchData = new Map<string, RematchData>()
 const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
   if (req.url === '/health' || req.url === '/keepalive') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), rooms: rooms.size, players: socketRoomMap.size }))
+    res.end(JSON.stringify({ 
+      status: 'ok', 
+      uptime: process.uptime(), 
+      rooms: rooms.size, 
+      players: socketRoomMap.size,
+      llm: {
+        nvidia: {
+          keySet: !!NVIDIA_API_KEY,
+          model: NVIDIA_MODEL,
+          consecutiveFailures: nvidiaConsecutiveFailures,
+          fallbackActive: nvidiaFallbackActive,
+        },
+        openrouter: {
+          keySet: !!OPENROUTER_API_KEY,
+          model: OPENROUTER_MODEL,
+        }
+      }
+    }))
     return
   }
   // For any other path, let Socket.IO handle it
