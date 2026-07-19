@@ -416,15 +416,18 @@ function useGameSocket() {
       // Podium reveal after a delay
       setTimeout(() => audioEngine.podiumReveal(), 1500)
 
-      // ─── Save battle history in the background ───
+      // ─── Save battle history in the background (host only to avoid duplicates) ───
       if (data.battleData) {
         const playerName = store.getState().playerName
-        if (playerName) {
+        const isHost = store.getState().isHost
+        if (playerName && isHost) {
+          // Only the host saves the battle to avoid duplicates
           // Enrich battle data with guestId for reliable history lookup
           const battleDataWithGuest = { ...data.battleData }
           const guestId = useGuestStore.getState().guest?.id
           if (guestId && battleDataWithGuest.participants) {
-            // Add guestId to the participant that matches this player
+            // Add guestId to ALL participants so they can find this battle later
+            // We only have the current player's guestId, but the server sends all participants
             battleDataWithGuest.participants = battleDataWithGuest.participants.map((p: any) => {
               if (p.playerName === playerName) {
                 return { ...p, guestId }
@@ -436,8 +439,16 @@ function useGameSocket() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(battleDataWithGuest),
+          }).then(res => {
+            if (res.ok) {
+              console.log('[Battle History] ✅ Battle saved successfully')
+            } else {
+              return res.text().then(text => {
+                console.error('[Battle History] ❌ Save failed:', res.status, text)
+              })
+            }
           }).catch(err => {
-            console.error('[Battle History] Failed to save:', err)
+            console.error('[Battle History] ❌ Failed to save:', err)
           })
         }
       }
