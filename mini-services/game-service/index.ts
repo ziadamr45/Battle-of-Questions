@@ -2730,10 +2730,14 @@ io.on('connection', (socket: Socket) => {
         // Pre-generate ONLY the next round in the background (not all rounds)
         // This is much faster than generating all rounds sequentially
         prefetchNextRound(roomCode)
-      } catch (err) {
+      } catch (err: any) {
         console.error(`[start-game] Failed to generate content for room ${roomCode}:`, err)
         room.status = 'waiting'
         room.rounds = []
+        const errDetail = err?.message || String(err)
+        console.error(`[start-game] Error detail: ${errDetail}`)
+        console.error(`[start-game] NVIDIA key: ${NVIDIA_API_KEY ? 'SET' : 'MISSING'}, OpenRouter key: ${OPENROUTER_API_KEY ? 'SET' : 'MISSING'}`)
+        console.error(`[start-game] NVIDIA failures: ${nvidiaConsecutiveFailures}, Fallback active: ${nvidiaFallbackActive}`)
         io.to(roomCode).emit('game-error', {
           message: 'فشل في توليد محتوى المعركة. يرجى المحاولة مرة أخرى.',
         })
