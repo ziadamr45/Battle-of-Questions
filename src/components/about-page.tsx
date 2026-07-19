@@ -25,9 +25,7 @@ import {
   Lightbulb,
   Github,
   Youtube,
-  Twitter,
   Instagram,
-  MessageCircle,
   Linkedin,
 } from 'lucide-react'
 
@@ -141,14 +139,14 @@ const socialLinks = [
     nameEn: 'WhatsApp',
     url: 'https://wa.me/+201152978155',
     color: '#25D366',
-    icon: 'message-circle',
+    icon: 'whatsapp',
   },
   {
     name: 'تيليجرام',
     nameEn: 'Telegram',
     url: 'https://t.me/ziadamr',
-    color: '#0088CC',
-    icon: 'send',
+    color: '#26A5E4',
+    icon: 'telegram',
   },
   {
     name: 'البريد الإلكتروني',
@@ -176,28 +174,21 @@ const socialLinks = [
     nameEn: 'Threads',
     url: 'https://www.threads.com/@ziadamr.me',
     color: '#FFFFFF',
-    icon: 'at-sign',
+    icon: 'threads',
   },
   {
     name: 'إكس',
-    nameEn: 'X / Twitter',
+    nameEn: 'X',
     url: 'https://x.com/ziadamrme',
-    color: '#1DA1F2',
-    icon: 'twitter',
+    color: '#EEEEEE',
+    icon: 'x',
   },
   {
     name: 'تيك توك',
     nameEn: 'TikTok',
     url: 'https://vm.tiktok.com/ZS9rjN7J3b6WU-LATna/',
-    color: '#000000',
-    icon: 'music',
-  },
-  {
-    name: 'سناب شات',
-    nameEn: 'Snapchat',
-    url: 'https://www.snapchat.com/add/ziad7mr?share_id=bQA1QOucAd8&locale=ar-EG',
-    color: '#FFFC00',
-    icon: 'ghost',
+    color: '#FF004F',
+    icon: 'tiktok',
   },
   {
     name: 'لينكد إن',
@@ -205,13 +196,6 @@ const socialLinks = [
     url: 'https://www.linkedin.com/in/ziad-amr-44633a411',
     color: '#0A66C2',
     icon: 'linkedin',
-  },
-  {
-    name: 'ديف تو',
-    nameEn: 'Dev.to',
-    url: 'https://dev.to/ziad_amr_0e76916f10a8563a',
-    color: '#0A0A0A',
-    icon: 'code',
   },
   {
     name: 'غيتهب',
@@ -239,36 +223,44 @@ function SocialIcon({ icon, size = 20 }: { icon: string; size?: number }) {
           <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
         </svg>
       )
-    case 'send':
-      return <Send {...props} />
+    case 'whatsapp':
+      return (
+        <svg {...props} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+        </svg>
+      )
+    case 'telegram':
+      return (
+        <svg {...props} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+        </svg>
+      )
     case 'mail':
       return <Mail {...props} />
     case 'youtube':
       return <Youtube {...props} />
     case 'instagram':
       return <Instagram {...props} />
-    case 'at-sign':
-      return <span className="font-black text-lg leading-none">@</span>
-    case 'twitter':
-      return <Twitter {...props} />
-    case 'message-circle':
-      return <MessageCircle {...props} />
-    case 'music':
+    case 'threads':
+      return (
+        <svg {...props} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.34-.775-.95-1.416-1.76-1.874a7.627 7.627 0 0 1-.532 2.764c-.467 1.1-1.18 1.987-2.113 2.633-1.009.7-2.2 1.058-3.544 1.065h-.038c-1.63-.009-2.96-.586-3.845-1.67-.82-1.003-1.262-2.37-1.279-3.96.017-1.588.46-2.955 1.28-3.957.886-1.082 2.216-1.66 3.844-1.668h.038c1.643.009 2.95.57 3.78 1.624.386.488.682 1.075.89 1.74l-1.86.628c-.518-1.34-1.388-1.99-2.81-1.998h-.022c-1.03.006-1.82.347-2.347 1.014-.533.673-.815 1.634-.828 2.777.013 1.143.295 2.104.828 2.777.528.667 1.317 1.008 2.347 1.014.747-.004 1.378-.193 1.873-.564.437-.327.759-.81.962-1.438.086-.265.148-.556.187-.867a4.757 4.757 0 0 0-1.278-.18h-.015c-.923.006-1.586.26-1.97.756-.354.456-.537 1.12-.543 1.973.006.853.189 1.517.543 1.973.384.496 1.047.75 1.97.756.762-.004 1.375-.208 1.82-.607.414-.372.638-.866.672-1.474.15-.111.316-.207.497-.288.645-.285 1.312-.348 1.992-.186l-.016.012c.737-.198 1.404-.193 2.013.016.785.269 1.404.766 1.842 1.477.438.71.662 1.556.672 2.537-.01 1.494-.563 2.79-1.648 3.852-1.627 1.593-3.706 2.409-6.18 2.428h-.015z" />
+        </svg>
+      )
+    case 'x':
+      return (
+        <svg {...props} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+        </svg>
+      )
+    case 'tiktok':
       return (
         <svg {...props} viewBox="0 0 24 24" fill="currentColor">
           <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.15-.01-8.3.02-12.44z" />
         </svg>
       )
-    case 'ghost':
-      return (
-        <svg {...props} viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C7.589 2 4 5.589 4 9.996V22l2-2 2 2 2-2 2 2 2-2 2 2V9.996C16 5.589 12.411 2 12 2zm0 2c2.309 0 4 1.691 4 3.996V17H8V7.996C8 5.691 9.691 4 12 4zm-2.5 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm5 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z" />
-        </svg>
-      )
     case 'linkedin':
       return <Linkedin {...props} />
-    case 'code':
-      return <Code2 {...props} />
     case 'github':
       return <Github {...props} />
     case 'globe':
@@ -708,7 +700,7 @@ export function AboutPage({ onBack }: AboutPageProps) {
             <h2 className="text-2xl md:text-3xl font-black text-white">تواصل مع المحارب</h2>
           </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {socialLinks.map((link, i) => (
               <motion.a
                 key={i}
@@ -719,9 +711,9 @@ export function AboutPage({ onBack }: AboutPageProps) {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4, delay: i * 0.05 }}
-                whileHover={{ scale: 1.02, y: -2 }}
-                whileTap={{ scale: 0.98 }}
-                className="group relative rounded-2xl bg-gradient-to-br from-[#12121F] to-[#1A1A2E] border border-white/[0.06] p-4 flex items-center gap-4 overflow-hidden transition-all duration-300"
+                whileHover={{ scale: 1.04, y: -3 }}
+                whileTap={{ scale: 0.96 }}
+                className="group relative rounded-2xl bg-gradient-to-br from-[#12121F] to-[#1A1A2E] border border-white/[0.06] p-4 flex flex-col items-center justify-center gap-3 overflow-hidden transition-all duration-300"
                 style={{
                   ['--glow-color' as string]: link.color,
                 }}
@@ -730,7 +722,7 @@ export function AboutPage({ onBack }: AboutPageProps) {
                 <div
                   className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
                   style={{
-                    background: `radial-gradient(ellipse at center, ${link.color}08, transparent 70%)`,
+                    background: `radial-gradient(ellipse at center, ${link.color}10, transparent 70%)`,
                   }}
                 />
 
@@ -742,26 +734,17 @@ export function AboutPage({ onBack }: AboutPageProps) {
                   }}
                 />
 
-                {/* Sliding accent line */}
-                <motion.div
-                  className="absolute bottom-0 right-0 h-[2px] rounded-full"
-                  style={{ backgroundColor: link.color }}
-                  initial={{ width: 0 }}
-                  whileHover={{ width: '100%' }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }}
-                />
-
                 {/* Icon container */}
                 <div
-                  className="relative shrink-0 w-11 h-11 rounded-xl flex items-center justify-center border transition-all duration-300 group-hover:scale-110"
+                  className="relative w-12 h-12 rounded-xl flex items-center justify-center border transition-all duration-300 group-hover:scale-110"
                   style={{
-                    backgroundColor: `${link.color}12`,
+                    backgroundColor: `${link.color}15`,
                     borderColor: `${link.color}25`,
                     color: link.color,
                     boxShadow: `0 0 0px ${link.color}00`,
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = `0 0 20px ${link.color}25`
+                    e.currentTarget.style.boxShadow = `0 0 24px ${link.color}30`
                     e.currentTarget.style.borderColor = `${link.color}50`
                   }}
                   onMouseLeave={(e) => {
@@ -769,24 +752,15 @@ export function AboutPage({ onBack }: AboutPageProps) {
                     e.currentTarget.style.borderColor = `${link.color}25`
                   }}
                 >
-                  <SocialIcon icon={link.icon} size={18} />
+                  <SocialIcon icon={link.icon} size={20} />
                 </div>
 
                 {/* Text */}
-                <div className="relative min-w-0 flex-1">
-                  <div className="text-sm font-bold text-white/90 group-hover:text-white transition-colors truncate">
+                <div className="relative text-center min-w-0 w-full">
+                  <div className="text-xs font-bold text-white/90 group-hover:text-white transition-colors truncate">
                     {link.name}
                   </div>
-                  <div className="text-[11px] text-white/35 font-medium truncate">
-                    {link.nameEn}
-                  </div>
                 </div>
-
-                {/* Arrow */}
-                <ChevronLeft
-                  size={16}
-                  className="relative shrink-0 text-white/20 group-hover:text-white/50 group-hover:-translate-x-1 transition-all duration-300"
-                />
               </motion.a>
             ))}
           </div>

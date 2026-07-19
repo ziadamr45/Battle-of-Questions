@@ -152,9 +152,7 @@ docker run -p 3000:3000 --env-file .env battle-of-questions
 - 🐦 إكس: [@ziadamrme](https://x.com/ziadamrme)
 - 🎥 يوتيوب: [@alhayat_ala_eltarek](https://youtube.com/@alhayat_ala_eltarek?si=pcsc_31Kcv3Jym14)
 - 🎵 تيك توك: [حساب تيك توك](https://vm.tiktok.com/ZS9rjN7J3b6WU-LATna/)
-- 👻 سناب شات: [ziad7mr](https://www.snapchat.com/add/ziad7mr?share_id=bQA1QOucAd8&locale=ar-EG)
 - 💼 لينكد إن: [ziad-amr](https://www.linkedin.com/in/ziad-amr-44633a411)
-- 💻 ديف تو: [ziad_amr](https://dev.to/ziad_amr_0e76916f10a8563a)
 - 📧 البريد الإلكتروني: ziad90216@gmail.com
 
 ---
@@ -297,9 +295,7 @@ This project is available for **viewing and reference only**. The code cannot be
 - 🐦 X: [@ziadamrme](https://x.com/ziadamrme)
 - 🎥 YouTube: [@alhayat_ala_eltarek](https://youtube.com/@alhayat_ala_eltarek?si=pcsc_31Kcv3Jym14)
 - 🎵 TikTok: [TikTok](https://vm.tiktok.com/ZS9rjN7J3b6WU-LATna/)
-- 👻 Snapchat: [ziad7mr](https://www.snapchat.com/add/ziad7mr?share_id=bQA1QOucAd8&locale=ar-EG)
 - 💼 LinkedIn: [ziad-amr](https://www.linkedin.com/in/ziad-amr-44633a411)
-- 💻 Dev.to: [ziad_amr](https://dev.to/ziad_amr_0e76916f10a8563a)
 - 📧 Email: ziad90216@gmail.com
 
 ---
