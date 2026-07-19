@@ -17,6 +17,28 @@ const nextConfig: NextConfig = {
     OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || "placeholder",
     NEXT_APP_URL: process.env.NEXT_APP_URL || "http://localhost:3000",
   },
+  // Rewrite all non-API, non-static, non-_next paths to index page
+  // so that client-side routing handles /about, /history, /create, /join etc.
+  async rewrites() {
+    return [
+      {
+        source: '/about',
+        destination: '/',
+      },
+      {
+        source: '/history',
+        destination: '/',
+      },
+      {
+        source: '/create',
+        destination: '/',
+      },
+      {
+        source: '/join',
+        destination: '/',
+      },
+    ]
+  },
 };
 
 export default nextConfig;

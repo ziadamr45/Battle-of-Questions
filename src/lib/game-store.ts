@@ -9,6 +9,44 @@ export type BattleMode = 'فردي' | 'فرق'
 export type TeamId = 'A' | 'B'
 export type Screen = 'home' | 'create' | 'join' | 'lobby' | 'loading' | 'game' | 'results' | 'round-transition' | 'history' | 'about'
 
+// Map screen names to URL paths
+const screenToPath: Record<Screen, string> = {
+  home: '/',
+  create: '/create',
+  join: '/join',
+  lobby: '/lobby',
+  loading: '/loading',
+  game: '/game',
+  results: '/results',
+  'round-transition': '/round-transition',
+  history: '/history',
+  about: '/about',
+}
+
+// Map URL paths to screen names
+const pathToScreen: Record<string, Screen> = {
+  '/': 'home',
+  '/create': 'create',
+  '/join': 'join',
+  '/lobby': 'lobby',
+  '/loading': 'loading',
+  '/game': 'game',
+  '/results': 'results',
+  '/round-transition': 'round-transition',
+  '/history': 'history',
+  '/about': 'about',
+}
+
+// Screens that should not update the URL (transient/game-flow screens)
+const noUrlScreens: Screen[] = ['lobby', 'loading', 'game', 'results', 'round-transition']
+
+// Get the initial screen from the current URL path
+export function getScreenFromUrl(): Screen {
+  if (typeof window === 'undefined') return 'home'
+  const path = window.location.pathname
+  return pathToScreen[path] || 'home'
+}
+
 export interface Player {
   id: string
   name: string
@@ -192,7 +230,7 @@ interface PersistedState {
   roundResults: Record<number, RoundScore[]>
 }
 
-function saveToSessionStorage(state: PersistedState) {
+export function saveToSessionStorage(state: PersistedState) {
   try {
     // Only save if the user is in an active session (not home/join/create/about)
     if (state.screen === 'home' || state.screen === 'join' || state.screen === 'create' || state.screen === 'about') {
@@ -417,7 +455,7 @@ export function isRoundsPlayerCountConflict(players: number, rounds: number): bo
 }
 
 // Helper to get the persistable state from the store
-function getPersistableState(state: GameState): PersistedState {
+export function getPersistableState(state: GameState): PersistedState {
   return {
     screen: state.screen,
     playerName: state.playerName,
@@ -443,6 +481,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   screen: 'home',
   setScreen: (screen) => {
     set({ screen })
+    // Update browser URL to match the screen
+    if (typeof window !== 'undefined') {
+      const targetPath = screenToPath[screen]
+      const currentPath = window.location.pathname
+      // Only update URL for screens that should be bookmarkable/refreshable
+      // Game-flow screens (lobby, loading, game, etc.) keep their previous URL
+      if (!noUrlScreens.includes(screen) && targetPath !== currentPath) {
+        window.history.pushState(null, '', targetPath)
+      }
+    }
     setTimeout(() => saveToSessionStorage(getPersistableState(get())), 0)
   },
 

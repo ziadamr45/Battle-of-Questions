@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { useGameStore, loadFromSessionStorage, clearSessionStorage, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType, type AnswerReviewItem, type FullAnswerReviewItem, type ReadyStatus, type FinishedStatus, type BattleMode, type TeamId, type TeamsState, type TeamInfo, type TeamRoundScores, type ApprovalRequestState, type JoinRequestState, type ChatMessage, type ChatMode } from '@/lib/game-store'
+import { useGameStore, loadFromSessionStorage, clearSessionStorage, getScreenFromUrl, saveToSessionStorage, getPersistableState, type Screen, type GameType, type Difficulty, type Player, type RoomType, type RoomInfo, type GameContent, type GameSettings, type RoundScore, type PassageType, type AnswerReviewItem, type FullAnswerReviewItem, type ReadyStatus, type FinishedStatus, type BattleMode, type TeamId, type TeamsState, type TeamInfo, type TeamRoundScores, type ApprovalRequestState, type JoinRequestState, type ChatMessage, type ChatMode } from '@/lib/game-store'
 import { audioEngine } from '@/lib/audio-engine'
 import { useAudioStore } from '@/lib/audio-store'
 import { Button } from '@/components/ui/button'
@@ -6403,6 +6403,36 @@ export default function Home() {
       }
     }
   }, [splashComplete, restoreState, rejoinRoom])
+
+  // ─── URL-based routing: set screen from URL on initial load ───
+  useEffect(() => {
+    if (splashComplete && !isReconnecting) {
+      const saved = loadFromSessionStorage()
+      // Only set screen from URL if there's no active game session to restore
+      // (game sessions are handled by the rejoin logic above)
+      if (!saved?.roomCode) {
+        const urlScreen = getScreenFromUrl()
+        if (urlScreen !== 'home') {
+          setScreen(urlScreen)
+        }
+      }
+    }
+  }, [splashComplete, isReconnecting, setScreen])
+
+  // ─── Handle browser back/forward buttons ───
+  useEffect(() => {
+    const handlePopState = () => {
+      const urlScreen = getScreenFromUrl()
+      const currentScreen = useGameStore.getState().screen
+      if (urlScreen !== currentScreen) {
+        // Use set() directly to avoid pushState (which would re-add history entry)
+        useGameStore.setState({ screen: urlScreen })
+        setTimeout(() => saveToSessionStorage(getPersistableState(useGameStore.getState())), 0)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   // Handle deep link invites (?join=ROOMCODE)
   const setRoomCode = useGameStore((s) => s.setRoomCode)
