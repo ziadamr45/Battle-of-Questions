@@ -37,7 +37,7 @@ const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'deepseek-ai/deepseek-v4-flash'
 // ─── OpenRouter (Fallback - ONLY used if NVIDIA fails completely) ────────
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001'
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-flash'
 
 // ─── Other config ────────────────────────────────────────────────────────
 const NEXT_APP_URL = process.env.NEXT_APP_URL || ''
@@ -76,7 +76,7 @@ async function callNvidiaLLM(
     console.error('[NVIDIA] ❌ NVIDIA_API_KEY is not set!')
     return null
   }
-  const timeoutMs = options?.timeoutMs || 60000  // 60 seconds default
+  const timeoutMs = options?.timeoutMs || 90000  // 90 seconds default (game content is large)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -129,7 +129,7 @@ async function callOpenRouterLLM(
     console.error('[OpenRouter] ❌ OPENROUTER_API_KEY is not set! Fallback unavailable.')
     return null
   }
-  const timeoutMs = options?.timeoutMs || 45000
+  const timeoutMs = options?.timeoutMs || 90000
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -703,7 +703,7 @@ function calculateScore(
 // ============================================
 
 const MAX_CONTENT_RETRIES = 3
-const CONTENT_TIMEOUT_MS = 120000 // 2 minutes max
+const CONTENT_TIMEOUT_MS = 180000 // 3 minutes max (enough for primary + fallback retries)
 
 // ─── Content Generation Helpers ──────────────────────────────────────────────────
 
@@ -1591,7 +1591,7 @@ async function fetchGameContent(
           },
           { role: 'user', content: prompt },
         ],
-        { timeoutMs: 60000 }
+        { timeoutMs: 90000 }
       )
 
       if (!responseText) {
