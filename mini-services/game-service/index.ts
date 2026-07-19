@@ -24,17 +24,39 @@ try {
   console.log('[env] No .env file found, using environment variables')
 }
 
-// NVIDIA API - DeepSeek-V4-Flash
+// ═══════════════════════════════════════════════════════════════════════════
+// LLM PROVIDERS: NVIDIA (Primary) → OpenRouter (Fallback)
+// OpenRouter ONLY activates when NVIDIA completely fails
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── NVIDIA (Primary) ────────────────────────────────────────────────────
 const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || ''
 const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'deepseek-ai/deepseek-v4-flash'
+
+// ─── OpenRouter (Fallback - ONLY used if NVIDIA fails completely) ────────
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001'
+
+// ─── Other config ────────────────────────────────────────────────────────
 const NEXT_APP_URL = process.env.NEXT_APP_URL || ''
 const DATABASE_URL = process.env.DATABASE_URL || ''
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || ''
 const SELF_PING_URL = process.env.SELF_PING_URL || RENDER_EXTERNAL_URL
 
+// ─── NVIDIA failure tracking ─────────────────────────────────────────────
+// If NVIDIA fails N consecutive times, we switch to fallback temporarily
+let nvidiaConsecutiveFailures = 0
+const NVIDIA_MAX_FAILURES_BEFORE_FALLBACK = 3
+let nvidiaFallbackActive = false
+let nvidiaFallbackActivatedAt = 0
+const NVIDIA_FALLBACK_COOLDOWN_MS = 10 * 60 * 1000 // 10 minutes before retrying NVIDIA
+
 console.log(`[NVIDIA] API Key: ${NVIDIA_API_KEY ? NVIDIA_API_KEY.substring(0, 10) + '...' : 'NOT SET!'}`)
 console.log(`[NVIDIA] Model: ${NVIDIA_MODEL}`)
+console.log(`[OpenRouter] API Key: ${OPENROUTER_API_KEY ? OPENROUTER_API_KEY.substring(0, 10) + '...' : 'NOT SET!'}`)
+console.log(`[OpenRouter] Model: ${OPENROUTER_MODEL} (fallback only)`)
 console.log(`[Config] NEXT_APP_URL: ${NEXT_APP_URL || '(not set)'}`)
 console.log(`[Config] DATABASE_URL: ${DATABASE_URL ? DATABASE_URL.substring(0, 30) + '...' : '(not set)'}`)
 console.log(`[Config] RENDER_EXTERNAL_URL: ${RENDER_EXTERNAL_URL || '(not set)'}`)
@@ -45,13 +67,13 @@ interface ChatMessage {
   content: string
 }
 
+// ─── NVIDIA LLM call (Primary) ─────────────────────────────────────────
 async function callNvidiaLLM(
   messages: ChatMessage[],
   options?: { temperature?: number; maxTokens?: number; timeoutMs?: number }
 ): Promise<string | null> {
   if (!NVIDIA_API_KEY) {
-    console.error('[NVIDIA] ❌ NVIDIA_API_KEY is not set! Content generation will fail.')
-    console.error('[NVIDIA] Please set NVIDIA_API_KEY in your environment variables or .env file')
+    console.error('[NVIDIA] ❌ NVIDIA_API_KEY is not set!')
     return null
   }
   const timeoutMs = options?.timeoutMs || 60000  // 60 seconds default
@@ -83,7 +105,7 @@ async function callNvidiaLLM(
     const data = await response.json() as any
     const content = data.choices?.[0]?.message?.content || null
     if (content) {
-      console.log(`[NVIDIA] LLM response received (${content.length} chars, model: ${NVIDIA_MODEL})`)
+      console.log(`[NVIDIA] ✅ LLM response received (${content.length} chars, model: ${NVIDIA_MODEL})`)
     }
     return content
   } catch (err: any) {
@@ -96,6 +118,131 @@ async function callNvidiaLLM(
   } finally {
     clearTimeout(timeout)
   }
+}
+
+// ─── OpenRouter LLM call (Fallback) ─────────────────────────────────────
+async function callOpenRouterLLM(
+  messages: ChatMessage[],
+  options?: { temperature?: number; maxTokens?: number; timeoutMs?: number }
+): Promise<string | null> {
+  if (!OPENROUTER_API_KEY) {
+    console.error('[OpenRouter] ❌ OPENROUTER_API_KEY is not set! Fallback unavailable.')
+    return null
+  }
+  const timeoutMs = options?.timeoutMs || 45000
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://battle-of-questions.app',
+        'X-Title': 'Battle of Questions',
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages,
+        temperature: options?.temperature ?? 0.8,
+        max_tokens: options?.maxTokens ?? 8192,
+        response_format: { type: 'json_object' },
+      }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.text()
+      console.error(`[OpenRouter] API error ${response.status}: ${errorBody}`)
+      return null
+    }
+
+    const data = await response.json() as any
+    const content = data.choices?.[0]?.message?.content || null
+    if (content) {
+      console.log(`[OpenRouter] ✅ Fallback response received (${content.length} chars, model: ${OPENROUTER_MODEL})`)
+    }
+    return content
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.error('[OpenRouter] Fallback request timed out')
+    } else {
+      console.error('[OpenRouter] Fallback request failed:', err.message)
+    }
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// ─── Unified LLM call: NVIDIA first, OpenRouter ONLY if NVIDIA fails ────
+async function callLLM(
+  messages: ChatMessage[],
+  options?: { temperature?: number; maxTokens?: number; timeoutMs?: number }
+): Promise<string | null> {
+  // Check if NVIDIA fallback is active and cooldown hasn't expired
+  if (nvidiaFallbackActive) {
+    const elapsed = Date.now() - nvidiaFallbackActivatedAt
+    if (elapsed < NVIDIA_FALLBACK_COOLDOWN_MS) {
+      console.log(`[LLM] ⚠️ NVIDIA in cooldown (${Math.round(elapsed / 1000)}s / ${NVIDIA_FALLBACK_COOLDOWN_MS / 1000}s), using OpenRouter fallback`)
+      const result = await callOpenRouterLLM(messages, options)
+      if (result) return result
+      // If even fallback fails, try NVIDIA anyway as last resort
+      console.log('[LLM] ⚠️ Fallback also failed! Trying NVIDIA as last resort...')
+      return await callNvidiaLLM(messages, options)
+    } else {
+      // Cooldown expired, try NVIDIA again
+      console.log('[LLM] 🔄 NVIDIA cooldown expired, retrying...')
+      nvidiaFallbackActive = false
+      nvidiaConsecutiveFailures = 0
+    }
+  }
+
+  // ─── Step 1: Try NVIDIA (primary) ────────────────────────────────────
+  if (NVIDIA_API_KEY) {
+    const result = await callNvidiaLLM(messages, options)
+    if (result) {
+      // NVIDIA succeeded → reset failure counter
+      if (nvidiaConsecutiveFailures > 0) {
+        console.log(`[LLM] ✅ NVIDIA recovered! Resetting failure counter (was ${nvidiaConsecutiveFailures})`)
+      }
+      nvidiaConsecutiveFailures = 0
+      return result
+    }
+
+    // NVIDIA failed → increment counter
+    nvidiaConsecutiveFailures++
+    console.log(`[LLM] ❌ NVIDIA failed (${nvidiaConsecutiveFailures}/${NVIDIA_MAX_FAILURES_BEFORE_FALLBACK})`)
+
+    // If not enough failures yet, still try fallback for THIS request
+    if (nvidiaConsecutiveFailures < NVIDIA_MAX_FAILURES_BEFORE_FALLBACK) {
+      console.log(`[LLM] 🔄 Trying OpenRouter fallback for this request...`)
+      const fallbackResult = await callOpenRouterLLM(messages, options)
+      if (fallbackResult) return fallbackResult
+      return null
+    }
+
+    // NVIDIA failed too many times → activate fallback mode
+    console.log(`[LLM] 🚨 NVIDIA failed ${nvidiaConsecutiveFailures} times! Activating OpenRouter fallback for ${NVIDIA_FALLBACK_COOLDOWN_MS / 1000}s`)
+    nvidiaFallbackActive = true
+    nvidiaFallbackActivatedAt = Date.now()
+
+    // Try fallback now
+    console.log('[LLM] 🔄 Switching to OpenRouter fallback...')
+    const fallbackResult = await callOpenRouterLLM(messages, options)
+    if (fallbackResult) return fallbackResult
+    return null
+  }
+
+  // ─── No NVIDIA key at all → use OpenRouter if available ──────────────
+  if (OPENROUTER_API_KEY) {
+    console.log('[LLM] ⚠️ No NVIDIA_API_KEY set, using OpenRouter')
+    return await callOpenRouterLLM(messages, options)
+  }
+
+  console.error('[LLM] ❌ No API keys configured! Neither NVIDIA nor OpenRouter can be used.')
+  return null
 }
 
 async function duckDuckGoSearch(
@@ -1435,7 +1582,7 @@ async function fetchGameContent(
         ? 'أنت أديب وناقد عربي متمكن، متخصص في الأدب العربي وبلاغته ونقده. تكتب نصوصاً أدبية أصيلة وتُعدّ أسئلة بلاغية وتذوق أدبي. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي.'
         : 'أنت كاتب ومفكر عربي متمكن يكتب نصوصاً أصيلة بأسلوب أدبي رفيع ومشوّق. تنتج محتوى عربياً يشبه مقالات الكبار — نصوصاً حيّة وعميقة تُقرأ بشغف. التزامك بقواعد اللغة العربية النحوية والصرفية والإملائية تام ومطلق. كل نص تنتجه يجب أن يكون فريداً ومختلفاً ومكتوباً بأسلوب إنساني طبيعي مش ماشيني. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي.'
 
-      const responseText = await callNvidiaLLM(
+      const responseText = await callLLM(
         [
           {
             role: 'system',
@@ -1513,8 +1660,8 @@ async function fetchGameContent(
   }
 
   console.error(`[fetchGameContent] All ${MAX_CONTENT_RETRIES} attempts failed for room ${roomCode}`)
-  if (!NVIDIA_API_KEY) {
-    throw new Error('مفتاح NVIDIA API غير موجود! يرجى إضافة NVIDIA_API_KEY في متغيرات البيئة على Railway.')
+  if (!NVIDIA_API_KEY && !OPENROUTER_API_KEY) {
+    throw new Error('لا يوجد مفتاح API! يرجى إضافة NVIDIA_API_KEY أو OPENROUTER_API_KEY في متغيرات البيئة.')
   }
   throw new Error('فشل في توليد المحتوى بعد محاولات متعددة. يرجى المحاولة مرة أخرى.')
   }
@@ -3343,7 +3490,7 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
 
 ⚠️ اكتب بالعربية الفصحى البسيطة. كن مختصراً ودوداً.`
 
-      const explanation = await callNvidiaLLM(
+      const explanation = await callLLM(
         [{ role: 'user', content: prompt }],
         { temperature: 0.7, maxTokens: 300, timeoutMs: 20000 }
       )
