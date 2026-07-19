@@ -24,17 +24,17 @@ try {
   console.log('[env] No .env file found, using environment variables')
 }
 
-// OpenRouter API - replaces z-ai-web-dev-sdk
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001'
+// NVIDIA API - DeepSeek-V4-Flash
+const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || ''
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'nvidia/deepseek-v4-flash'
 const NEXT_APP_URL = process.env.NEXT_APP_URL || ''
 const DATABASE_URL = process.env.DATABASE_URL || ''
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || ''
 const SELF_PING_URL = process.env.SELF_PING_URL || RENDER_EXTERNAL_URL
 
-console.log(`[OpenRouter] API Key: ${OPENROUTER_API_KEY ? OPENROUTER_API_KEY.substring(0, 10) + '...' : 'NOT SET!'}`)
-console.log(`[OpenRouter] Model: ${OPENROUTER_MODEL}`)
+console.log(`[NVIDIA] API Key: ${NVIDIA_API_KEY ? NVIDIA_API_KEY.substring(0, 10) + '...' : 'NOT SET!'}`)
+console.log(`[NVIDIA] Model: ${NVIDIA_MODEL}`)
 console.log(`[Config] NEXT_APP_URL: ${NEXT_APP_URL || '(not set)'}`)
 console.log(`[Config] DATABASE_URL: ${DATABASE_URL ? DATABASE_URL.substring(0, 30) + '...' : '(not set)'}`)
 console.log(`[Config] RENDER_EXTERNAL_URL: ${RENDER_EXTERNAL_URL || '(not set)'}`)
@@ -45,55 +45,52 @@ interface ChatMessage {
   content: string
 }
 
-async function callOpenRouterLLM(
+async function callNvidiaLLM(
   messages: ChatMessage[],
   options?: { temperature?: number; maxTokens?: number; timeoutMs?: number }
 ): Promise<string | null> {
-  if (!OPENROUTER_API_KEY) {
-    console.error('[OpenRouter] ❌ OPENROUTER_API_KEY is not set! Content generation will fail.')
-    console.error('[OpenRouter] Please set OPENROUTER_API_KEY in your environment variables or .env file')
+  if (!NVIDIA_API_KEY) {
+    console.error('[NVIDIA] ❌ NVIDIA_API_KEY is not set! Content generation will fail.')
+    console.error('[NVIDIA] Please set NVIDIA_API_KEY in your environment variables or .env file')
     return null
   }
-  const timeoutMs = options?.timeoutMs || 45000  // 45 seconds default - Gemini Flash is very fast
+  const timeoutMs = options?.timeoutMs || 60000  // 60 seconds default
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const response = await fetch(OPENROUTER_API_URL, {
+    const response = await fetch(NVIDIA_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${NVIDIA_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://battle-of-questions.app',
-        'X-Title': 'Battle of Questions',
       },
       body: JSON.stringify({
-        model: OPENROUTER_MODEL,
+        model: NVIDIA_MODEL,
         messages,
         temperature: options?.temperature ?? 0.8,
         max_tokens: options?.maxTokens ?? 8192,
-        response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
     })
 
     if (!response.ok) {
       const errorBody = await response.text()
-      console.error(`[OpenRouter] API error ${response.status}: ${errorBody}`)
+      console.error(`[NVIDIA] API error ${response.status}: ${errorBody}`)
       return null
     }
 
     const data = await response.json() as any
     const content = data.choices?.[0]?.message?.content || null
     if (content) {
-      console.log(`[OpenRouter] LLM response received (${content.length} chars, model: ${OPENROUTER_MODEL})`)
+      console.log(`[NVIDIA] LLM response received (${content.length} chars, model: ${NVIDIA_MODEL})`)
     }
     return content
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      console.error('[OpenRouter] LLM request timed out')
+      console.error('[NVIDIA] LLM request timed out')
     } else {
-      console.error('[OpenRouter] LLM request failed:', err.message)
+      console.error('[NVIDIA] LLM request failed:', err.message)
     }
     return null
   } finally {
@@ -1438,7 +1435,7 @@ async function fetchGameContent(
         ? 'أنت أديب وناقد عربي متمكن، متخصص في الأدب العربي وبلاغته ونقده. تكتب نصوصاً أدبية أصيلة وتُعدّ أسئلة بلاغية وتذوق أدبي. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي.'
         : 'أنت كاتب ومفكر عربي متمكن يكتب نصوصاً أصيلة بأسلوب أدبي رفيع ومشوّق. تنتج محتوى عربياً يشبه مقالات الكبار — نصوصاً حيّة وعميقة تُقرأ بشغف. التزامك بقواعد اللغة العربية النحوية والصرفية والإملائية تام ومطلق. كل نص تنتجه يجب أن يكون فريداً ومختلفاً ومكتوباً بأسلوب إنساني طبيعي مش ماشيني. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي.'
 
-      const responseText = await callOpenRouterLLM(
+      const responseText = await callNvidiaLLM(
         [
           {
             role: 'system',
@@ -1446,7 +1443,7 @@ async function fetchGameContent(
           },
           { role: 'user', content: prompt },
         ],
-        { timeoutMs: 45000 }
+        { timeoutMs: 60000 }
       )
 
       if (!responseText) {
@@ -1516,8 +1513,8 @@ async function fetchGameContent(
   }
 
   console.error(`[fetchGameContent] All ${MAX_CONTENT_RETRIES} attempts failed for room ${roomCode}`)
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('مفتاح OpenRouter API غير موجود! يرجى إضافة OPENROUTER_API_KEY في متغيرات البيئة على Railway.')
+  if (!NVIDIA_API_KEY) {
+    throw new Error('مفتاح NVIDIA API غير موجود! يرجى إضافة NVIDIA_API_KEY في متغيرات البيئة على Railway.')
   }
   throw new Error('فشل في توليد المحتوى بعد محاولات متعددة. يرجى المحاولة مرة أخرى.')
   }
@@ -3346,9 +3343,9 @@ ${answer && answer.answerIndex !== question.correctAnswer ? 'الطالب أجا
 
 ⚠️ اكتب بالعربية الفصحى البسيطة. كن مختصراً ودوداً.`
 
-      const explanation = await callOpenRouterLLM(
+      const explanation = await callNvidiaLLM(
         [{ role: 'user', content: prompt }],
-        { temperature: 0.7, maxTokens: 300, timeoutMs: 15000 }
+        { temperature: 0.7, maxTokens: 300, timeoutMs: 20000 }
       )
 
       socket.emit('answer-explanation', {

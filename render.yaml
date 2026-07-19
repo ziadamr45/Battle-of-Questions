@@ -6,10 +6,10 @@ services:
     buildCommand: cd mini-services/game-service && npm install
     startCommand: cd mini-services/game-service && npx tsx index.ts
     envVars:
-      - key: OPENROUTER_API_KEY
+      - key: NVIDIA_API_KEY
         sync: false
-      - key: OPENROUTER_MODEL
-        value: google/gemini-2.0-flash-001
+      - key: NVIDIA_MODEL
+        value: nvidia/deepseek-v4-flash
       - key: NEXT_APP_URL
         value: https://ma3raka.vercel.app
       - key: NODE_ENV
