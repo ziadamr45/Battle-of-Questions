@@ -29,6 +29,14 @@ interface AudioState {
 }
 
 function loadSettings(): AudioSettings {
+  if (typeof window === 'undefined') {
+    return {
+      masterVolume: 1.0,
+      sfxVolume: 1.0,
+      musicVolume: 1.0,
+      isMuted: false,
+    }
+  }
   try {
     const stored = localStorage.getItem(AUDIO_SETTINGS_KEY)
     if (stored) {
@@ -50,6 +58,7 @@ function loadSettings(): AudioSettings {
 }
 
 function saveSettings(settings: AudioSettings) {
+  if (typeof window === 'undefined') return
   try {
     localStorage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(settings))
   } catch { /* ignore */ }

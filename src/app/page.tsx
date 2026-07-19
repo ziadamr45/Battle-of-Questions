@@ -6408,6 +6408,11 @@ export default function Home() {
     }
   }, [splashComplete, restoreState, rejoinRoom])
 
+  // ─── Store selectors needed by effects below (must be declared before use) ───
+  const setRoomCode = useGameStore((s) => s.setRoomCode)
+  const setScreen = useGameStore((s) => s.setScreen)
+  const setPlayerName = useGameStore((s) => s.setPlayerName)
+
   // ─── URL-based routing: set screen from URL on initial load ───
   useEffect(() => {
     if (splashComplete && !isReconnecting) {
@@ -6439,8 +6444,6 @@ export default function Home() {
   }, [])
 
   // Handle deep link invites (?join=ROOMCODE)
-  const setRoomCode = useGameStore((s) => s.setRoomCode)
-  const setScreen = useGameStore((s) => s.setScreen)
   useEffect(() => {
     if (splashComplete && guest) {
       const invite = parseJoinUrl()
@@ -6455,7 +6458,6 @@ export default function Home() {
   }, [splashComplete, guest, setRoomCode, setScreen])
 
   // Sync game store playerName with guest identity
-  const setPlayerName = useGameStore((s) => s.setPlayerName)
   useEffect(() => {
     if (guest?.displayName && playerName !== guest.displayName) {
       setPlayerName(guest.displayName)
