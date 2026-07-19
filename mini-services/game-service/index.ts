@@ -1320,6 +1320,8 @@ ${searchInspiration}${seedInstruction}${varietyConstraint}
 
 4. كل سؤال يحتوي على 4 خيارات بالضبط مع إجابة صحيحة واحدة فقط
 
+5. ⚠️ مهم جداً: correctAnswer لازم يكون رقم فقط (0 أو 1 أو 2 أو 3) يمثل فهرس الإجابة الصحيحة في مصفوفة options. ممنوع كتابة نص في correctAnswer. مثال: لو الخيار الثاني في options هو الصحيح، اكتب "correctAnswer": 1
+
 5. ⚠️ قاعدة حيادية طول الخيارات: ممنوع تماماً أن تكون الإجابة الصحيحة هي الخيار الأطول دائماً. يجب أن تتساوى الخيارات في الطول تقريباً أو تتفاوت بشكل عشوائي طبيعي. الإجابة الصحيحة يجب أن تكون أحياناً أقصر خيار وأحياناً أطول خيار وأحياناً متوسطة — بدون أي نمط يمكن اكتشافه. توزيع طول الإجابة الصحيحة يجب أن يكون عشوائياً بالكامل عبر كل الأسئلة.
 
 6. ${nosousDifficultyInstructions[difficulty]}
@@ -1454,6 +1456,8 @@ ${searchInspiration}${seedInstruction}${varietyConstraint}${passageTypeInstructi
 
 4. كل سؤال يجب أن يحتوي على 4 خيارات بالضبط (أ، ب، ج، د) مع إجابة صحيحة واحدة فقط
 
+5. ⚠️ مهم جداً: correctAnswer لازم يكون رقم فقط (0 أو 1 أو 2 أو 3) يمثل فهرس الإجابة الصحيحة في مصفوفة options. ممنوع كتابة نص في correctAnswer. مثال: لو الخيار الثاني في options هو الصحيح، اكتب "correctAnswer": 1
+
 5. ⚠️ قاعدة حيادية طول الخيارات: ممنوع تماماً أن تكون الإجابة الصحيحة هي الخيار الأطول دائماً. يجب أن تتساوى الخيارات في الطول تقريباً أو تتفاوت بشكل عشوائي طبيعي. الإجابة الصحيحة يجب أن تكون أحياناً أقصر خيار وأحياناً أطول خيار وأحياناً متوسطة — بدون أي نمط يمكن اكتشافه. توزيع طول الإجابة الصحيحة يجب أن يكون عشوائياً بالكامل عبر كل الأسئلة.
 
 6. ${difficultyInstructions[difficulty]}
@@ -1581,8 +1585,8 @@ async function fetchGameContent(
 
       // Use different system messages for different game types
       const systemMessage = gameType === 'نصوص'
-        ? 'أنت أديب وناقد عربي متمكن، متخصص في الأدب العربي وبلاغته ونقده. تكتب نصوصاً أدبية أصيلة وتُعدّ أسئلة بلاغية وتذوق أدبي. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي.'
-        : 'أنت كاتب ومفكر عربي متمكن يكتب نصوصاً أصيلة بأسلوب أدبي رفيع ومشوّق. تنتج محتوى عربياً يشبه مقالات الكبار — نصوصاً حيّة وعميقة تُقرأ بشغف. التزامك بقواعد اللغة العربية النحوية والصرفية والإملائية تام ومطلق. كل نص تنتجه يجب أن يكون فريداً ومختلفاً ومكتوباً بأسلوب إنساني طبيعي مش ماشيني. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي.'
+        ? 'أنت أديب وناقد عربي متمكن، متخصص في الأدب العربي وبلاغته ونقده. تكتب نصوصاً أدبية أصيلة وتُعدّ أسئلة بلاغية وتذوق أدبي. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي. ⚠️ حقل correctAnswer في كل سؤال لازم يكون رقم (0-3) فقط وليس نصاً.'
+        : 'أنت كاتب ومفكر عربي متمكن يكتب نصوصاً أصيلة بأسلوب أدبي رفيع ومشوّق. تنتج محتوى عربياً يشبه مقالات الكبار — نصوصاً حيّة وعميقة تُقرأ بشغف. التزامك بقواعد اللغة العربية النحوية والصرفية والإملائية تام ومطلق. كل نص تنتجه يجب أن يكون فريداً ومختلفاً ومكتوباً بأسلوب إنساني طبيعي مش ماشيني. تُجيب دائماً بصيغة JSON صالحة فقط بدون أي نص إضافي. ⚠️ حقل correctAnswer في كل سؤال لازم يكون رقم (0-3) فقط وليس نصاً.'
 
       const responseText = await callLLM(
         [
@@ -1628,14 +1632,37 @@ async function fetchGameContent(
         io.to(roomCode).emit('content-progress', { step: 'ready', text: 'المحتوى جاهز! استعد للقتال!' })
 
         const validatedQuestions = parsed.questions.map((q: any, index: number) => {
-          // Normalize correctAnswer - could be string from LLM
-          let correctAnswer = typeof q.correctAnswer === 'string' 
-            ? parseInt(q.correctAnswer, 10) 
-            : q.correctAnswer
-          if (isNaN(correctAnswer)) correctAnswer = 0
+          // ─── Normalize correctAnswer ────────────────────────────────
+          // LLM might return: number (0-3), string number ("1"), or text of answer ("الهيدروجين")
+          let correctAnswer: number
+          if (typeof q.correctAnswer === 'number') {
+            correctAnswer = q.correctAnswer
+          } else if (typeof q.correctAnswer === 'string') {
+            // Try parsing as number first
+            const parsed = parseInt(q.correctAnswer, 10)
+            if (!isNaN(parsed) && parsed >= 0 && parsed <= 3) {
+              correctAnswer = parsed
+            } else {
+              // It's a text answer - find its index in the options
+              const answerText = q.correctAnswer.trim()
+              const options = q.options || []
+              const matchIndex = options.findIndex((opt: string) => 
+                typeof opt === 'string' && opt.trim() === answerText
+              )
+              // Also try partial match (in case of slight formatting differences)
+              correctAnswer = matchIndex !== -1 
+                ? matchIndex 
+                : options.findIndex((opt: string) => 
+                    typeof opt === 'string' && opt.trim().includes(answerText)
+                  )
+              if (correctAnswer === -1) correctAnswer = 0  // Fallback to first option
+            }
+          } else {
+            correctAnswer = 0
+          }
           correctAnswer = Math.max(0, Math.min(3, correctAnswer))
           
-          // Pad options to exactly 4 if needed
+          // ─── Pad options to exactly 4 if needed ────────────────────
           let options = [...(q.options || [])]
           while (options.length < 4) options.push(`خيار ${options.length + 1}`)
           options = options.slice(0, 4)
