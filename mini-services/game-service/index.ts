@@ -27,7 +27,7 @@ try {
 // NVIDIA API - DeepSeek-V4-Flash
 const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || ''
-const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'nvidia/deepseek-v4-flash'
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'deepseek-ai/deepseek-v4-flash'
 const NEXT_APP_URL = process.env.NEXT_APP_URL || ''
 const DATABASE_URL = process.env.DATABASE_URL || ''
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || ''

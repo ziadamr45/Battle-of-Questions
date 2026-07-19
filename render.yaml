@@ -9,7 +9,7 @@ services:
       - key: NVIDIA_API_KEY
         sync: false
       - key: NVIDIA_MODEL
-        value: nvidia/deepseek-v4-flash
+        value: deepseek-ai/deepseek-v4-flash
       - key: NEXT_APP_URL
         value: https://ma3raka.vercel.app
       - key: NODE_ENV
