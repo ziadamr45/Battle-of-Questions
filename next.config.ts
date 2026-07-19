@@ -7,7 +7,6 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   env: {
     DATABASE_URL: process.env.DATABASE_URL || "postgresql://localhost:5432/placeholder",
-    DIRECT_URL: process.env.DIRECT_URL || "postgresql://localhost:5432/placeholder",
     NEXT_PUBLIC_GAME_SERVICE_URL: process.env.NEXT_PUBLIC_GAME_SERVICE_URL || "http://localhost:3001",
     LIVEKIT_URL: process.env.LIVEKIT_URL || "http://localhost:7880",
     LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY || "placeholder",
