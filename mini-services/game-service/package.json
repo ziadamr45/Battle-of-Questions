@@ -1,16 +1,14 @@
 {
-  "name": "game-service",
+  "name": "ma3raka-game-service",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "npx tsx --watch index.ts",
-    "start": "npx tsx index-wrapper.ts"
+    "start": "node --import tsx index.ts",
+    "dev": "node --import tsx --watch index.ts"
   },
   "dependencies": {
-    "socket.io": "^4.8.1"
-  },
-  "devDependencies": {
+    "socket.io": "^4.8.3",
+    "dotenv": "^17.4.2",
     "tsx": "^4.19.0"
   }
 }

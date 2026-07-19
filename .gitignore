@@ -93,7 +93,9 @@ docker-compose.yml
 agent-ctx/
 worklog.md
 skills/
-mini-services/
+mini-services/game-service/node_modules/
+mini-services/game-service/.env
+mini-services/game-service/.env.*
 examples/
 railway.json
 vercel.json

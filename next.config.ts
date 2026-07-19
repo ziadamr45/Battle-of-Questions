@@ -37,6 +37,26 @@ const nextConfig: NextConfig = {
         source: '/join',
         destination: '/',
       },
+      {
+        source: '/lobby',
+        destination: '/',
+      },
+      {
+        source: '/loading',
+        destination: '/',
+      },
+      {
+        source: '/game',
+        destination: '/',
+      },
+      {
+        source: '/results',
+        destination: '/',
+      },
+      {
+        source: '/round-transition',
+        destination: '/',
+      },
     ]
   },
 };
