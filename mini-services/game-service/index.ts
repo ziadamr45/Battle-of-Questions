@@ -1099,11 +1099,12 @@ function isValidGameContent(obj: unknown): obj is GameContent {
   for (const q of content.questions as unknown[]) {
     if (!q || typeof q !== 'object') return false
     const question = q as Record<string, unknown>
-    if (typeof question.id !== 'number') return false
+    // id can be number or string (LLM might return either) - will be normalized later
+    if (question.id !== undefined && typeof question.id !== 'number' && typeof question.id !== 'string') return false
     if (typeof question.text !== 'string') return false
-    if (!Array.isArray(question.options) || question.options.length !== 4) return false
-    if (typeof question.correctAnswer !== 'number') return false
-    if (question.correctAnswer < 0 || question.correctAnswer > 3) return false
+    if (!Array.isArray(question.options) || question.options.length < 2) return false
+    // correctAnswer can be number or string - will be normalized later
+    if (question.correctAnswer !== undefined && typeof question.correctAnswer !== 'number' && typeof question.correctAnswer !== 'string') return false
     if (typeof question.explanation !== 'string') return false
   }
   return true
@@ -1626,11 +1627,26 @@ async function fetchGameContent(
 
         io.to(roomCode).emit('content-progress', { step: 'ready', text: 'المحتوى جاهز! استعد للقتال!' })
 
-        const validatedQuestions = parsed.questions.map((q, index) => ({
-          ...q,
-          id: index + 1,
-          correctAnswer: Math.max(0, Math.min(3, q.correctAnswer)),
-        }))
+        const validatedQuestions = parsed.questions.map((q: any, index: number) => {
+          // Normalize correctAnswer - could be string from LLM
+          let correctAnswer = typeof q.correctAnswer === 'string' 
+            ? parseInt(q.correctAnswer, 10) 
+            : q.correctAnswer
+          if (isNaN(correctAnswer)) correctAnswer = 0
+          correctAnswer = Math.max(0, Math.min(3, correctAnswer))
+          
+          // Pad options to exactly 4 if needed
+          let options = [...(q.options || [])]
+          while (options.length < 4) options.push(`خيار ${options.length + 1}`)
+          options = options.slice(0, 4)
+          
+          return {
+            ...q,
+            id: index + 1,
+            correctAnswer,
+            options,
+          }
+        })
 
         const content: GameContent = {
           title: parsed.title,
