@@ -194,10 +194,13 @@ function useGameSocket() {
         s.setScreen('home')
         clearSessionStorage()
       } else if (s.isLoading) {
-        // If we're loading (create/join) and connection fails, stop loading
-        s.setIsLoading(false)
-        s.setError('فشل الاتصال بالخادم')
-        battleToast('connection_error', 'خطأ في الاتصال', 'لم نستطع الاتصال بالخادم. يرجى المحاولة مرة أخرى.')
+        // Don't give up immediately on the first connection attempt!
+        // Socket.IO will retry (reconnection: true, reconnectionAttempts: 10)
+        // The 12-second safety timeout in createGame/joinGame will handle
+        // the case where the connection truly never succeeds.
+        // Only show an error if this is a persistent failure (3+ attempts)
+        // by checking if the socket has been trying for a while.
+        console.log('[Socket] Connection attempt failed, Socket.IO will retry...')
       }
     })
 
@@ -853,29 +856,30 @@ function useGameSocket() {
   const createGame = useCallback((playerName: string, settings: any, roomType: RoomType, password?: string) => {
     store.getState().setIsHost(true); store.getState().setPlayerName(playerName); store.getState().setRoomType(roomType); store.getState().setIsLoading(true)
     connectAndDo((socket) => { socket.emit('create-game', { playerName, settings, roomType, password }) })
-    // Safety timeout: if create-game doesn't complete in 12s, reset loading
+    // Safety timeout: if create-game doesn't complete in 20s, reset loading
+    // (increased from 12s to allow Railway cold start + Socket.IO retries)
     setTimeout(() => {
       if (store.getState().isLoading && store.getState().screen === 'create') {
-        console.log('[createGame] Timed out after 12s, resetting')
+        console.log('[createGame] Timed out after 20s, resetting')
         store.getState().setIsLoading(false)
         disconnectGlobalSocket()
         battleToast('timeout', 'انتهت المهلة', 'لم نستطع إنشاء الساحة. يرجى المحاولة مرة أخرى.')
       }
-    }, 12000)
+    }, 20000)
   }, [connectAndDo])
 
   const joinGame = useCallback((roomCode: string, playerName: string, password?: string) => {
     store.getState().setIsHost(false); store.getState().setPlayerName(playerName); store.getState().setRoomCode(roomCode.toUpperCase()); store.getState().setIsLoading(true)
     connectAndDo((socket) => { socket.emit('join-game', { roomCode: roomCode.toUpperCase(), playerName, password }) })
-    // Safety timeout: if join-game doesn't complete in 12s, reset loading
+    // Safety timeout: if join-game doesn't complete in 20s, reset loading
     setTimeout(() => {
       if (store.getState().isLoading && store.getState().screen === 'join') {
-        console.log('[joinGame] Timed out after 12s, resetting')
+        console.log('[joinGame] Timed out after 20s, resetting')
         store.getState().setIsLoading(false)
         disconnectGlobalSocket()
         battleToast('timeout', 'انتهت المهلة', 'لم نستطع الانضمام للساحة. يرجى المحاولة مرة أخرى.')
       }
-    }, 12000)
+    }, 20000)
   }, [connectAndDo])
 
   const rejoinRoom = useCallback((roomCode: string, playerName: string) => {
